@@ -6,6 +6,7 @@ export type GlyphPoint = {
 };
 
 export type GlyphStroke = {
+  color?: string;
   id: string;
   points: GlyphPoint[];
   size: number;

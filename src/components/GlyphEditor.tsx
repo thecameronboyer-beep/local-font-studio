@@ -18,6 +18,8 @@ type GlyphEditorProps = {
   onToggleFullScreen: () => void;
 };
 
+const glyphInkSwatches = ["#19140f", "#d93434", "#f0a934", "#16815f", "#2468c9", "#8b4bd9"];
+
 function cloneStrokes(strokes: GlyphStroke[]) {
   return strokes.map((stroke) => ({
     ...stroke,
@@ -127,6 +129,41 @@ function nudgeGlyphElements(glyph: Glyph, dx: number, dy: number) {
 
 function getFallbackFont(size: number) {
   return `700 ${size}px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+}
+
+function InkColorControl({
+  inkColor,
+  onInkColorChange,
+}: {
+  inkColor: string;
+  onInkColorChange: (color: string) => void;
+}) {
+  return (
+    <div className="glyph-ink-control">
+      <label>
+        <span>Ink</span>
+        <input
+          type="color"
+          value={inkColor}
+          onChange={(event) => onInkColorChange(event.target.value)}
+          aria-label="Pen ink color"
+        />
+      </label>
+      <div className="glyph-ink-swatches" aria-label="Ink color swatches">
+        {glyphInkSwatches.map((color) => (
+          <button
+            key={color}
+            className={`glyph-ink-swatch ${inkColor === color ? "selected" : ""}`}
+            type="button"
+            onClick={() => onInkColorChange(color)}
+            aria-label={`Use ink color ${color}`}
+          >
+            <span style={{ backgroundColor: color }} />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function EditorLivePreview({
@@ -288,6 +325,7 @@ export default function GlyphEditor({
   const pastRef = useRef<Glyph[]>([]);
   const futureRef = useRef<Glyph[]>([]);
   const [brushSize, setBrushSize] = useState(9);
+  const [inkColor, setInkColor] = useState("#19140f");
   const [tool, setTool] = useState<"pen" | "eraser" | "eyes">("pen");
   const [savedMessage, setSavedMessage] = useState("");
   const [historyCounts, setHistoryCounts] = useState({ past: 0, future: 0 });
@@ -428,6 +466,7 @@ export default function GlyphEditor({
           strokes={draftGlyph.strokes}
           decorations={draftGlyph.decorations}
           brushSize={brushSize}
+          inkColor={inkColor}
           tool={tool}
           onEditStart={pushHistory}
           onChangeDecorations={updateDraftDecorations}
@@ -507,6 +546,8 @@ export default function GlyphEditor({
             />
             <output>{brushSize}px</output>
           </label>
+
+          <InkColorControl inkColor={inkColor} onInkColorChange={setInkColor} />
 
           <div className="draw-save-row">
             <button className="draw-glass-button" type="button" onClick={handleSave}>
@@ -649,6 +690,7 @@ export default function GlyphEditor({
         strokes={draftGlyph.strokes}
         decorations={draftGlyph.decorations}
         brushSize={brushSize}
+        inkColor={inkColor}
         tool={tool}
         onEditStart={pushHistory}
         onChangeDecorations={updateDraftDecorations}
@@ -723,6 +765,8 @@ export default function GlyphEditor({
           />
           <output>{brushSize}px</output>
         </label>
+
+        <InkColorControl inkColor={inkColor} onInkColorChange={setInkColor} />
 
         <div className="center-row" aria-label="Center glyph">
           <button className="secondary-button" type="button" onClick={() => handleCenter("x")}>

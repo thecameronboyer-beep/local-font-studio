@@ -9,6 +9,7 @@ type GlyphCanvasProps = {
   strokes: GlyphStroke[];
   decorations: GlyphDecoration[];
   brushSize: number;
+  inkColor: string;
   tool: "pen" | "eraser" | "eyes";
   onEditStart: () => void;
   onChangeDecorations: (decorations: GlyphDecoration[]) => void;
@@ -55,6 +56,7 @@ export default function GlyphCanvas({
   strokes,
   decorations,
   brushSize,
+  inkColor,
   tool,
   onEditStart,
   onChangeDecorations,
@@ -106,9 +108,8 @@ export default function GlyphCanvas({
 
     drawGuides(ctx);
 
-    ctx.strokeStyle = "#19140f";
     for (const stroke of nextStrokes) {
-      drawStrokePath(ctx, stroke, 0, 0, CANVAS_SIZE);
+      drawStrokePath(ctx, stroke, 0, 0, CANVAS_SIZE, CANVAS_SIZE, CANVAS_SIZE, "#19140f");
     }
 
     for (const decoration of nextDecorations) {
@@ -330,6 +331,7 @@ export default function GlyphCanvas({
     }
 
     const stroke: GlyphStroke = {
+      color: inkColor,
       id: makeStrokeId(),
       points: [
         {

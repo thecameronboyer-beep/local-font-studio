@@ -120,11 +120,14 @@ export function drawStrokePath(
   size: number,
   sizeX = size,
   sizeY = size,
+  fallbackColor?: string,
 ) {
   if (stroke.points.length === 0) {
     return;
   }
 
+  ctx.save();
+  ctx.strokeStyle = stroke.color ?? fallbackColor ?? ctx.strokeStyle;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   const baseWidth = Math.max(1.5, stroke.size * size);
@@ -133,6 +136,7 @@ export function drawStrokePath(
 
   if (rest.length === 0) {
     drawInkPool(ctx, firstPoint, x, y, baseWidth, sizeX, sizeY, 0.22);
+    ctx.restore();
     return;
   }
 
@@ -150,6 +154,8 @@ export function drawStrokePath(
   for (const point of stroke.points) {
     drawInkPool(ctx, point, x, y, baseWidth, sizeX, sizeY);
   }
+
+  ctx.restore();
 }
 
 function getStickerSeed(id: string, salt: number) {
@@ -217,7 +223,7 @@ export function drawGlyph(
   ctx.strokeStyle = color;
 
   for (const stroke of glyph.strokes) {
-    drawStrokePath(ctx, stroke, x, y, size, size * widthScale, size);
+    drawStrokePath(ctx, stroke, x, y, size, size * widthScale, size, color);
   }
 
   for (const decoration of glyph.decorations ?? []) {
