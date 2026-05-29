@@ -8,10 +8,8 @@ import { supportedCharacters } from "./data/characterSets";
 import { hasDrawnGlyph } from "./render/glyphRenderer";
 import {
   createEmptyGlyph,
-  createAngryFaceFontSet,
   createFontSet,
   createId,
-  isAngryFaceFontSet,
   loadFontStudioData,
   saveFontStudioData,
 } from "./storage/fontStorage";
@@ -115,40 +113,6 @@ export default function App() {
       activeFontId: font.id,
       fonts: [...studioData.fonts, font],
     });
-  }
-
-  function handleCreateAngryPreset() {
-    const existingPreset = studioData.fonts.find(isAngryFaceFontSet);
-    const refreshedPreset = createAngryFaceFontSet();
-
-    if (existingPreset) {
-      persist({
-        ...studioData,
-        activeFontId: existingPreset.id,
-        fonts: studioData.fonts.map((font) =>
-          font.id === existingPreset.id
-            ? {
-                ...refreshedPreset,
-                id: existingPreset.id,
-                createdAt: existingPreset.createdAt,
-              }
-            : font,
-        ),
-      });
-      setPreviewText("hey check out my angry custom font!");
-      setSelectedCharacter("A");
-      return;
-    }
-
-    const font = refreshedPreset;
-
-    persist({
-      ...studioData,
-      activeFontId: font.id,
-      fonts: [...studioData.fonts, font],
-    });
-    setPreviewText("hey check out my angry custom font!");
-    setSelectedCharacter("A");
   }
 
   function handleRenameFont(fontId: string, name: string) {
@@ -317,7 +281,6 @@ export default function App() {
               activeFontId={studioData.activeFontId}
               onSelectFont={handleSelectFont}
               onCreateFont={handleCreateFont}
-              onCreateAngryPreset={handleCreateAngryPreset}
               onRenameFont={handleRenameFont}
               onDuplicateFont={handleDuplicateFont}
               onDeleteFont={handleDeleteFont}

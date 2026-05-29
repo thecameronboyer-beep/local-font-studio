@@ -344,21 +344,6 @@ h3 {
   padding: 14px 18px 18px;
 }
 
-.preset-actions {
-  padding: 0 18px 18px;
-}
-
-.rage-preset-button {
-  width: 100%;
-  min-height: 52px;
-  border: 1px solid rgba(255, 176, 0, 0.36);
-  border-radius: 8px;
-  background: linear-gradient(135deg, #3a080b, #8f181d 58%, #ffb000);
-  color: #fff4df;
-  font-weight: 950;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.42);
-}
-
 .grid-panel {
   overflow: hidden;
 }

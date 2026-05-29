@@ -8,7 +8,6 @@ type FontLibraryProps = {
   onCreateFont: (name: string) => void;
   onRenameFont: (fontId: string, name: string) => void;
   onDuplicateFont: (fontId: string) => void;
-  onCreateAngryPreset: () => void;
   onDeleteFont: (fontId: string) => void;
   getSavedGlyphCount: (font: FontSet) => number;
 };
@@ -20,7 +19,6 @@ export default function FontLibrary({
   onCreateFont,
   onRenameFont,
   onDuplicateFont,
-  onCreateAngryPreset,
   onDeleteFont,
   getSavedGlyphCount,
 }: FontLibraryProps) {
@@ -115,11 +113,6 @@ export default function FontLibrary({
         </button>
       </div>
 
-      <div className="preset-actions">
-        <button className="rage-preset-button" type="button" onClick={onCreateAngryPreset}>
-          Generate Angry Face preset
-        </button>
-      </div>
     </section>
   );
 }
