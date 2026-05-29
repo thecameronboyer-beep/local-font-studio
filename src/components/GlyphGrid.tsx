@@ -5,6 +5,8 @@ import type { FontSet, Glyph } from "../types/fontTypes";
 
 type GlyphGridProps = {
   font: FontSet;
+  isFullScreen?: boolean;
+  onClose?: () => void;
   selectedCharacter: string;
   onSelectCharacter: (character: string) => void;
 };
@@ -43,15 +45,30 @@ function GlyphMiniPreview({ glyph }: { glyph: Glyph }) {
   return <canvas ref={canvasRef} className="glyph-mini-canvas" aria-hidden="true" />;
 }
 
-export default function GlyphGrid({ font, selectedCharacter, onSelectCharacter }: GlyphGridProps) {
+export default function GlyphGrid({
+  font,
+  isFullScreen = false,
+  onClose,
+  selectedCharacter,
+  onSelectCharacter,
+}: GlyphGridProps) {
   return (
-    <section className="studio-panel grid-panel" aria-label="Glyph grid">
+    <section
+      className={`studio-panel grid-panel ${isFullScreen ? "fullscreen-grid-page" : ""}`}
+      aria-label="Glyph grid"
+    >
       <div className="panel-heading">
         <div>
           <p className="eyebrow">Character set</p>
           <h2>Glyph grid</h2>
         </div>
-        <div className="glyph-pill">{supportedCharacters.length} glyphs</div>
+        {isFullScreen ? (
+          <button className="secondary-button compact-button" type="button" onClick={onClose}>
+            Close
+          </button>
+        ) : (
+          <div className="glyph-pill">{supportedCharacters.length} glyphs</div>
+        )}
       </div>
 
       <div className="glyph-grid">

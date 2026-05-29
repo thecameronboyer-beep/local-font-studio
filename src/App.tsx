@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
 import FontLibrary from "./components/FontLibrary";
 import GlyphEditor from "./components/GlyphEditor";
@@ -46,7 +46,6 @@ function cloneFontSet(font: FontSet, name: string): FontSet {
 
 export default function App() {
   const libraryRef = useRef<HTMLDivElement | null>(null);
-  const gridRef = useRef<HTMLDivElement | null>(null);
   const previewRef = useRef<HTMLDivElement | null>(null);
   const [studioData, setStudioData] = useState<FontStudioData>(() => {
     const data = loadFontStudioData();
@@ -55,6 +54,7 @@ export default function App() {
   });
   const [selectedCharacter, setSelectedCharacter] = useState("A");
   const [editorFullScreen, setEditorFullScreen] = useState(false);
+  const [gridFullScreen, setGridFullScreen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [previewText, setPreviewText] = useState("Draw and save A, then type A here.");
 
@@ -74,6 +74,14 @@ export default function App() {
 
   const savedGlyphCount = getSavedGlyphCount(activeFont);
 
+  useEffect(() => {
+    document.body.classList.toggle("editor-fullscreen-open", editorFullScreen || gridFullScreen);
+
+    return () => {
+      document.body.classList.remove("editor-fullscreen-open");
+    };
+  }, [editorFullScreen, gridFullScreen]);
+
   function persist(nextData: FontStudioData) {
     setStudioData(nextData);
     saveFontStudioData(nextData);
@@ -81,6 +89,7 @@ export default function App() {
 
   function handleSelectCharacter(character: string) {
     setSelectedCharacter(character);
+    setGridFullScreen(false);
     setEditorFullScreen(true);
   }
 
@@ -235,7 +244,13 @@ export default function App() {
           <button type="button" onClick={() => jumpToSection(libraryRef)}>
             Font library
           </button>
-          <button type="button" onClick={() => jumpToSection(gridRef)}>
+          <button
+            type="button"
+            onClick={() => {
+              setSidebarOpen(false);
+              setGridFullScreen(true);
+            }}
+          >
             Glyph grid
           </button>
           <button type="button" onClick={() => jumpToSection(previewRef)}>
@@ -284,13 +299,6 @@ export default function App() {
               getSavedGlyphCount={getSavedGlyphCount}
             />
           </div>
-          <div ref={gridRef}>
-            <GlyphGrid
-              font={activeFont}
-              selectedCharacter={selectedCharacter}
-              onSelectCharacter={handleSelectCharacter}
-            />
-          </div>
           <div ref={previewRef}>
             <TextPreview
               font={activeFont}
@@ -300,6 +308,16 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {gridFullScreen && (
+        <GlyphGrid
+          font={activeFont}
+          selectedCharacter={selectedCharacter}
+          onSelectCharacter={handleSelectCharacter}
+          isFullScreen
+          onClose={() => setGridFullScreen(false)}
+        />
+      )}
 
       {editorFullScreen && (
         <GlyphEditor

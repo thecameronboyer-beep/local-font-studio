@@ -1552,3 +1552,39 @@ h1 {
   min-height: 28px;
   padding: 4px 10px max(6px, env(safe-area-inset-bottom));
 }
+
+.fullscreen-grid-page {
+  position: fixed;
+  z-index: 30;
+  inset: 0 auto 0 50%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(var(--phone-shell-width), 100vw);
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: #151314;
+  transform: translateX(-50%);
+}
+
+.fullscreen-grid-page .panel-heading {
+  position: static;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: max(10px, env(safe-area-inset-top)) 10px 10px;
+}
+
+.fullscreen-grid-page .glyph-grid {
+  min-height: 0;
+  max-height: none;
+  overflow: auto;
+  padding: 10px 10px max(14px, env(safe-area-inset-bottom));
+}
+
+.fullscreen-grid-page .glyph-cell {
+  min-height: 88px;
+}
