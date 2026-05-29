@@ -15,7 +15,13 @@ type PhoneImageSettings = PreviewSettings & {
 };
 
 const PHONE_IMAGE_WIDTH = 1080;
-const PHONE_IMAGE_HEIGHT = 1920;
+const MIN_PHONE_IMAGE_HEIGHT = 240;
+
+type PhoneImageLayout = {
+  height: number;
+  lines: string[];
+  settings: PhoneImageSettings;
+};
 
 const inkSwatches = [
   { label: "Ink", color: "#17110b" },
@@ -272,13 +278,15 @@ export default function TextPreview({ font, previewText, onPreviewTextChange }: 
     });
   }
 
-  function drawPaperTexture(ctx: CanvasRenderingContext2D, color: string) {
+  function drawPaperTexture(ctx: CanvasRenderingContext2D, color: string, imageHeight: number) {
     ctx.save();
     ctx.fillStyle = color;
 
-    for (let index = 0; index < 520; index += 1) {
+    const speckleCount = Math.max(80, Math.ceil((PHONE_IMAGE_WIDTH * imageHeight) / 4000));
+
+    for (let index = 0; index < speckleCount; index += 1) {
       const x = (index * 97) % PHONE_IMAGE_WIDTH;
-      const y = (index * 193) % PHONE_IMAGE_HEIGHT;
+      const y = (index * 193) % imageHeight;
       const radius = 0.8 + (index % 5) * 0.42;
       ctx.globalAlpha = 0.035 + (index % 4) * 0.008;
       ctx.beginPath();
@@ -289,52 +297,56 @@ export default function TextPreview({ font, previewText, onPreviewTextChange }: 
     ctx.restore();
   }
 
-  function drawPhoneBackground(ctx: CanvasRenderingContext2D, renderSettings: PhoneImageSettings) {
+  function drawPhoneBackground(
+    ctx: CanvasRenderingContext2D,
+    renderSettings: PhoneImageSettings,
+    imageHeight: number,
+  ) {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
     if (renderSettings.backgroundStyle === "rage") {
-      const gradient = ctx.createLinearGradient(0, 0, PHONE_IMAGE_WIDTH, PHONE_IMAGE_HEIGHT);
+      const gradient = ctx.createLinearGradient(0, 0, PHONE_IMAGE_WIDTH, imageHeight);
       gradient.addColorStop(0, "#130305");
       gradient.addColorStop(0.56, renderSettings.backgroundColor);
       gradient.addColorStop(1, "#6f1115");
       ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, PHONE_IMAGE_WIDTH, PHONE_IMAGE_HEIGHT);
+      ctx.fillRect(0, 0, PHONE_IMAGE_WIDTH, imageHeight);
 
       const glow = ctx.createRadialGradient(820, 220, 40, 820, 220, 760);
       glow.addColorStop(0, "rgba(255, 176, 0, 0.42)");
       glow.addColorStop(1, "rgba(255, 176, 0, 0)");
       ctx.fillStyle = glow;
-      ctx.fillRect(0, 0, PHONE_IMAGE_WIDTH, PHONE_IMAGE_HEIGHT);
-      drawPaperTexture(ctx, renderSettings.accentColor);
+      ctx.fillRect(0, 0, PHONE_IMAGE_WIDTH, imageHeight);
+      drawPaperTexture(ctx, renderSettings.accentColor, imageHeight);
       return;
     }
 
     if (renderSettings.backgroundStyle === "midnight") {
-      const gradient = ctx.createLinearGradient(0, 0, PHONE_IMAGE_WIDTH, PHONE_IMAGE_HEIGHT);
+      const gradient = ctx.createLinearGradient(0, 0, PHONE_IMAGE_WIDTH, imageHeight);
       gradient.addColorStop(0, renderSettings.backgroundColor);
       gradient.addColorStop(1, "#1f3037");
       ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, PHONE_IMAGE_WIDTH, PHONE_IMAGE_HEIGHT);
-      drawPaperTexture(ctx, renderSettings.accentColor);
+      ctx.fillRect(0, 0, PHONE_IMAGE_WIDTH, imageHeight);
+      drawPaperTexture(ctx, renderSettings.accentColor, imageHeight);
       return;
     }
 
     if (["blush", "sage", "sky", "lavender"].includes(renderSettings.backgroundStyle)) {
-      const gradient = ctx.createLinearGradient(0, 0, PHONE_IMAGE_WIDTH, PHONE_IMAGE_HEIGHT);
+      const gradient = ctx.createLinearGradient(0, 0, PHONE_IMAGE_WIDTH, imageHeight);
       gradient.addColorStop(0, "#fff7e8");
       gradient.addColorStop(0.42, renderSettings.backgroundColor);
       gradient.addColorStop(1, renderSettings.accentColor);
       ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, PHONE_IMAGE_WIDTH, PHONE_IMAGE_HEIGHT);
-      drawPaperTexture(ctx, "#ffffff");
+      ctx.fillRect(0, 0, PHONE_IMAGE_WIDTH, imageHeight);
+      drawPaperTexture(ctx, "#ffffff", imageHeight);
       return;
     }
 
     ctx.fillStyle = renderSettings.backgroundColor;
-    ctx.fillRect(0, 0, PHONE_IMAGE_WIDTH, PHONE_IMAGE_HEIGHT);
+    ctx.fillRect(0, 0, PHONE_IMAGE_WIDTH, imageHeight);
 
     if (renderSettings.backgroundStyle === "paper") {
-      drawPaperTexture(ctx, renderSettings.accentColor);
+      drawPaperTexture(ctx, renderSettings.accentColor, imageHeight);
     }
 
     if (renderSettings.backgroundStyle === "lined") {
@@ -343,7 +355,7 @@ export default function TextPreview({ font, previewText, onPreviewTextChange }: 
       ctx.globalAlpha = 0.62;
       ctx.lineWidth = 2;
 
-      for (let y = 220; y < PHONE_IMAGE_HEIGHT - 120; y += 84) {
+      for (let y = 220; y < imageHeight - 120; y += 84) {
         ctx.beginPath();
         ctx.moveTo(72, y);
         ctx.lineTo(PHONE_IMAGE_WIDTH - 72, y);
@@ -351,7 +363,7 @@ export default function TextPreview({ font, previewText, onPreviewTextChange }: 
       }
 
       ctx.restore();
-      drawPaperTexture(ctx, renderSettings.accentColor);
+      drawPaperTexture(ctx, renderSettings.accentColor, imageHeight);
     }
 
     if (renderSettings.backgroundStyle === "grid") {
@@ -363,11 +375,11 @@ export default function TextPreview({ font, previewText, onPreviewTextChange }: 
       for (let x = 72; x < PHONE_IMAGE_WIDTH; x += 72) {
         ctx.beginPath();
         ctx.moveTo(x, 0);
-        ctx.lineTo(x, PHONE_IMAGE_HEIGHT);
+        ctx.lineTo(x, imageHeight);
         ctx.stroke();
       }
 
-      for (let y = 72; y < PHONE_IMAGE_HEIGHT; y += 72) {
+      for (let y = 72; y < imageHeight; y += 72) {
         ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(PHONE_IMAGE_WIDTH, y);
@@ -378,7 +390,15 @@ export default function TextPreview({ font, previewText, onPreviewTextChange }: 
     }
   }
 
-  function getFittedImageLayout(ctx: CanvasRenderingContext2D) {
+  function getPhoneImageHeight(lines: string[], renderSettings: PreviewSettings) {
+    const lineCount = Math.max(1, lines.length);
+    const lineHeight = renderSettings.fontSize * renderSettings.lineSpacing;
+    const textBlockHeight = (lineCount - 1) * lineHeight + renderSettings.fontSize * 1.08;
+
+    return Math.max(MIN_PHONE_IMAGE_HEIGHT, Math.ceil(renderSettings.pagePadding * 2 + textBlockHeight));
+  }
+
+  function getFittedImageLayout(ctx: CanvasRenderingContext2D): PhoneImageLayout {
     let fontSize = imageSettings.fontSize;
     let wrappedLines: string[] = [];
     const minimumFontSize = 34;
@@ -389,12 +409,11 @@ export default function TextPreview({ font, previewText, onPreviewTextChange }: 
       ctx.font = getFallbackFont(fontSize);
       wrappedLines = buildWordWrappedLines(ctx, previewText, maxLineWidth, fontSize);
 
-      const lineHeight = fontSize * candidateSettings.lineSpacing;
-      const contentHeight = candidateSettings.pagePadding * 2 + wrappedLines.length * lineHeight;
       const wordsFit = !hasOversizeWord(ctx, previewText, maxLineWidth, fontSize);
 
-      if (!imageSettings.autoFit || (contentHeight <= PHONE_IMAGE_HEIGHT && wordsFit)) {
+      if (!imageSettings.autoFit || wordsFit) {
         return {
+          height: getPhoneImageHeight(wrappedLines, candidateSettings),
           settings: candidateSettings,
           lines: wrappedLines,
         };
@@ -406,10 +425,12 @@ export default function TextPreview({ font, previewText, onPreviewTextChange }: 
     const fittedSettings = { ...imageSettings, fontSize: minimumFontSize };
     const maxLineWidth = PHONE_IMAGE_WIDTH - fittedSettings.pagePadding * 2;
     ctx.font = getFallbackFont(minimumFontSize);
+    wrappedLines = buildWordWrappedLines(ctx, previewText, maxLineWidth, minimumFontSize);
 
     return {
+      height: getPhoneImageHeight(wrappedLines, fittedSettings),
       settings: fittedSettings,
-      lines: buildWordWrappedLines(ctx, previewText, maxLineWidth, minimumFontSize),
+      lines: wrappedLines,
     };
   }
 
@@ -426,11 +447,11 @@ export default function TextPreview({ font, previewText, onPreviewTextChange }: 
       return;
     }
 
-    canvas.width = PHONE_IMAGE_WIDTH;
-    canvas.height = PHONE_IMAGE_HEIGHT;
     const fittedLayout = getFittedImageLayout(ctx);
+    canvas.width = PHONE_IMAGE_WIDTH;
+    canvas.height = fittedLayout.height;
 
-    drawPhoneBackground(ctx, fittedLayout.settings);
+    drawPhoneBackground(ctx, fittedLayout.settings, fittedLayout.height);
     drawTextToCanvas(ctx, fittedLayout.lines, fittedLayout.settings);
   }
 
