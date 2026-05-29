@@ -1,0 +1,79 @@
+import { useEffect, useRef } from "react";
+import { getCharacterLabel, supportedCharacters } from "../data/characterSets";
+import { drawGlyph, hasDrawnGlyph } from "../render/glyphRenderer";
+import type { FontSet, Glyph } from "../types/fontTypes";
+
+type GlyphGridProps = {
+  font: FontSet;
+  selectedCharacter: string;
+  onSelectCharacter: (character: string) => void;
+};
+
+function GlyphMiniPreview({ glyph }: { glyph: Glyph }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const isDrawn = hasDrawnGlyph(glyph);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+
+    if (!canvas || !isDrawn) {
+      return;
+    }
+
+    const dpr = window.devicePixelRatio || 1;
+    const size = 72;
+    canvas.width = size * dpr;
+    canvas.height = size * dpr;
+
+    const ctx = canvas.getContext("2d");
+
+    if (!ctx) {
+      return;
+    }
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, size, size);
+    drawGlyph(ctx, glyph, { x: 8, y: 8, size: 56, color: "#f4ead7" });
+  }, [glyph, isDrawn]);
+
+  if (!isDrawn) {
+    return <span className="glyph-placeholder">Empty</span>;
+  }
+
+  return <canvas ref={canvasRef} className="glyph-mini-canvas" aria-hidden="true" />;
+}
+
+export default function GlyphGrid({ font, selectedCharacter, onSelectCharacter }: GlyphGridProps) {
+  return (
+    <section className="studio-panel grid-panel" aria-label="Glyph grid">
+      <div className="panel-heading">
+        <div>
+          <p className="eyebrow">Character set</p>
+          <h2>Glyph grid</h2>
+        </div>
+        <div className="glyph-pill">{supportedCharacters.length} glyphs</div>
+      </div>
+
+      <div className="glyph-grid">
+        {supportedCharacters.map((character) => {
+          const glyph = font.glyphs[character];
+          const selected = selectedCharacter === character;
+          const drawn = hasDrawnGlyph(glyph);
+
+          return (
+            <button
+              key={character}
+              type="button"
+              className={`glyph-cell ${selected ? "selected" : ""} ${drawn ? "complete" : ""}`}
+              onClick={() => onSelectCharacter(character)}
+              aria-pressed={selected}
+            >
+              <span className="glyph-label">{getCharacterLabel(character)}</span>
+              <GlyphMiniPreview glyph={glyph} />
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
