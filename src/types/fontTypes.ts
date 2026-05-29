@@ -13,6 +13,7 @@ export type GlyphStroke = {
 };
 
 export type GlyphDecoration = {
+  expression?: "googly" | "happy" | "angry" | "tired" | "stoned";
   id: string;
   kind: "googly-eyes";
   size: number;

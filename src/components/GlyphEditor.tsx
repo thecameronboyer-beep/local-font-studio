@@ -19,6 +19,16 @@ type GlyphEditorProps = {
 };
 
 const glyphInkSwatches = ["#19140f", "#d93434", "#f0a934", "#16815f", "#2468c9", "#8b4bd9"];
+const eyeExpressionOptions: Array<{
+  id: NonNullable<GlyphDecoration["expression"]>;
+  label: string;
+}> = [
+  { id: "googly", label: "Plain" },
+  { id: "happy", label: "Happy" },
+  { id: "angry", label: "Angry" },
+  { id: "tired", label: "Tired" },
+  { id: "stoned", label: "Stoned" },
+];
 
 function cloneStrokes(strokes: GlyphStroke[]) {
   return strokes.map((stroke) => ({
@@ -162,6 +172,29 @@ function InkColorControl({
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+function EyeExpressionControl({
+  expression,
+  onExpressionChange,
+}: {
+  expression: NonNullable<GlyphDecoration["expression"]>;
+  onExpressionChange: (expression: NonNullable<GlyphDecoration["expression"]>) => void;
+}) {
+  return (
+    <div className="eye-style-control" aria-label="Eye expression">
+      {eyeExpressionOptions.map((option) => (
+        <button
+          key={option.id}
+          className={`eye-style-button ${expression === option.id ? "selected" : ""}`}
+          type="button"
+          onClick={() => onExpressionChange(option.id)}
+        >
+          {option.label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -325,6 +358,7 @@ export default function GlyphEditor({
   const pastRef = useRef<Glyph[]>([]);
   const futureRef = useRef<Glyph[]>([]);
   const [brushSize, setBrushSize] = useState(9);
+  const [eyeExpression, setEyeExpression] = useState<NonNullable<GlyphDecoration["expression"]>>("googly");
   const [inkColor, setInkColor] = useState("#19140f");
   const [tool, setTool] = useState<"pen" | "eraser" | "eyes">("pen");
   const [savedMessage, setSavedMessage] = useState("");
@@ -466,6 +500,7 @@ export default function GlyphEditor({
           strokes={draftGlyph.strokes}
           decorations={draftGlyph.decorations}
           brushSize={brushSize}
+          eyeExpression={eyeExpression}
           inkColor={inkColor}
           tool={tool}
           onEditStart={pushHistory}
@@ -534,6 +569,10 @@ export default function GlyphEditor({
               Redo
             </button>
           </div>
+
+          {tool === "eyes" && (
+            <EyeExpressionControl expression={eyeExpression} onExpressionChange={setEyeExpression} />
+          )}
 
           <label className="draw-brush-control">
             <span>Brush</span>
@@ -690,6 +729,7 @@ export default function GlyphEditor({
         strokes={draftGlyph.strokes}
         decorations={draftGlyph.decorations}
         brushSize={brushSize}
+        eyeExpression={eyeExpression}
         inkColor={inkColor}
         tool={tool}
         onEditStart={pushHistory}
@@ -753,6 +793,10 @@ export default function GlyphEditor({
             Redo
           </button>
         </div>
+
+        {tool === "eyes" && (
+          <EyeExpressionControl expression={eyeExpression} onExpressionChange={setEyeExpression} />
+        )}
 
         <label className="range-control">
           <span>Brush</span>

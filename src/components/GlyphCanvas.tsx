@@ -9,6 +9,7 @@ type GlyphCanvasProps = {
   strokes: GlyphStroke[];
   decorations: GlyphDecoration[];
   brushSize: number;
+  eyeExpression: NonNullable<GlyphDecoration["expression"]>;
   inkColor: string;
   tool: "pen" | "eraser" | "eyes";
   onEditStart: () => void;
@@ -56,6 +57,7 @@ export default function GlyphCanvas({
   strokes,
   decorations,
   brushSize,
+  eyeExpression,
   inkColor,
   tool,
   onEditStart,
@@ -80,7 +82,7 @@ export default function GlyphCanvas({
     strokesRef.current = strokes;
     decorationsRef.current = decorations;
     drawCanvas(strokes, decorations);
-  }, [brushSize, decorations, strokes, tool]);
+  }, [brushSize, decorations, eyeExpression, strokes, tool]);
 
   useEffect(() => () => stopInkPooling(), []);
 
@@ -137,6 +139,20 @@ export default function GlyphCanvas({
       ctx.stroke();
       ctx.setLineDash([]);
       ctx.restore();
+      drawGlyphDecoration(
+        ctx,
+        {
+          expression: eyeExpression,
+          id: `eye_preview_${eyeExpression}`,
+          kind: "googly-eyes",
+          size: 0.034,
+          x: 0.89,
+          y: 0.072,
+        },
+        0,
+        0,
+        CANVAS_SIZE,
+      );
     }
   }
 
@@ -245,6 +261,7 @@ export default function GlyphCanvas({
   function placeGooglyEyes(x: number, y: number) {
     const decoration: GlyphDecoration = moveDecoration(
       {
+        expression: eyeExpression,
         id: makeDecorationId(),
         kind: "googly-eyes",
         size: Math.min(0.075, Math.max(0.032, (brushSize / CANVAS_SIZE) * 3.25)),

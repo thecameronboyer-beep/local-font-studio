@@ -1,4 +1,4 @@
-const CACHE_NAME = "local-font-studio-v16";
+const CACHE_NAME = "local-font-studio-v17";
 const APP_BASE = new URL("./", self.location.href);
 const CORE_ASSETS = [
   APP_BASE,

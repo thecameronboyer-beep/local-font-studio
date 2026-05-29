@@ -183,31 +183,111 @@ export function drawGlyphDecoration(
 
   const centerX = x + decoration.x * sizeX;
   const centerY = y + decoration.y * sizeY;
+  const expression = decoration.expression ?? "googly";
   const radius = Math.max(1.6, decoration.size * sizeY);
   const eyeOffset = radius * 1.18;
   const outlineWidth = Math.max(0.9, radius * 0.13);
+  const lidColor = expression === "stoned" ? "rgba(210, 77, 66, 0.22)" : "rgba(239, 216, 180, 0.72)";
 
   ctx.save();
   ctx.lineWidth = outlineWidth;
-  ctx.strokeStyle = "#17110b";
-  ctx.fillStyle = "#fffdf4";
+  ctx.strokeStyle = expression === "stoned" ? "#5d1d20" : "#17110b";
+  ctx.fillStyle = expression === "stoned" ? "#fff2e9" : "#fffdf4";
   ctx.lineJoin = "round";
 
   for (const eyeIndex of [0, 1]) {
     const eyeX = centerX + (eyeIndex === 0 ? -eyeOffset : eyeOffset);
-    const wobbleX = (getStickerSeed(decoration.id, eyeIndex + 3) - 0.5) * radius * 0.48;
-    const wobbleY = (getStickerSeed(decoration.id, eyeIndex + 11) - 0.5) * radius * 0.48;
+    const randomX = (getStickerSeed(decoration.id, eyeIndex + 3) - 0.5) * radius * 0.48;
+    const randomY = (getStickerSeed(decoration.id, eyeIndex + 11) - 0.5) * radius * 0.48;
+    const inwardLook = eyeIndex === 0 ? radius * 0.2 : -radius * 0.2;
+    const pupilX = expression === "googly" || expression === "stoned"
+      ? randomX
+      : expression === "angry"
+        ? inwardLook
+        : 0;
+    const pupilY = expression === "happy"
+      ? -radius * 0.08
+      : expression === "tired" || expression === "stoned"
+        ? radius * 0.22
+        : expression === "angry"
+          ? -radius * 0.03
+          : randomY;
 
     ctx.beginPath();
     ctx.arc(eyeX, centerY, radius, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
 
-    ctx.fillStyle = "#17110b";
+    if (expression === "stoned") {
+      ctx.save();
+      ctx.strokeStyle = "rgba(203, 50, 43, 0.62)";
+      ctx.lineWidth = Math.max(0.7, radius * 0.08);
+      for (const veinIndex of [0, 1, 2]) {
+        const side = veinIndex % 2 === 0 ? -1 : 1;
+        ctx.beginPath();
+        ctx.moveTo(eyeX + side * radius * 0.78, centerY - radius * (0.28 - veinIndex * 0.14));
+        ctx.quadraticCurveTo(
+          eyeX + side * radius * 0.28,
+          centerY - radius * (0.16 - veinIndex * 0.08),
+          eyeX + side * radius * 0.06,
+          centerY - radius * (0.02 - veinIndex * 0.06),
+        );
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    ctx.fillStyle = expression === "stoned" ? "#241816" : "#17110b";
     ctx.beginPath();
-    ctx.arc(eyeX + wobbleX, centerY + wobbleY, radius * 0.38, 0, Math.PI * 2);
+    ctx.arc(eyeX + pupilX, centerY + pupilY, radius * (expression === "stoned" ? 0.46 : 0.38), 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = "#fffdf4";
+
+    if (expression === "tired" || expression === "stoned") {
+      ctx.fillStyle = lidColor;
+      ctx.beginPath();
+      ctx.arc(eyeX, centerY, radius * 0.98, Math.PI, 0);
+      ctx.lineTo(eyeX + radius, centerY - radius * (expression === "stoned" ? 0.02 : 0.16));
+      ctx.quadraticCurveTo(eyeX, centerY + radius * 0.16, eyeX - radius, centerY - radius * 0.08);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.strokeStyle = expression === "stoned" ? "#7d272a" : "#17110b";
+      ctx.lineWidth = Math.max(0.8, outlineWidth * 0.72);
+      ctx.beginPath();
+      ctx.moveTo(eyeX - radius * 0.78, centerY - radius * 0.02);
+      ctx.quadraticCurveTo(eyeX, centerY + radius * 0.18, eyeX + radius * 0.78, centerY - radius * 0.02);
+      ctx.stroke();
+    }
+
+    if (expression === "happy") {
+      ctx.strokeStyle = "#17110b";
+      ctx.lineWidth = Math.max(0.9, outlineWidth * 0.82);
+      ctx.beginPath();
+      ctx.arc(eyeX, centerY + radius * 0.16, radius * 0.62, 0.18 * Math.PI, 0.82 * Math.PI);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = expression === "stoned" ? "#fff2e9" : "#fffdf4";
+  }
+
+  if (expression === "angry") {
+    ctx.strokeStyle = "#17110b";
+    ctx.lineWidth = Math.max(1.2, radius * 0.18);
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(centerX - eyeOffset - radius * 0.84, centerY - radius * 1.42);
+    ctx.lineTo(centerX - eyeOffset + radius * 0.82, centerY - radius * 0.88);
+    ctx.moveTo(centerX + eyeOffset - radius * 0.82, centerY - radius * 0.88);
+    ctx.lineTo(centerX + eyeOffset + radius * 0.84, centerY - radius * 1.42);
+    ctx.stroke();
+  }
+
+  if (expression === "happy") {
+    ctx.strokeStyle = "#17110b";
+    ctx.lineWidth = Math.max(0.9, radius * 0.1);
+    ctx.beginPath();
+    ctx.arc(centerX, centerY + radius * 1.44, radius * 0.92, 0.12 * Math.PI, 0.88 * Math.PI);
+    ctx.stroke();
   }
 
   ctx.restore();
