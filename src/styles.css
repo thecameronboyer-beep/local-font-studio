@@ -777,6 +777,7 @@ input[type="color"] {
 }
 
 .primary-share-actions {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   padding-bottom: 0;
 }
 
@@ -805,6 +806,15 @@ input[type="color"] {
 }
 
 .phone-image-tools input[type="number"] {
+  width: 100%;
+}
+
+.style-color-tools {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 0 0 14px;
+}
+
+.style-color-tools input[type="color"] {
   width: 100%;
 }
 
@@ -1587,4 +1597,50 @@ h1 {
 
 .fullscreen-grid-page .glyph-cell {
   min-height: 88px;
+}
+
+.phone-style-fullscreen {
+  position: fixed;
+  z-index: 30;
+  inset: 0 auto 0 50%;
+  display: grid;
+  grid-template-rows: auto minmax(170px, 38dvh) minmax(0, 1fr);
+  width: min(var(--phone-shell-width), 100vw);
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: #151314;
+  transform: translateX(-50%);
+}
+
+.phone-style-fullscreen .phone-style-heading {
+  position: static;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: max(10px, env(safe-area-inset-top)) 10px 10px;
+}
+
+.phone-style-preview {
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+}
+
+.phone-style-preview .phone-image-canvas {
+  max-height: 34dvh;
+}
+
+.phone-style-content {
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 10px max(14px, env(safe-area-inset-bottom));
+}
+
+.phone-style-content .image-style-section {
+  padding-right: 0;
+  padding-left: 0;
 }

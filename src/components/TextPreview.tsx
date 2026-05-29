@@ -129,7 +129,9 @@ function tokenizeParagraph(paragraph: string) {
 
 export default function TextPreview({ font, previewText, onPreviewTextChange }: TextPreviewProps) {
   const imageCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const styleCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [shareStatus, setShareStatus] = useState("");
+  const [styleEditorOpen, setStyleEditorOpen] = useState(false);
   const [imageSettings, setImageSettings] = useState<PhoneImageSettings>({
     fontSize: 118,
     lineSpacing: 1.18,
@@ -148,7 +150,15 @@ export default function TextPreview({ font, previewText, onPreviewTextChange }: 
 
   useEffect(() => {
     renderPhoneImage();
-  }, [font, previewText, imageSettings]);
+  }, [font, previewText, imageSettings, styleEditorOpen]);
+
+  useEffect(() => {
+    document.body.classList.toggle("editor-fullscreen-open", styleEditorOpen);
+
+    return () => {
+      document.body.classList.remove("editor-fullscreen-open");
+    };
+  }, [styleEditorOpen]);
 
   useEffect(() => {
     if (!font.theme) {
@@ -434,13 +444,7 @@ export default function TextPreview({ font, previewText, onPreviewTextChange }: 
     };
   }
 
-  function renderPhoneImage() {
-    const canvas = imageCanvasRef.current;
-
-    if (!canvas) {
-      return;
-    }
-
+  function renderPhoneImageToCanvas(canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext("2d");
 
     if (!ctx) {
@@ -453,6 +457,14 @@ export default function TextPreview({ font, previewText, onPreviewTextChange }: 
 
     drawPhoneBackground(ctx, fittedLayout.settings, fittedLayout.height);
     drawTextToCanvas(ctx, fittedLayout.lines, fittedLayout.settings);
+  }
+
+  function renderPhoneImage() {
+    const canvases = [imageCanvasRef.current, styleCanvasRef.current].filter(
+      (canvas): canvas is HTMLCanvasElement => Boolean(canvas),
+    );
+
+    canvases.forEach(renderPhoneImageToCanvas);
   }
 
   function getPhoneImageFileName() {
@@ -535,6 +547,93 @@ export default function TextPreview({ font, previewText, onPreviewTextChange }: 
     }
   }
 
+  function renderColorInputs() {
+    return (
+      <div className="phone-image-tools style-color-tools">
+        <label>
+          Ink
+          <input
+            type="color"
+            value={imageSettings.inkColor}
+            onChange={(event) =>
+              setImageSettings((current) => ({ ...current, inkColor: event.target.value }))
+            }
+          />
+        </label>
+        <label>
+          Page
+          <input
+            type="color"
+            value={imageSettings.backgroundColor}
+            onChange={(event) =>
+              setImageSettings((current) => ({ ...current, backgroundColor: event.target.value }))
+            }
+          />
+        </label>
+        <label>
+          Accent
+          <input
+            type="color"
+            value={imageSettings.accentColor}
+            onChange={(event) =>
+              setImageSettings((current) => ({ ...current, accentColor: event.target.value }))
+            }
+          />
+        </label>
+      </div>
+    );
+  }
+
+  function renderInkControls() {
+    return (
+      <div className="image-style-section">
+        <p className="style-label">Ink colors</p>
+        <div className="ink-swatch-row">
+          {inkSwatches.map((swatch) => (
+            <button
+              key={swatch.color}
+              className={`ink-swatch ${imageSettings.inkColor === swatch.color ? "selected" : ""}`}
+              type="button"
+              onClick={() => setImageSettings((current) => ({ ...current, inkColor: swatch.color }))}
+            >
+              <span style={{ backgroundColor: swatch.color }} />
+              {swatch.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  function renderBackgroundControls() {
+    return (
+      <div className="image-style-section">
+        <p className="style-label">Backgrounds</p>
+        <div className="background-preset-grid">
+          {backgroundPresets.map((preset) => (
+            <button
+              key={preset.id}
+              className={`background-preset ${imageSettings.backgroundStyle === preset.id ? "selected" : ""}`}
+              type="button"
+              onClick={() =>
+                setImageSettings((current) => ({
+                  ...current,
+                  accentColor: preset.accentColor,
+                  backgroundColor: preset.backgroundColor,
+                  backgroundStyle: preset.id,
+                  inkColor: preset.inkColor,
+                }))
+              }
+            >
+              <span className="background-preset-swatch" style={{ background: preset.preview }} />
+              {preset.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <section className="studio-panel preview-panel phone-generator-panel" aria-label="Phone image generator">
       <div className="panel-heading phone-image-heading">
@@ -558,6 +657,9 @@ export default function TextPreview({ font, previewText, onPreviewTextChange }: 
         </button>
         <button className="secondary-button compact-button" type="button" onClick={downloadPhoneImage}>
           Save PNG
+        </button>
+        <button className="secondary-button compact-button" type="button" onClick={() => setStyleEditorOpen(true)}>
+          Style
         </button>
       </div>
       <div className="share-status" aria-live="polite">
@@ -620,79 +722,35 @@ export default function TextPreview({ font, previewText, onPreviewTextChange }: 
           />
           Fit text
         </label>
-        <label>
-          Ink
-          <input
-            type="color"
-            value={imageSettings.inkColor}
-            onChange={(event) =>
-              setImageSettings((current) => ({ ...current, inkColor: event.target.value }))
-            }
-          />
-        </label>
-        <label>
-          Page
-          <input
-            type="color"
-            value={imageSettings.backgroundColor}
-            onChange={(event) =>
-              setImageSettings((current) => ({ ...current, backgroundColor: event.target.value }))
-            }
-          />
-        </label>
-        <label>
-          Accent
-          <input
-            type="color"
-            value={imageSettings.accentColor}
-            onChange={(event) =>
-              setImageSettings((current) => ({ ...current, accentColor: event.target.value }))
-            }
-          />
-        </label>
       </div>
 
-      <div className="image-style-section">
-        <p className="style-label">Ink colors</p>
-        <div className="ink-swatch-row">
-          {inkSwatches.map((swatch) => (
-            <button
-              key={swatch.color}
-              className={`ink-swatch ${imageSettings.inkColor === swatch.color ? "selected" : ""}`}
-              type="button"
-              onClick={() => setImageSettings((current) => ({ ...current, inkColor: swatch.color }))}
-            >
-              <span style={{ backgroundColor: swatch.color }} />
-              {swatch.label}
+      {styleEditorOpen && (
+        <section className="studio-panel phone-style-fullscreen" aria-label="Phone image style editor">
+          <div className="panel-heading phone-style-heading">
+            <div>
+              <p className="eyebrow">Image style</p>
+              <h2>Colors</h2>
+            </div>
+            <button className="secondary-button compact-button" type="button" onClick={() => setStyleEditorOpen(false)}>
+              Close
             </button>
-          ))}
-        </div>
-      </div>
+          </div>
 
-      <div className="image-style-section">
-        <p className="style-label">Backgrounds</p>
-        <div className="background-preset-grid">
-          {backgroundPresets.map((preset) => (
-            <button
-              key={preset.id}
-              className={`background-preset ${imageSettings.backgroundStyle === preset.id ? "selected" : ""}`}
-              type="button"
-              onClick={() =>
-                setImageSettings((current) => ({
-                  ...current,
-                  accentColor: preset.accentColor,
-                  backgroundColor: preset.backgroundColor,
-                  backgroundStyle: preset.id,
-                  inkColor: preset.inkColor,
-                }))
-              }
-            >
-              <span className="background-preset-swatch" style={{ background: preset.preview }} />
-              {preset.label}
-            </button>
-          ))}
-        </div>
-      </div>
+          <div className="phone-image-preview phone-style-preview">
+            <canvas
+              ref={styleCanvasRef}
+              className="phone-image-canvas"
+              aria-label="Generated phone image style preview"
+            />
+          </div>
+
+          <div className="phone-style-content">
+            {renderColorInputs()}
+            {renderInkControls()}
+            {renderBackgroundControls()}
+          </div>
+        </section>
+      )}
     </section>
   );
 }
