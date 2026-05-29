@@ -76,6 +76,7 @@ function centerStrokes(strokes: GlyphStroke[], axis: "x" | "y" | "both") {
   return strokes.map((stroke) => ({
     ...stroke,
     points: stroke.points.map((point) => ({
+      ...point,
       x: clamp(point.x + safeDx),
       y: clamp(point.y + safeDy),
     })),

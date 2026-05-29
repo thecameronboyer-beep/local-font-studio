@@ -1,4 +1,6 @@
 export type GlyphPoint = {
+  ink?: number;
+  pressure?: number;
   x: number;
   y: number;
 };

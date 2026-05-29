@@ -10,7 +10,11 @@ export type GlyphDrawOptions = {
 };
 
 export function hasDrawnGlyph(glyph: Glyph | undefined) {
-  return Boolean(glyph?.strokes?.some((stroke) => stroke.points.length > 1));
+  return Boolean(
+    glyph?.strokes?.some(
+      (stroke) => stroke.points.length > 1 || stroke.points.some((point) => (point.ink ?? 0) > 0.05),
+    ),
+  );
 }
 
 export function findPreviewGlyph(
@@ -43,6 +47,70 @@ export function getGlyphAdvance(glyph: Glyph, fontSize: number) {
   return Math.max(fontSize * 0.18, fontSize * glyph.xAdvance, fontSize * bearingAdvance);
 }
 
+function clampInk(value: number) {
+  return Math.min(1, Math.max(0, value));
+}
+
+function getPointPressure(point: GlyphStroke["points"][number]) {
+  return Math.min(1.25, Math.max(0.45, point.pressure ?? 0.64));
+}
+
+function getLineWidth(baseWidth: number, point: GlyphStroke["points"][number]) {
+  const pressure = getPointPressure(point);
+  const ink = clampInk(point.ink ?? 0);
+
+  return baseWidth * (0.78 + pressure * 0.34 + ink * 0.16);
+}
+
+function drawInkPool(
+  ctx: CanvasRenderingContext2D,
+  point: GlyphStroke["points"][number],
+  x: number,
+  y: number,
+  baseWidth: number,
+  sizeX: number,
+  sizeY: number,
+  minimumInk = 0,
+) {
+  const ink = Math.max(minimumInk, clampInk(point.ink ?? 0));
+
+  if (ink <= 0.04) {
+    return;
+  }
+
+  const px = x + point.x * sizeX;
+  const py = y + point.y * sizeY;
+  const radius = baseWidth * (0.82 + ink * 2.55);
+  const stretchX = sizeX / Math.max(1, sizeY);
+  const previousAlpha = ctx.globalAlpha;
+
+  ctx.save();
+  ctx.fillStyle = ctx.strokeStyle;
+  ctx.globalAlpha = previousAlpha * Math.min(0.72, 0.18 + ink * 0.5);
+  ctx.beginPath();
+  ctx.ellipse(px, py, radius * stretchX, radius, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (ink > 0.34) {
+    const wobble = Math.sin((point.x * 127.1 + point.y * 311.7) * Math.PI) * radius * 0.18;
+
+    ctx.globalAlpha = previousAlpha * Math.min(0.48, 0.1 + ink * 0.28);
+    ctx.beginPath();
+    ctx.ellipse(
+      px + wobble * stretchX,
+      py - wobble,
+      radius * 0.58 * stretchX,
+      radius * 0.42,
+      0,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
 export function drawStrokePath(
   ctx: CanvasRenderingContext2D,
   stroke: GlyphStroke,
@@ -56,19 +124,31 @@ export function drawStrokePath(
     return;
   }
 
-  ctx.beginPath();
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
-  ctx.lineWidth = Math.max(1.5, stroke.size * size);
+  const baseWidth = Math.max(1.5, stroke.size * size);
 
   const [firstPoint, ...rest] = stroke.points;
-  ctx.moveTo(x + firstPoint.x * sizeX, y + firstPoint.y * sizeY);
 
-  for (const point of rest) {
-    ctx.lineTo(x + point.x * sizeX, y + point.y * sizeY);
+  if (rest.length === 0) {
+    drawInkPool(ctx, firstPoint, x, y, baseWidth, sizeX, sizeY, 0.22);
+    return;
   }
 
-  ctx.stroke();
+  let previousPoint = firstPoint;
+
+  for (const point of rest) {
+    ctx.beginPath();
+    ctx.lineWidth = (getLineWidth(baseWidth, previousPoint) + getLineWidth(baseWidth, point)) / 2;
+    ctx.moveTo(x + previousPoint.x * sizeX, y + previousPoint.y * sizeY);
+    ctx.lineTo(x + point.x * sizeX, y + point.y * sizeY);
+    ctx.stroke();
+    previousPoint = point;
+  }
+
+  for (const point of stroke.points) {
+    drawInkPool(ctx, point, x, y, baseWidth, sizeX, sizeY);
+  }
 }
 
 export function drawGlyph(
