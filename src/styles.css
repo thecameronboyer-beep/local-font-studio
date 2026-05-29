@@ -504,6 +504,10 @@ h3 {
   cursor: cell;
 }
 
+.eyes-cursor {
+  cursor: grab;
+}
+
 .editor-controls {
   display: grid;
   gap: 14px;
@@ -1211,7 +1215,7 @@ h1 {
 }
 
 .fullscreen-editor .tool-row {
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
 }
 
 .fullscreen-editor .center-row {
@@ -1345,7 +1349,7 @@ h1 {
 }
 
 .draw-tool-grid {
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
 }
 
 .draw-save-row {

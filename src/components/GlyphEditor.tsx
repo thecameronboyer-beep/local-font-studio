@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import GlyphCanvas from "./GlyphCanvas";
 import SpacingControls from "./SpacingControls";
 import { drawGlyph, findPreviewGlyph, getGlyphAdvance } from "../render/glyphRenderer";
-import type { FontSet, Glyph, GlyphStroke } from "../types/fontTypes";
+import type { FontSet, Glyph, GlyphDecoration, GlyphStroke } from "../types/fontTypes";
 
 type GlyphEditorProps = {
   font: FontSet;
@@ -25,15 +25,33 @@ function cloneStrokes(strokes: GlyphStroke[]) {
   }));
 }
 
+function cloneDecorations(decorations: GlyphDecoration[] = []) {
+  return decorations.map((decoration) => ({ ...decoration }));
+}
+
 function cloneGlyph(glyph: Glyph): Glyph {
   return {
     ...glyph,
+    decorations: cloneDecorations(glyph.decorations),
     strokes: cloneStrokes(glyph.strokes),
   };
 }
 
-function getStrokeBounds(strokes: GlyphStroke[]) {
-  const points = strokes.flatMap((stroke) => stroke.points);
+function getDecorationInset(decoration: GlyphDecoration) {
+  return decoration.size * 3.2;
+}
+
+function getGlyphElementBounds(strokes: GlyphStroke[], decorations: GlyphDecoration[] = []) {
+  const strokePoints = strokes.flatMap((stroke) => stroke.points);
+  const decorationPoints = decorations.flatMap((decoration) => {
+    const inset = getDecorationInset(decoration);
+
+    return [
+      { x: decoration.x - inset, y: decoration.y - inset },
+      { x: decoration.x + inset, y: decoration.y + inset },
+    ];
+  });
+  const points = [...strokePoints, ...decorationPoints];
 
   if (points.length === 0) {
     return undefined;
@@ -59,11 +77,30 @@ function clamp(value: number) {
   return Math.min(1, Math.max(0, value));
 }
 
-function centerStrokes(strokes: GlyphStroke[], axis: "x" | "y" | "both") {
-  const bounds = getStrokeBounds(strokes);
+function translateStrokes(strokes: GlyphStroke[], dx: number, dy: number) {
+  return strokes.map((stroke) => ({
+    ...stroke,
+    points: stroke.points.map((point) => ({
+      ...point,
+      x: clamp(point.x + dx),
+      y: clamp(point.y + dy),
+    })),
+  }));
+}
+
+function translateDecorations(decorations: GlyphDecoration[], dx: number, dy: number) {
+  return decorations.map((decoration) => ({
+    ...decoration,
+    x: clamp(decoration.x + dx),
+    y: clamp(decoration.y + dy),
+  }));
+}
+
+function centerGlyphElements(glyph: Glyph, axis: "x" | "y" | "both") {
+  const bounds = getGlyphElementBounds(glyph.strokes, glyph.decorations);
 
   if (!bounds) {
-    return strokes;
+    return glyph;
   }
 
   const currentCenterX = (bounds.minX + bounds.maxX) / 2;
@@ -73,25 +110,19 @@ function centerStrokes(strokes: GlyphStroke[], axis: "x" | "y" | "both") {
   const safeDx = Math.min(1 - bounds.maxX, Math.max(-bounds.minX, dx));
   const safeDy = Math.min(1 - bounds.maxY, Math.max(-bounds.minY, dy));
 
-  return strokes.map((stroke) => ({
-    ...stroke,
-    points: stroke.points.map((point) => ({
-      ...point,
-      x: clamp(point.x + safeDx),
-      y: clamp(point.y + safeDy),
-    })),
-  }));
+  return {
+    ...glyph,
+    decorations: translateDecorations(glyph.decorations, safeDx, safeDy),
+    strokes: translateStrokes(glyph.strokes, safeDx, safeDy),
+  };
 }
 
-function nudgeStrokes(strokes: GlyphStroke[], dx: number, dy: number) {
-  return strokes.map((stroke) => ({
-    ...stroke,
-    points: stroke.points.map((point) => ({
-      ...point,
-      x: clamp(point.x + dx),
-      y: clamp(point.y + dy),
-    })),
-  }));
+function nudgeGlyphElements(glyph: Glyph, dx: number, dy: number) {
+  return {
+    ...glyph,
+    decorations: translateDecorations(glyph.decorations, dx, dy),
+    strokes: translateStrokes(glyph.strokes, dx, dy),
+  };
 }
 
 function getFallbackFont(size: number) {
@@ -257,7 +288,7 @@ export default function GlyphEditor({
   const pastRef = useRef<Glyph[]>([]);
   const futureRef = useRef<Glyph[]>([]);
   const [brushSize, setBrushSize] = useState(9);
-  const [tool, setTool] = useState<"pen" | "eraser">("pen");
+  const [tool, setTool] = useState<"pen" | "eraser" | "eyes">("pen");
   const [savedMessage, setSavedMessage] = useState("");
   const [historyCounts, setHistoryCounts] = useState({ past: 0, future: 0 });
   const [fullScreenPage, setFullScreenPage] = useState<"draw" | "adjust">("draw");
@@ -310,6 +341,13 @@ export default function GlyphEditor({
     });
   }
 
+  function updateDraftDecorations(decorations: GlyphDecoration[]) {
+    updateDraftGlyph({
+      ...draftGlyphRef.current,
+      decorations,
+    });
+  }
+
   function handleSave() {
     const savedGlyph = {
       ...cloneGlyph(draftGlyphRef.current),
@@ -331,19 +369,23 @@ export default function GlyphEditor({
 
   function handleClear() {
     pushHistory();
-    updateDraftStrokes([]);
+    updateDraftGlyph({
+      ...draftGlyphRef.current,
+      decorations: [],
+      strokes: [],
+    });
     setSavedMessage("");
   }
 
   function handleCenter(axis: "x" | "y" | "both") {
     pushHistory();
-    updateDraftStrokes(centerStrokes(draftGlyphRef.current.strokes, axis));
+    updateDraftGlyph(centerGlyphElements(draftGlyphRef.current, axis));
     setSavedMessage("Centered draft");
   }
 
   function handleNudge(dx: number, dy: number, label: string) {
     pushHistory();
-    updateDraftStrokes(nudgeStrokes(draftGlyphRef.current.strokes, dx, dy));
+    updateDraftGlyph(nudgeGlyphElements(draftGlyphRef.current, dx, dy));
     setSavedMessage(`Nudged ${label}`);
   }
 
@@ -384,9 +426,11 @@ export default function GlyphEditor({
       <section className="studio-panel editor-panel fullscreen-editor fullscreen-draw-only" aria-label="Glyph editor">
         <GlyphCanvas
           strokes={draftGlyph.strokes}
+          decorations={draftGlyph.decorations}
           brushSize={brushSize}
           tool={tool}
           onEditStart={pushHistory}
+          onChangeDecorations={updateDraftDecorations}
           onChangeStrokes={updateDraftStrokes}
         />
 
@@ -419,6 +463,13 @@ export default function GlyphEditor({
               onClick={() => setTool("pen")}
             >
               Pen
+            </button>
+            <button
+              className={`draw-glass-button ${tool === "eyes" ? "active-tool" : ""}`}
+              type="button"
+              onClick={() => setTool("eyes")}
+            >
+              Eyes
             </button>
             <button
               className={`draw-glass-button ${tool === "eraser" ? "active-tool" : ""}`}
@@ -596,9 +647,11 @@ export default function GlyphEditor({
 
       <GlyphCanvas
         strokes={draftGlyph.strokes}
+        decorations={draftGlyph.decorations}
         brushSize={brushSize}
         tool={tool}
         onEditStart={pushHistory}
+        onChangeDecorations={updateDraftDecorations}
         onChangeStrokes={updateDraftStrokes}
       />
 
@@ -626,6 +679,13 @@ export default function GlyphEditor({
             onClick={() => setTool("pen")}
           >
             Pen
+          </button>
+          <button
+            className={`secondary-button ${tool === "eyes" ? "active-tool" : ""}`}
+            type="button"
+            onClick={() => setTool("eyes")}
+          >
+            Eyes
           </button>
           <button
             className={`secondary-button ${tool === "eraser" ? "active-tool" : ""}`}

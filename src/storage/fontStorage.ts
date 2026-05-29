@@ -19,6 +19,7 @@ export function createId(prefix: string) {
 export function createEmptyGlyph(character: string): Glyph {
   return {
     character,
+    decorations: [],
     strokes: [],
     ...defaultGlyphMetrics,
     updatedAt: new Date().toISOString(),
@@ -68,6 +69,7 @@ function normalizeFont(font: FontSet): FontSet {
           ...createEmptyGlyph(character),
           ...storedGlyph,
           character,
+          decorations: Array.isArray(storedGlyph.decorations) ? storedGlyph.decorations : [],
           strokes: Array.isArray(storedGlyph.strokes) ? storedGlyph.strokes : [],
         }
       : createEmptyGlyph(character);

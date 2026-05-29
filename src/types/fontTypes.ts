@@ -11,8 +11,17 @@ export type GlyphStroke = {
   size: number;
 };
 
+export type GlyphDecoration = {
+  id: string;
+  kind: "googly-eyes";
+  size: number;
+  x: number;
+  y: number;
+};
+
 export type Glyph = {
   character: string;
+  decorations: GlyphDecoration[];
   strokes: GlyphStroke[];
   width: number;
   height: number;

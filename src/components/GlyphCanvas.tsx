@@ -1,15 +1,17 @@
 import { useEffect, useRef } from "react";
 import type { PointerEvent } from "react";
-import type { GlyphStroke } from "../types/fontTypes";
-import { drawStrokePath } from "../render/glyphRenderer";
+import type { GlyphDecoration, GlyphStroke } from "../types/fontTypes";
+import { drawGlyphDecoration, drawStrokePath } from "../render/glyphRenderer";
 
 const CANVAS_SIZE = 720;
 
 type GlyphCanvasProps = {
   strokes: GlyphStroke[];
+  decorations: GlyphDecoration[];
   brushSize: number;
-  tool: "pen" | "eraser";
+  tool: "pen" | "eraser" | "eyes";
   onEditStart: () => void;
+  onChangeDecorations: (decorations: GlyphDecoration[]) => void;
   onChangeStrokes: (strokes: GlyphStroke[]) => void;
 };
 
@@ -25,22 +27,44 @@ function makeStrokeId() {
   return `stroke_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function makeDecorationId() {
+  return `decoration_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
 function eraseNearPoint(strokes: GlyphStroke[], x: number, y: number, radius: number) {
   return strokes.filter((stroke) =>
     stroke.points.every((point) => Math.hypot(point.x - x, point.y - y) > radius),
   );
 }
 
+function getEyeHitRadius(decoration: GlyphDecoration) {
+  return decoration.size * 3.2;
+}
+
+function moveDecoration(decoration: GlyphDecoration, x: number, y: number): GlyphDecoration {
+  const safeInset = getEyeHitRadius(decoration);
+
+  return {
+    ...decoration,
+    x: Math.min(1 - safeInset, Math.max(safeInset, x)),
+    y: Math.min(1 - safeInset, Math.max(safeInset, y)),
+  };
+}
+
 export default function GlyphCanvas({
   strokes,
+  decorations,
   brushSize,
   tool,
   onEditStart,
+  onChangeDecorations,
   onChangeStrokes,
 }: GlyphCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const strokesRef = useRef(strokes);
+  const decorationsRef = useRef(decorations);
   const activeStrokeRef = useRef<GlyphStroke | null>(null);
+  const activeDecorationIdRef = useRef<string | null>(null);
   const activePointerRef = useRef<{
     lastBloomAt: number;
     lastSampleAt: number;
@@ -52,12 +76,13 @@ export default function GlyphCanvas({
 
   useEffect(() => {
     strokesRef.current = strokes;
-    drawCanvas(strokes);
-  }, [brushSize, strokes, tool]);
+    decorationsRef.current = decorations;
+    drawCanvas(strokes, decorations);
+  }, [brushSize, decorations, strokes, tool]);
 
   useEffect(() => () => stopInkPooling(), []);
 
-  function drawCanvas(nextStrokes: GlyphStroke[]) {
+  function drawCanvas(nextStrokes: GlyphStroke[], nextDecorations: GlyphDecoration[]) {
     const canvas = canvasRef.current;
 
     if (!canvas) {
@@ -86,6 +111,10 @@ export default function GlyphCanvas({
       drawStrokePath(ctx, stroke, 0, 0, CANVAS_SIZE);
     }
 
+    for (const decoration of nextDecorations) {
+      drawGlyphDecoration(ctx, decoration, 0, 0, CANVAS_SIZE);
+    }
+
     if (tool === "eraser") {
       ctx.strokeStyle = "rgba(133, 58, 57, 0.42)";
       ctx.lineWidth = 3;
@@ -94,6 +123,19 @@ export default function GlyphCanvas({
       ctx.arc(CANVAS_SIZE - 48, 48, Math.max(12, brushSize * 1.4), 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
+    }
+
+    if (tool === "eyes") {
+      ctx.save();
+      ctx.strokeStyle = "rgba(25, 20, 15, 0.34)";
+      ctx.lineWidth = 3;
+      ctx.setLineDash([10, 10]);
+      ctx.beginPath();
+      ctx.arc(CANVAS_SIZE - 52, 52, 24, 0, Math.PI * 2);
+      ctx.arc(CANVAS_SIZE - 104, 52, 24, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
     }
   }
 
@@ -178,6 +220,46 @@ export default function GlyphCanvas({
     onChangeStrokes(nextStrokes);
   }
 
+  function hitTestDecoration(x: number, y: number) {
+    for (let index = decorationsRef.current.length - 1; index >= 0; index -= 1) {
+      const decoration = decorationsRef.current[index];
+
+      if (Math.hypot(decoration.x - x, decoration.y - y) <= getEyeHitRadius(decoration)) {
+        return decoration;
+      }
+    }
+
+    return undefined;
+  }
+
+  function updateDecorationPosition(id: string, x: number, y: number) {
+    const nextDecorations = decorationsRef.current.map((decoration) =>
+      decoration.id === id ? moveDecoration(decoration, x, y) : decoration,
+    );
+
+    decorationsRef.current = nextDecorations;
+    onChangeDecorations(nextDecorations);
+  }
+
+  function placeGooglyEyes(x: number, y: number) {
+    const decoration: GlyphDecoration = moveDecoration(
+      {
+        id: makeDecorationId(),
+        kind: "googly-eyes",
+        size: Math.min(0.075, Math.max(0.032, (brushSize / CANVAS_SIZE) * 3.25)),
+        x,
+        y,
+      },
+      x,
+      y,
+    );
+    const nextDecorations = [...decorationsRef.current, decoration];
+
+    decorationsRef.current = nextDecorations;
+    activeDecorationIdRef.current = decoration.id;
+    onChangeDecorations(nextDecorations);
+  }
+
   function startInkPooling() {
     stopInkPooling();
 
@@ -235,6 +317,18 @@ export default function GlyphCanvas({
       return;
     }
 
+    if (tool === "eyes") {
+      const hitDecoration = hitTestDecoration(point.x, point.y);
+
+      if (hitDecoration) {
+        activeDecorationIdRef.current = hitDecoration.id;
+        return;
+      }
+
+      placeGooglyEyes(point.x, point.y);
+      return;
+    }
+
     const stroke: GlyphStroke = {
       id: makeStrokeId(),
       points: [
@@ -262,6 +356,12 @@ export default function GlyphCanvas({
   }
 
   function handlePointerMove(event: PointerEvent<HTMLCanvasElement>) {
+    if (tool === "eyes" && activeDecorationIdRef.current) {
+      const point = getCanvasPoint(event);
+      updateDecorationPosition(activeDecorationIdRef.current, point.x, point.y);
+      return;
+    }
+
     if (tool === "eraser" && erasingRef.current) {
       const point = getCanvasPoint(event);
       eraseAtPoint(point.x, point.y);
@@ -307,6 +407,7 @@ export default function GlyphCanvas({
     }
 
     activeStrokeRef.current = null;
+    activeDecorationIdRef.current = null;
     activePointerRef.current = null;
     erasingRef.current = false;
     stopInkPooling();
@@ -315,17 +416,25 @@ export default function GlyphCanvas({
   function eraseAtPoint(x: number, y: number) {
     const radius = Math.max(0.018, (brushSize / CANVAS_SIZE) * 2.2);
     const nextStrokes = eraseNearPoint(strokesRef.current, x, y, radius);
+    const nextDecorations = decorationsRef.current.filter(
+      (decoration) => Math.hypot(decoration.x - x, decoration.y - y) > getEyeHitRadius(decoration),
+    );
 
     if (nextStrokes.length !== strokesRef.current.length) {
       strokesRef.current = nextStrokes;
       onChangeStrokes(nextStrokes);
+    }
+
+    if (nextDecorations.length !== decorationsRef.current.length) {
+      decorationsRef.current = nextDecorations;
+      onChangeDecorations(nextDecorations);
     }
   }
 
   return (
     <canvas
       ref={canvasRef}
-      className={`glyph-canvas ${tool === "eraser" ? "eraser-cursor" : ""}`}
+      className={`glyph-canvas ${tool === "eraser" ? "eraser-cursor" : ""} ${tool === "eyes" ? "eyes-cursor" : ""}`}
       aria-label="Glyph drawing canvas"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}

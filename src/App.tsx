@@ -27,6 +27,10 @@ function cloneFontSet(font: FontSet, name: string): FontSet {
         character,
         {
           ...glyph,
+          decorations: (glyph.decorations ?? []).map((decoration) => ({
+            ...decoration,
+            id: createId("decoration"),
+          })),
           strokes: glyph.strokes.map((stroke) => ({
             ...stroke,
             id: createId("stroke"),
