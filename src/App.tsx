@@ -48,7 +48,6 @@ export default function App() {
   const libraryRef = useRef<HTMLDivElement | null>(null);
   const gridRef = useRef<HTMLDivElement | null>(null);
   const previewRef = useRef<HTMLDivElement | null>(null);
-  const editorRef = useRef<HTMLDivElement | null>(null);
   const [studioData, setStudioData] = useState<FontStudioData>(() => {
     const data = loadFontStudioData();
     saveFontStudioData(data);
@@ -82,10 +81,7 @@ export default function App() {
 
   function handleSelectCharacter(character: string) {
     setSelectedCharacter(character);
-
-    window.setTimeout(() => {
-      editorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 0);
+    setEditorFullScreen(true);
   }
 
   function selectCharacterByOffset(offset: number) {
@@ -245,9 +241,6 @@ export default function App() {
           <button type="button" onClick={() => jumpToSection(previewRef)}>
             Phone image
           </button>
-          <button type="button" onClick={() => jumpToSection(editorRef)}>
-            Glyph editor
-          </button>
           <button
             type="button"
             onClick={() => {
@@ -255,7 +248,7 @@ export default function App() {
               setEditorFullScreen(true);
             }}
           >
-            Full-screen draw
+            Edit selected glyph
           </button>
         </nav>
       </aside>
@@ -306,24 +299,24 @@ export default function App() {
             />
           </div>
         </div>
-
-        <div ref={editorRef}>
-          <GlyphEditor
-            key={activeFont.id}
-            font={activeFont}
-            glyph={selectedGlyph}
-            onSaveGlyph={handleSaveGlyph}
-            previewText={previewText}
-            onPreviewTextChange={setPreviewText}
-            characterIndex={Math.max(0, selectedCharacterIndex)}
-            characterTotal={supportedCharacters.length}
-            onPreviousCharacter={() => selectCharacterByOffset(-1)}
-            onNextCharacter={() => selectCharacterByOffset(1)}
-            isFullScreen={editorFullScreen}
-            onToggleFullScreen={() => setEditorFullScreen((current) => !current)}
-          />
-        </div>
       </div>
+
+      {editorFullScreen && (
+        <GlyphEditor
+          key={activeFont.id}
+          font={activeFont}
+          glyph={selectedGlyph}
+          onSaveGlyph={handleSaveGlyph}
+          previewText={previewText}
+          onPreviewTextChange={setPreviewText}
+          characterIndex={Math.max(0, selectedCharacterIndex)}
+          characterTotal={supportedCharacters.length}
+          onPreviousCharacter={() => selectCharacterByOffset(-1)}
+          onNextCharacter={() => selectCharacterByOffset(1)}
+          isFullScreen
+          onToggleFullScreen={() => setEditorFullScreen(false)}
+        />
+      )}
     </main>
   );
 }
