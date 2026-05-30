@@ -145,6 +145,102 @@ button:disabled {
   padding: 0 14px;
 }
 
+.sidebar-preview-slot {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  margin-bottom: 10px;
+}
+
+.sidebar-dropdown {
+  overflow: hidden;
+  border: 1px solid rgba(248, 230, 194, 0.14);
+  border-radius: 8px;
+  background: #1c1a1d;
+}
+
+.sidebar-dropdown summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 54px;
+  cursor: pointer;
+  list-style: none;
+  padding: 0 14px;
+}
+
+.sidebar-dropdown summary::-webkit-details-marker {
+  display: none;
+}
+
+.sidebar-dropdown summary::after {
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid #f3dfb6;
+  border-bottom: 2px solid #f3dfb6;
+  content: "";
+  transform: rotate(45deg);
+  transition: transform 160ms ease;
+}
+
+.sidebar-dropdown[open] summary {
+  border-bottom: 1px solid rgba(248, 230, 194, 0.12);
+}
+
+.sidebar-dropdown[open] summary::after {
+  transform: rotate(225deg);
+}
+
+.sidebar-dropdown summary span {
+  overflow: hidden;
+  color: #f3dfb6;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-dropdown summary strong {
+  color: #82d0bc;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.sidebar-preview-controls {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.sidebar-dropdown:not([open]) .sidebar-preview-controls {
+  display: none;
+}
+
+.sidebar-preview-controls .preview-preset-grid,
+.sidebar-preview-controls .preview-document-tools,
+.sidebar-preview-controls .preview-document-list {
+  padding: 0;
+}
+
+.sidebar-preview-controls .preview-preset-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.sidebar-preview-controls .preview-input {
+  width: 100%;
+  min-height: 112px;
+  margin: 0;
+}
+
+.sidebar-preview-controls .preview-document-tools {
+  grid-template-columns: minmax(0, 1fr) 96px;
+}
+
+.sidebar-preview-controls .preview-document-list {
+  max-height: 260px;
+  overflow: auto;
+}
+
 .editor-fullscreen-open .menu-toggle,
 .editor-fullscreen-open .sidebar-backdrop,
 .editor-fullscreen-open .sidebar-menu {
@@ -1180,9 +1276,16 @@ input[type="color"] {
   padding-top: 2px;
 }
 
-.export-preset-grid,
+.export-preset-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .alignment-row {
   grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.phone-generator-panel > .export-preset-grid {
+  padding-top: 18px;
 }
 
 .image-option-row {

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { spacebar } from "../data/characterSets";
 import type { BackgroundStyle, FontSet, Glyph, PreviewSettings } from "../types/fontTypes";
 import { drawGlyph, findPreviewGlyph, getGlyphAdvance, getSpacebarAdvance, hasDrawnGlyph } from "../render/glyphRenderer";
@@ -22,7 +23,7 @@ type TextPreviewProps = {
   spacebarGlyph: Glyph;
 };
 
-type ExportPresetId = "phone" | "social" | "print" | "transparent";
+type ExportPresetId = "phone" | "social" | "transparent";
 type FontMetricKey = "baselineOffset" | "leftBearing" | "rightBearing" | "width" | "xAdvance";
 type ImageMetricKey = "canvasHeight" | "canvasWidth" | "fontSize" | "lineSpacing" | "pagePadding";
 type SettingsPanel = "font" | "image";
@@ -81,18 +82,6 @@ const exportPresets: Array<{
       exportPreset: "social",
       fontSize: 96,
       pagePadding: 86,
-      transparent: false,
-    },
-  },
-  {
-    id: "print",
-    label: "Print",
-    settings: {
-      canvasWidth: 2550,
-      canvasHeight: 3300,
-      exportPreset: "print",
-      fontSize: 156,
-      pagePadding: 210,
       transparent: false,
     },
   },
@@ -281,10 +270,17 @@ function tokenizeParagraph(paragraph: string) {
 }
 
 function normalizePreviewSettings(settings?: Partial<PreviewImageSettings>): PreviewImageSettings {
-  return {
+  const normalized = {
     ...defaultPhoneImageSettings,
     ...settings,
   };
+
+  return exportPresets.some((preset) => preset.id === normalized.exportPreset)
+    ? normalized
+    : {
+        ...normalized,
+        exportPreset: "phone",
+      };
 }
 
 function loadPreviewDocuments() {
@@ -333,6 +329,7 @@ export default function TextPreview({
   const [documentName, setDocumentName] = useState("Untitled preview");
   const [fullscreenSettingsMenuOpen, setFullscreenSettingsMenuOpen] = useState(false);
   const [imageViewerOpen, setImageViewerOpen] = useState(false);
+  const [previewMenuRoot, setPreviewMenuRoot] = useState<HTMLElement | null>(null);
   const [savedDocuments, setSavedDocuments] = useState<PreviewDocument[]>(() => loadPreviewDocuments());
   const [shareStatus, setShareStatus] = useState("");
   const [styleEditorOpen, setStyleEditorOpen] = useState(false);
@@ -344,6 +341,10 @@ export default function TextPreview({
     () => Object.values(font.glyphs).filter((glyph) => hasDrawnGlyph(glyph)).length,
     [font.glyphs],
   );
+
+  useEffect(() => {
+    setPreviewMenuRoot(document.getElementById("preview-text-menu-slot"));
+  }, []);
 
   useEffect(() => {
     renderPhoneImage();
@@ -1326,61 +1327,69 @@ export default function TextPreview({
     );
   }
 
-  return (
-    <section className="studio-panel preview-panel phone-generator-panel" aria-label="Preview test bench">
-      <div className="panel-heading phone-image-heading">
-        <div>
-          <p className="eyebrow">Preview test bench</p>
-          <h2>Real text</h2>
-        </div>
-        <div className="glyph-pill">{savedGlyphCount} saved</div>
-      </div>
+  function renderPreviewTextMenu() {
+    return (
+      <details className="sidebar-dropdown preview-text-dropdown">
+        <summary>
+          <span>Preview Text</span>
+          <strong>{savedGlyphCount} saved</strong>
+        </summary>
 
-      <div className="preview-preset-grid" aria-label="Preview presets">
-        {previewPresets.map((preset) => (
-          <button key={preset.id} className="secondary-button compact-button" type="button" onClick={() => applyTextPreset(preset)}>
-            {preset.label}
-          </button>
-        ))}
-      </div>
-
-      <textarea
-        className="preview-input phone-text-input"
-        value={previewText}
-        onChange={(event) => {
-          onPreviewTextChange(event.target.value);
-          setActiveDocumentId(null);
-        }}
-        spellCheck={false}
-      />
-
-      <div className="preview-document-tools" aria-label="Preview documents">
-        <input
-          aria-label="Preview document name"
-          value={documentName}
-          onChange={(event) => setDocumentName(event.target.value)}
-        />
-        <button className="primary-button compact-button" type="button" onClick={savePreviewDocument}>
-          Save doc
-        </button>
-      </div>
-
-      {savedDocuments.length > 0 && (
-        <div className="preview-document-list" aria-label="Saved preview documents">
-          {savedDocuments.map((document) => (
-            <div key={document.id} className={`preview-document-card ${activeDocumentId === document.id ? "selected" : ""}`}>
-              <button type="button" onClick={() => loadPreviewDocument(document.id)}>
-                <strong>{document.name}</strong>
-                <span>{document.text.slice(0, 42) || "(blank)"}</span>
+        <div className="sidebar-preview-controls">
+          <div className="preview-preset-grid" aria-label="Preview presets">
+            {previewPresets.map((preset) => (
+              <button key={preset.id} className="secondary-button compact-button" type="button" onClick={() => applyTextPreset(preset)}>
+                {preset.label}
               </button>
-              <button className="metric-default-button" type="button" onClick={() => deletePreviewDocument(document.id)}>
-                Delete
-              </button>
+            ))}
+          </div>
+
+          <textarea
+            className="preview-input phone-text-input"
+            value={previewText}
+            onChange={(event) => {
+              onPreviewTextChange(event.target.value);
+              setActiveDocumentId(null);
+            }}
+            spellCheck={false}
+          />
+
+          <div className="preview-document-tools" aria-label="Preview documents">
+            <input
+              aria-label="Preview document name"
+              value={documentName}
+              onChange={(event) => setDocumentName(event.target.value)}
+            />
+            <button className="primary-button compact-button" type="button" onClick={savePreviewDocument}>
+              Save doc
+            </button>
+          </div>
+
+          {savedDocuments.length > 0 && (
+            <div className="preview-document-list" aria-label="Saved preview documents">
+              {savedDocuments.map((document) => (
+                <div key={document.id} className={`preview-document-card ${activeDocumentId === document.id ? "selected" : ""}`}>
+                  <button type="button" onClick={() => loadPreviewDocument(document.id)}>
+                    <strong>{document.name}</strong>
+                    <span>{document.text.slice(0, 42) || "(blank)"}</span>
+                  </button>
+                  <button className="metric-default-button" type="button" onClick={() => deletePreviewDocument(document.id)}>
+                    Delete
+                  </button>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
-      )}
+      </details>
+    );
+  }
 
+  return (
+    <>
+      {previewMenuRoot ? createPortal(renderPreviewTextMenu(), previewMenuRoot) : null}
+
+      <section className="studio-panel preview-panel phone-generator-panel" aria-label="Preview image">
       <div className="export-preset-grid" aria-label="Export presets">
         {exportPresets.map((preset) => (
           <button
@@ -1501,6 +1510,7 @@ export default function TextPreview({
           </div>
         </section>
       )}
-    </section>
+      </section>
+    </>
   );
 }

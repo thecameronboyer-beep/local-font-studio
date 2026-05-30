@@ -250,6 +250,8 @@ export default function App() {
           </strong>
         </div>
 
+        <div id="preview-text-menu-slot" className="sidebar-preview-slot" />
+
         <nav className="sidebar-nav">
           <button type="button" onClick={() => jumpToSection(libraryRef)}>
             Font library
