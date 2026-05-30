@@ -3,7 +3,17 @@ import GlyphCanvas from "./GlyphCanvas";
 import type { CanvasViewOffset, DrawingTool, EraserMode, SmoothingMode } from "./GlyphCanvas";
 import SpacingControls from "./SpacingControls";
 import { getCharacterLabel, getVisibleCharacters, spacebar } from "../data/characterSets";
-import { drawGlyph, findPreviewGlyph, getGlyphAdvance, getSpacebarAdvance } from "../render/glyphRenderer";
+import {
+  drawGlyph,
+  findPreviewGlyph,
+  getFontHeightScale,
+  getFontWidthScale,
+  getGlyphAdvance,
+  getGlyphLeftBearingOffset,
+  getGlyphRenderScales,
+  getGlyphTopForBaseline,
+  getSpacebarAdvance,
+} from "../render/glyphRenderer";
 import type { FontSet, Glyph, GlyphDecoration, GlyphInkEffect, GlyphStroke } from "../types/fontTypes";
 
 type GlyphEditorProps = {
@@ -278,9 +288,11 @@ function EditorLivePreview({
     const width = Math.max(260, surfaceWidth);
     const fontSize = 42;
     const padding = 12;
-    const lineHeight = fontSize * 1.16;
     const previewBackground = font.renderProfile === "quillParchment" ? font.theme?.backgroundColor ?? "#efe0bd" : "#171516";
     const previewInkColor = font.renderProfile === "quillParchment" ? font.theme?.inkColor ?? "#2a160d" : "#f4ead7";
+    const fontHeightScale = getFontHeightScale(font);
+    const fontWidthScale = getFontWidthScale(font);
+    const lineHeight = fontSize * 1.16 * Math.max(0.72, fontHeightScale);
     const glyphs = {
       ...font.glyphs,
       [draftGlyph.character]: draftGlyph,
@@ -296,7 +308,7 @@ function EditorLivePreview({
     for (const character of textToRender.replace(/\n/g, " ")) {
       const glyph = findPreviewGlyph(glyphs, character);
       const characterWidth = glyph
-        ? getGlyphAdvance(glyph, fontSize)
+        ? getGlyphAdvance(glyph, fontSize, fontWidthScale)
         : character === spacebar
           ? getSpacebarAdvance(font.glyphs[spacebar], fontSize)
           : ctx.measureText(character).width;
@@ -331,16 +343,18 @@ function EditorLivePreview({
         const glyph = findPreviewGlyph(glyphs, character);
 
         if (glyph) {
-          const baselineY = y + fontSize * 0.76;
+          const scales = getGlyphRenderScales(font, glyph);
+          const baselineY = y + fontSize * 0.76 * fontHeightScale;
           drawGlyph(ctx, glyph, {
-            x: x + glyph.leftBearing * fontSize,
-            y: baselineY - glyph.baselineOffset * fontSize,
+            x: x + getGlyphLeftBearingOffset(font, glyph, fontSize),
+            y: getGlyphTopForBaseline(glyph, fontSize, baselineY, scales.heightScale),
             size: fontSize,
             color: previewInkColor,
             renderProfile: font.renderProfile,
-            widthScale: glyph.width,
+            heightScale: scales.heightScale,
+            widthScale: scales.widthScale,
           });
-          x += getGlyphAdvance(glyph, fontSize);
+          x += getGlyphAdvance(glyph, fontSize, fontWidthScale);
           continue;
         }
 

@@ -67,6 +67,11 @@ export type FontCharacterSettings = {
   showSpacebar: boolean;
 };
 
+export type FontShapeSettings = {
+  heightScale: number;
+  widthScale: number;
+};
+
 export type FontSet = {
   id: string;
   name: string;
@@ -74,6 +79,7 @@ export type FontSet = {
   glyphs: Record<string, Glyph>;
   createdAt: string;
   renderProfile?: FontRenderProfile;
+  shapeSettings: FontShapeSettings;
   theme?: FontTheme;
   updatedAt: string;
 };

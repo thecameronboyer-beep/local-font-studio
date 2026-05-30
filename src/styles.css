@@ -572,6 +572,33 @@ h3 {
   accent-color: #82d0bc;
 }
 
+.font-option-slider {
+  display: grid;
+  gap: 8px;
+  color: #f3dfb6;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.font-option-slider span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.font-option-slider output {
+  color: #82d0bc;
+}
+
+.font-option-slider input[type="range"] {
+  width: 100%;
+  min-height: 20px;
+  border: 0;
+  padding: 0;
+  accent-color: #82d0bc;
+}
+
 .grid-panel {
   overflow: hidden;
 }

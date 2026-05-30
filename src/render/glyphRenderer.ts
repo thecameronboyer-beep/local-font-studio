@@ -1,5 +1,6 @@
 import type {
   FontRenderProfile,
+  FontSet,
   Glyph,
   GlyphDecoration,
   GlyphInkEffect,
@@ -14,6 +15,7 @@ export type GlyphDrawOptions = {
   color: string;
   alpha?: number;
   renderProfile?: FontRenderProfile;
+  heightScale?: number;
   widthScale?: number;
 };
 
@@ -54,9 +56,32 @@ export function findPreviewGlyph(
   return undefined;
 }
 
-export function getGlyphAdvance(glyph: Glyph, fontSize: number) {
+export function getFontHeightScale(font: Pick<FontSet, "shapeSettings">) {
+  return font.shapeSettings?.heightScale ?? 1;
+}
+
+export function getFontWidthScale(font: Pick<FontSet, "shapeSettings">) {
+  return font.shapeSettings?.widthScale ?? 1;
+}
+
+export function getGlyphRenderScales(font: Pick<FontSet, "shapeSettings">, glyph: Glyph) {
+  return {
+    heightScale: glyph.height * getFontHeightScale(font),
+    widthScale: glyph.width * getFontWidthScale(font),
+  };
+}
+
+export function getGlyphLeftBearingOffset(font: Pick<FontSet, "shapeSettings">, glyph: Glyph, fontSize: number) {
+  return glyph.leftBearing * fontSize * getFontWidthScale(font);
+}
+
+export function getGlyphTopForBaseline(glyph: Glyph, fontSize: number, baselineY: number, heightScale = glyph.height) {
+  return baselineY - glyph.baselineOffset * fontSize * heightScale;
+}
+
+export function getGlyphAdvance(glyph: Glyph, fontSize: number, widthScale = 1) {
   const bearingAdvance = glyph.leftBearing + glyph.width + glyph.rightBearing;
-  return Math.max(fontSize * 0.18, fontSize * glyph.xAdvance, fontSize * bearingAdvance);
+  return Math.max(fontSize * 0.18, fontSize * Math.max(glyph.xAdvance, bearingAdvance) * widthScale);
 }
 
 export function getSpacebarAdvance(glyph: Glyph | undefined, fontSize: number) {
@@ -588,18 +613,27 @@ export function drawGlyphDecoration(
 export function drawGlyph(
   ctx: CanvasRenderingContext2D,
   glyph: Glyph,
-  { x, y, size, color, alpha = 1, renderProfile = "plain", widthScale = glyph.width }: GlyphDrawOptions,
+  {
+    x,
+    y,
+    size,
+    color,
+    alpha = 1,
+    renderProfile = "plain",
+    heightScale = glyph.height,
+    widthScale = glyph.width,
+  }: GlyphDrawOptions,
 ) {
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.strokeStyle = color;
 
   for (const stroke of glyph.strokes) {
-    drawStrokePath(ctx, stroke, x, y, size, size * widthScale, size, color, { renderProfile });
+    drawStrokePath(ctx, stroke, x, y, size, size * widthScale, size * heightScale, color, { renderProfile });
   }
 
   for (const decoration of glyph.decorations ?? []) {
-    drawGlyphDecoration(ctx, decoration, x, y, size, size * widthScale, size);
+    drawGlyphDecoration(ctx, decoration, x, y, size, size * widthScale, size * heightScale);
   }
 
   ctx.restore();

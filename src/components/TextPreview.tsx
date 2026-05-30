@@ -2,7 +2,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { spacebar } from "../data/characterSets";
 import type { BackgroundStyle, FontSet, Glyph, PreviewSettings } from "../types/fontTypes";
-import { drawGlyph, findPreviewGlyph, getGlyphAdvance, getSpacebarAdvance, hasDrawnGlyph } from "../render/glyphRenderer";
+import {
+  drawGlyph,
+  findPreviewGlyph,
+  getFontHeightScale,
+  getFontWidthScale,
+  getGlyphAdvance,
+  getGlyphLeftBearingOffset,
+  getGlyphRenderScales,
+  getGlyphTopForBaseline,
+  getSpacebarAdvance,
+  hasDrawnGlyph,
+} from "../render/glyphRenderer";
 
 type SavedPreviewImage = {
   fontName: string;
@@ -380,7 +391,7 @@ export default function TextPreview({
     const glyph = findPreviewGlyph(font.glyphs, character);
 
     if (glyph) {
-      return getGlyphAdvance(glyph, fontSize);
+      return getGlyphAdvance(glyph, fontSize, getFontWidthScale(font));
     }
 
     return ctx.measureText(character).width;
@@ -461,7 +472,9 @@ export default function TextPreview({
     lines: string[],
     renderSettings: PreviewImageSettings,
   ) {
-    const lineHeight = renderSettings.fontSize * renderSettings.lineSpacing;
+    const fontHeightScale = getFontHeightScale(font);
+    const fontWidthScale = getFontWidthScale(font);
+    const lineHeight = renderSettings.fontSize * renderSettings.lineSpacing * Math.max(0.72, fontHeightScale);
     ctx.font = getFallbackFont(renderSettings.fontSize);
     ctx.textBaseline = "top";
 
@@ -473,9 +486,10 @@ export default function TextPreview({
         const glyph = findPreviewGlyph(font.glyphs, character);
 
         if (glyph) {
-          const baselineY = y + renderSettings.fontSize * 0.76;
-          const glyphX = x + glyph.leftBearing * renderSettings.fontSize;
-          const glyphY = baselineY - glyph.baselineOffset * renderSettings.fontSize;
+          const scales = getGlyphRenderScales(font, glyph);
+          const baselineY = y + renderSettings.fontSize * 0.76 * fontHeightScale;
+          const glyphX = x + getGlyphLeftBearingOffset(font, glyph, renderSettings.fontSize);
+          const glyphY = getGlyphTopForBaseline(glyph, renderSettings.fontSize, baselineY, scales.heightScale);
 
           drawGlyph(ctx, glyph, {
             x: glyphX,
@@ -483,9 +497,10 @@ export default function TextPreview({
             size: renderSettings.fontSize,
             color: renderSettings.inkColor,
             renderProfile: font.renderProfile,
-            widthScale: glyph.width,
+            heightScale: scales.heightScale,
+            widthScale: scales.widthScale,
           });
-          x += getGlyphAdvance(glyph, renderSettings.fontSize);
+          x += getGlyphAdvance(glyph, renderSettings.fontSize, fontWidthScale);
           continue;
         }
 
@@ -689,8 +704,8 @@ export default function TextPreview({
       wrappedLines = buildWordWrappedLines(ctx, previewText, maxLineWidth, fontSize);
 
       const lineCount = Math.max(1, wrappedLines.length);
-      const lineHeight = fontSize * candidateSettings.lineSpacing;
-      const textBlockHeight = (lineCount - 1) * lineHeight + fontSize * 1.08;
+      const lineHeight = fontSize * candidateSettings.lineSpacing * Math.max(0.72, getFontHeightScale(font));
+      const textBlockHeight = (lineCount - 1) * lineHeight + fontSize * Math.max(1.08, getFontHeightScale(font));
       const wordsFit = !hasOversizeWord(ctx, previewText, maxLineWidth, fontSize);
       const heightFits = textBlockHeight <= maxTextHeight || candidateSettings.canvasHeight <= MIN_PHONE_IMAGE_HEIGHT;
 

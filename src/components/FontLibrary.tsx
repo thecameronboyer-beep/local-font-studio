@@ -1,13 +1,27 @@
 import { useEffect, useRef, useState } from "react";
-import { drawGlyph, findPreviewGlyph, getGlyphAdvance } from "../render/glyphRenderer";
-import { defaultFontCharacterSettings, exportFontSet } from "../storage/fontStorage";
-import type { FontCharacterSettings, FontRenderProfile, FontSet } from "../types/fontTypes";
+import {
+  drawGlyph,
+  findPreviewGlyph,
+  getFontHeightScale,
+  getFontWidthScale,
+  getGlyphAdvance,
+  getGlyphLeftBearingOffset,
+  getGlyphRenderScales,
+  getGlyphTopForBaseline,
+} from "../render/glyphRenderer";
+import { defaultFontCharacterSettings, defaultFontShapeSettings, exportFontSet } from "../storage/fontStorage";
+import type { FontCharacterSettings, FontRenderProfile, FontSet, FontShapeSettings } from "../types/fontTypes";
 
 type FontLibraryProps = {
   fonts: FontSet[];
   activeFontId: string;
   onSelectFont: (fontId: string) => void;
-  onCreateFont: (name: string, renderProfile: FontRenderProfile, characterSettings: FontCharacterSettings) => void;
+  onCreateFont: (
+    name: string,
+    renderProfile: FontRenderProfile,
+    characterSettings: FontCharacterSettings,
+    shapeSettings: FontShapeSettings,
+  ) => void;
   onRenameFont: (fontId: string, name: string) => void;
   onDuplicateFont: (fontId: string) => void;
   onDeleteFont: (fontId: string) => void;
@@ -29,7 +43,6 @@ function FontNamePreview({ font }: { font: FontSet }) {
     const height = 52;
     const fontSize = 27;
     const paddingX = 6;
-    const baselineY = 37;
     const ctx = canvas.getContext("2d");
 
     canvas.width = width * dpr;
@@ -50,6 +63,8 @@ function FontNamePreview({ font }: { font: FontSet }) {
     ctx.font = `900 ${fontSize}px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
     ctx.textBaseline = "top";
     const previewColor = font.renderProfile === "quillParchment" ? font.theme?.inkColor ?? "#2a160d" : "#fff4df";
+    const fontHeightScale = getFontHeightScale(font);
+    const fontWidthScale = getFontWidthScale(font);
     ctx.fillStyle = previewColor;
 
     let x = paddingX;
@@ -58,8 +73,10 @@ function FontNamePreview({ font }: { font: FontSet }) {
       const glyph = findPreviewGlyph(font.glyphs, character);
 
       if (glyph) {
-        const glyphX = x + glyph.leftBearing * fontSize;
-        const glyphY = baselineY - glyph.baselineOffset * fontSize;
+        const scales = getGlyphRenderScales(font, glyph);
+        const scaledBaselineY = 11 + fontSize * 0.76 * fontHeightScale;
+        const glyphX = x + getGlyphLeftBearingOffset(font, glyph, fontSize);
+        const glyphY = getGlyphTopForBaseline(glyph, fontSize, scaledBaselineY, scales.heightScale);
 
         drawGlyph(ctx, glyph, {
           x: glyphX,
@@ -67,9 +84,10 @@ function FontNamePreview({ font }: { font: FontSet }) {
           size: fontSize,
           color: previewColor,
           renderProfile: font.renderProfile,
-          widthScale: glyph.width,
+          heightScale: scales.heightScale,
+          widthScale: scales.widthScale,
         });
-        x += getGlyphAdvance(glyph, fontSize);
+        x += getGlyphAdvance(glyph, fontSize, fontWidthScale);
       } else if (character === " ") {
         x += fontSize * 0.36;
       } else {
@@ -119,6 +137,9 @@ export default function FontLibrary({
   const [newFontCharacterSettings, setNewFontCharacterSettings] = useState<FontCharacterSettings>({
     ...defaultFontCharacterSettings,
   });
+  const [newFontShapeSettings, setNewFontShapeSettings] = useState<FontShapeSettings>({
+    ...defaultFontShapeSettings,
+  });
   const [newFontName, setNewFontName] = useState("");
   const [newFontProfile, setNewFontProfile] = useState<FontRenderProfile>("plain");
   const [renameValue, setRenameValue] = useState(activeFont.name);
@@ -154,16 +175,24 @@ export default function FontLibrary({
 
   function handleCreateFont() {
     const name = newFontName.trim() || (newFontProfile === "quillParchment" ? "Quill on Parchment" : `Font ${fonts.length + 1}`);
-    onCreateFont(name, newFontProfile, newFontCharacterSettings);
+    onCreateFont(name, newFontProfile, newFontCharacterSettings, newFontShapeSettings);
     setNewFontName("");
     setNewFontProfile("plain");
     setAdvancedSettingsOpen(false);
     setNewFontCharacterSettings({ ...defaultFontCharacterSettings });
+    setNewFontShapeSettings({ ...defaultFontShapeSettings });
     setCreateFormOpen(false);
   }
 
   function updateNewFontCharacterSetting(key: keyof FontCharacterSettings, value: boolean) {
     setNewFontCharacterSettings((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  }
+
+  function updateNewFontShapeSetting(key: keyof FontShapeSettings, value: number) {
+    setNewFontShapeSettings((current) => ({
       ...current,
       [key]: value,
     }));
@@ -328,6 +357,34 @@ export default function FontLibrary({
                     onChange={(event) => updateNewFontCharacterSetting("showSpacebar", event.target.checked)}
                   />
                   <span>Space Bar</span>
+                </label>
+                <label className="font-option-slider">
+                  <span>
+                    Width
+                    <output>{newFontShapeSettings.widthScale.toFixed(2)}x</output>
+                  </span>
+                  <input
+                    type="range"
+                    min="0.55"
+                    max="1.6"
+                    step="0.05"
+                    value={newFontShapeSettings.widthScale}
+                    onChange={(event) => updateNewFontShapeSetting("widthScale", Number(event.target.value))}
+                  />
+                </label>
+                <label className="font-option-slider">
+                  <span>
+                    Height
+                    <output>{newFontShapeSettings.heightScale.toFixed(2)}x</output>
+                  </span>
+                  <input
+                    type="range"
+                    min="0.55"
+                    max="1.6"
+                    step="0.05"
+                    value={newFontShapeSettings.heightScale}
+                    onChange={(event) => updateNewFontShapeSetting("heightScale", Number(event.target.value))}
+                  />
                 </label>
               </div>
             )}

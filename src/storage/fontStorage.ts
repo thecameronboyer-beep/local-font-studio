@@ -4,6 +4,7 @@ import type {
   FontCharacterSettings,
   FontRenderProfile,
   FontSet,
+  FontShapeSettings,
   FontStudioData,
   FontTheme,
   GlyphInkEffect,
@@ -71,6 +72,11 @@ export const defaultFontCharacterSettings: FontCharacterSettings = {
   showSpacebar: false,
 };
 
+export const defaultFontShapeSettings: FontShapeSettings = {
+  heightScale: 1,
+  widthScale: 1,
+};
+
 const legacyFontCharacterSettings: FontCharacterSettings = {
   showForgotten: true,
   showSpacebar: false,
@@ -94,6 +100,7 @@ export function createFontSet(
   name: string,
   renderProfile: FontRenderProfile = "plain",
   characterSettings: FontCharacterSettings = defaultFontCharacterSettings,
+  shapeSettings: FontShapeSettings = defaultFontShapeSettings,
 ): FontSet {
   const glyphs = fontCharacters.reduce<Record<string, Glyph>>((map, character) => {
     map[character] = createEmptyGlyph(character);
@@ -109,6 +116,7 @@ export function createFontSet(
     glyphs,
     createdAt: now,
     ...(renderProfile === "quillParchment" ? { renderProfile, theme: quillParchmentTheme } : {}),
+    shapeSettings: { ...shapeSettings },
     updatedAt: now,
   };
 }
@@ -194,6 +202,17 @@ function normalizeCharacterSettings(value: unknown, fallback: FontCharacterSetti
   return {
     showForgotten: typeof value.showForgotten === "boolean" ? value.showForgotten : fallback.showForgotten,
     showSpacebar: typeof value.showSpacebar === "boolean" ? value.showSpacebar : fallback.showSpacebar,
+  };
+}
+
+function normalizeShapeSettings(value: unknown, fallback: FontShapeSettings): FontShapeSettings {
+  if (!isRecord(value)) {
+    return fallback;
+  }
+
+  return {
+    heightScale: safeNumber(value.heightScale, fallback.heightScale, 0.55, 1.6),
+    widthScale: safeNumber(value.widthScale, fallback.widthScale, 0.55, 1.6),
   };
 }
 
@@ -334,6 +353,7 @@ function normalizeFont(font: unknown, usedFontIds: Set<string>, fallbackName: st
     glyphs,
     createdAt: safeString(font.createdAt, now),
     ...(normalizeRenderProfile(font.renderProfile) ? { renderProfile: "quillParchment" as const } : {}),
+    shapeSettings: normalizeShapeSettings(font.shapeSettings, defaultFontShapeSettings),
     ...(isRecord(font.theme)
       ? {
           theme: {

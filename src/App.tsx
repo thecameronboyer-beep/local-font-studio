@@ -15,7 +15,15 @@ import {
   recordProjectActivity,
   saveFontStudioData,
 } from "./storage/fontStorage";
-import type { FontCharacterSettings, FontRenderProfile, FontSet, FontStudioData, Glyph, ProjectActivityDraft } from "./types/fontTypes";
+import type {
+  FontCharacterSettings,
+  FontRenderProfile,
+  FontSet,
+  FontShapeSettings,
+  FontStudioData,
+  Glyph,
+  ProjectActivityDraft,
+} from "./types/fontTypes";
 
 export default function App() {
   const libraryRef = useRef<HTMLDivElement | null>(null);
@@ -105,8 +113,9 @@ export default function App() {
     name: string,
     renderProfile: FontRenderProfile = "plain",
     characterSettings?: FontCharacterSettings,
+    shapeSettings?: FontShapeSettings,
   ) {
-    const font = createFontSet(name, renderProfile, characterSettings);
+    const font = createFontSet(name, renderProfile, characterSettings, shapeSettings);
 
     persist({
       ...studioData,
