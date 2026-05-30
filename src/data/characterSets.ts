@@ -18,16 +18,6 @@ export const fontCharacters = [
   spacebar,
 ];
 
-const characterLabels: Record<string, string> = {
-  [spacebar]: "spacebar",
-  "\u00DE": "Thorn",
-  "\u00FE": "thorn",
-  "\u00D0": "Eth",
-  "\u00F0": "eth",
-  "\u00C6": "Ash",
-  "\u00E6": "ash",
-};
-
 export function getCharacterLabel(character: string) {
-  return characterLabels[character] ?? character;
+  return character === spacebar ? "spacebar" : character;
 }
