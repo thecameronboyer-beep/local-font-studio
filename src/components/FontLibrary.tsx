@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { drawGlyph, findPreviewGlyph, getGlyphAdvance } from "../render/glyphRenderer";
 import type { FontRenderProfile, FontSet } from "../types/fontTypes";
 
 type FontLibraryProps = {
@@ -11,6 +12,78 @@ type FontLibraryProps = {
   onDeleteFont: (fontId: string) => void;
   getSavedGlyphCount: (font: FontSet) => number;
 };
+
+function FontNamePreview({ font }: { font: FontSet }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+
+    if (!canvas) {
+      return;
+    }
+
+    const dpr = window.devicePixelRatio || 1;
+    const width = 260;
+    const height = 52;
+    const fontSize = 27;
+    const paddingX = 6;
+    const baselineY = 37;
+    const ctx = canvas.getContext("2d");
+
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    canvas.style.width = "100%";
+    canvas.style.height = `${height}px`;
+
+    if (!ctx) {
+      return;
+    }
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+    if (font.renderProfile === "quillParchment") {
+      ctx.fillStyle = font.theme?.backgroundColor ?? "#efe0bd";
+      ctx.fillRect(0, 0, width, height);
+    }
+    ctx.font = `900 ${fontSize}px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+    ctx.textBaseline = "top";
+    const previewColor = font.renderProfile === "quillParchment" ? font.theme?.inkColor ?? "#2a160d" : "#fff4df";
+    ctx.fillStyle = previewColor;
+
+    let x = paddingX;
+
+    for (const character of font.name) {
+      const glyph = findPreviewGlyph(font.glyphs, character);
+
+      if (glyph) {
+        const glyphX = x + glyph.leftBearing * fontSize;
+        const glyphY = baselineY - glyph.baselineOffset * fontSize;
+
+        drawGlyph(ctx, glyph, {
+          x: glyphX,
+          y: glyphY,
+          size: fontSize,
+          color: previewColor,
+          renderProfile: font.renderProfile,
+          widthScale: glyph.width,
+        });
+        x += getGlyphAdvance(glyph, fontSize);
+      } else if (character === " ") {
+        x += fontSize * 0.36;
+      } else {
+        ctx.fillText(character, x, 11);
+        x += ctx.measureText(character).width;
+      }
+
+      if (x > width - 18) {
+        break;
+      }
+    }
+  }, [font]);
+
+  return <canvas ref={canvasRef} className="font-name-preview" aria-hidden="true" />;
+}
 
 export default function FontLibrary({
   fonts,
@@ -26,10 +99,35 @@ export default function FontLibrary({
   const [newFontName, setNewFontName] = useState("");
   const [newFontProfile, setNewFontProfile] = useState<FontRenderProfile>("plain");
   const [renameValue, setRenameValue] = useState(activeFont.name);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setRenameValue(activeFont.name);
+    setSettingsOpen(false);
   }, [activeFont.id, activeFont.name]);
+
+  useEffect(() => {
+    if (!settingsOpen) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target;
+
+      if (!(target instanceof Node) || settingsRef.current?.contains(target)) {
+        return;
+      }
+
+      setSettingsOpen(false);
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [settingsOpen]);
 
   function handleCreateFont() {
     const name = newFontName.trim() || (newFontProfile === "quillParchment" ? "Quill on Parchment" : `Font ${fonts.length + 1}`);
@@ -47,43 +145,85 @@ export default function FontLibrary({
 
   return (
     <section className="studio-panel library-panel" aria-label="Font library">
-      <div className="panel-heading compact-heading">
-        <div>
-          <p className="eyebrow">Library</p>
-          <h2>Font sets</h2>
-        </div>
-        <div className="glyph-pill">{fonts.length} total</div>
-      </div>
-
       <div className="font-list">
         {fonts.map((font) => (
-          <button
+          <div
             key={font.id}
-            type="button"
             className={`font-row ${font.id === activeFontId ? "selected" : ""}`}
-            onClick={() => {
-              onSelectFont(font.id);
-              setRenameValue(font.name);
-            }}
           >
-            <span>{font.name}</span>
-            <strong>{getSavedGlyphCount(font)} saved</strong>
-          </button>
+            <button
+              type="button"
+              className="font-select-button"
+              onClick={() => {
+                onSelectFont(font.id);
+                setRenameValue(font.name);
+              }}
+              aria-label={`Select ${font.name}`}
+            >
+              <FontNamePreview font={font} />
+              <strong>{getSavedGlyphCount(font)} saved</strong>
+            </button>
+            {font.id === activeFontId && (
+              <div className="font-settings-wrap" ref={settingsRef}>
+                <button
+                  className={`font-settings-button ${settingsOpen ? "active-tool" : ""}`}
+                  type="button"
+                  aria-label="Font settings"
+                  aria-expanded={settingsOpen}
+                  onClick={() => setSettingsOpen((current) => !current)}
+                >
+                  <span className="hamburger-lines" aria-hidden="true">
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                </button>
+                {settingsOpen && (
+                  <div className="font-settings-menu" role="menu">
+                    <label>
+                      Rename
+                      <input
+                        value={renameValue}
+                        onChange={(event) => setRenameValue(event.target.value)}
+                      />
+                    </label>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => {
+                        handleRenameFont();
+                        setSettingsOpen(false);
+                      }}
+                    >
+                      Rename
+                    </button>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => {
+                        onDuplicateFont(activeFont.id);
+                        setSettingsOpen(false);
+                      }}
+                    >
+                      Duplicate
+                    </button>
+                    <button
+                      className="danger-button"
+                      type="button"
+                      disabled={fonts.length <= 1}
+                      onClick={() => {
+                        onDeleteFont(activeFont.id);
+                        setSettingsOpen(false);
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         ))}
-      </div>
-
-      <div className="library-form">
-        <label>
-          Rename active
-          <input
-            value={renameValue}
-            onChange={(event) => setRenameValue(event.target.value)}
-            onBlur={handleRenameFont}
-          />
-        </label>
-        <button className="secondary-button" type="button" onClick={handleRenameFont}>
-          Rename
-        </button>
       </div>
 
       <div className="library-form">
@@ -112,20 +252,6 @@ export default function FontLibrary({
         </div>
         <button className="primary-button" type="button" onClick={handleCreateFont}>
           Create
-        </button>
-      </div>
-
-      <div className="library-actions">
-        <button className="secondary-button" type="button" onClick={() => onDuplicateFont(activeFont.id)}>
-          Duplicate
-        </button>
-        <button
-          className="danger-button"
-          type="button"
-          disabled={fonts.length <= 1}
-          onClick={() => onDeleteFont(activeFont.id)}
-        >
-          Delete
         </button>
       </div>
 

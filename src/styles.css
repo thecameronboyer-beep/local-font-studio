@@ -269,14 +269,13 @@ h3 {
 }
 
 .library-panel {
-  overflow: hidden;
+  overflow: visible;
 }
 
 .font-list {
   display: grid;
   gap: 8px;
-  max-height: 220px;
-  overflow: auto;
+  overflow: visible;
   padding: 14px 18px 8px;
 }
 
@@ -285,12 +284,13 @@ h3 {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  position: relative;
   min-height: 52px;
   border: 1px solid rgba(248, 230, 194, 0.12);
   border-radius: 8px;
   background: #211e20;
   color: #fff4df;
-  padding: 12px;
+  padding: 6px;
   text-align: left;
 }
 
@@ -299,25 +299,108 @@ h3 {
   background: #1b2c2b;
 }
 
-.font-row span {
-  min-width: 0;
-  overflow: hidden;
-  font-weight: 900;
-  text-overflow: ellipsis;
+.font-select-button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 40px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 6px;
+  text-align: left;
 }
 
-.font-row strong {
+.font-select-button span,
+.font-name-preview {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.font-select-button span {
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.font-name-preview {
+  display: block;
+  width: 100%;
+  height: 52px;
+}
+
+.font-select-button strong {
   color: #82d0bc;
   font-size: 0.78rem;
   white-space: nowrap;
 }
 
+.font-settings-wrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.font-settings-button {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(248, 230, 194, 0.16);
+  border-radius: 8px;
+  background: rgba(20, 19, 21, 0.72);
+  color: #f8f0df;
+  font-size: 1.08rem;
+}
+
+.font-settings-button:focus-visible,
+.font-settings-button:hover {
+  border-color: #82d0bc;
+  background: rgba(130, 208, 188, 0.12);
+}
+
+.font-settings-menu {
+  position: absolute;
+  z-index: 8;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  gap: 10px;
+  width: min(280px, calc(100vw - 56px));
+  border: 1px solid rgba(248, 230, 194, 0.14);
+  border-radius: 8px;
+  background: #181618;
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.35);
+  padding: 12px;
+}
+
+.font-settings-menu label {
+  display: grid;
+  gap: 8px;
+  color: #dacbb7;
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.font-settings-menu input {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid rgba(248, 230, 194, 0.14);
+  border-radius: 8px;
+  background: #0f0e10;
+  color: #f8f0df;
+  padding: 0 12px;
+  text-transform: none;
+}
+
 .library-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto 120px;
+  grid-template-columns: minmax(0, 1fr) auto 118px;
   align-items: end;
   gap: 10px;
-  padding: 10px 18px 0;
+  padding: 10px 18px 18px;
 }
 
 .library-form label {
@@ -347,13 +430,6 @@ h3 {
 .font-style-selector .compact-button {
   min-width: 74px;
   min-height: 48px;
-}
-
-.library-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  padding: 14px 18px 18px;
 }
 
 .grid-panel {
@@ -1418,11 +1494,14 @@ input[type="color"] {
     padding: 12px 14px max(14px, env(safe-area-inset-bottom));
   }
 
-  .library-form,
-  .library-actions {
+  .library-form {
     grid-template-columns: 1fr;
     padding-right: 14px;
     padding-left: 14px;
+  }
+
+  .font-style-selector {
+    grid-template-columns: 1fr 1fr;
   }
 
   .glyph-grid {
@@ -1514,8 +1593,7 @@ h1 {
   justify-content: space-between;
 }
 
-.library-form,
-.library-actions {
+.library-form {
   grid-template-columns: 1fr;
   padding-right: 14px;
   padding-left: 14px;
