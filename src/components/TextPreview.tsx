@@ -336,6 +336,7 @@ export default function TextPreview({
   const [activeDocumentId, setActiveDocumentId] = useState<string | null>(null);
   const [activeSettingsPanel, setActiveSettingsPanel] = useState<SettingsPanel>("image");
   const [documentName, setDocumentName] = useState("Untitled preview");
+  const [fullscreenSettingsMenuOpen, setFullscreenSettingsMenuOpen] = useState(false);
   const [imageViewerOpen, setImageViewerOpen] = useState(false);
   const [savedDocuments, setSavedDocuments] = useState<PreviewDocument[]>(() => loadPreviewDocuments());
   const [shareStatus, setShareStatus] = useState("");
@@ -1085,6 +1086,7 @@ export default function TextPreview({
 
   function openStyleEditor() {
     setStyleEditorOpen(true);
+    setFullscreenSettingsMenuOpen(false);
   }
 
   function renderImageMetricControl({
@@ -1197,6 +1199,57 @@ export default function TextPreview({
             {label}
           </button>
         ))}
+      </div>
+    );
+  }
+
+  function setFullscreenSettings(panel: SettingsPanel) {
+    setActiveSettingsPanel(panel);
+    setFullscreenSettingsMenuOpen(false);
+  }
+
+  function closeFullscreenPreview() {
+    setFullscreenSettingsMenuOpen(false);
+    setImageViewerOpen(false);
+  }
+
+  function renderFullscreenSettingsMenu() {
+    return (
+      <div className="phone-image-fullscreen-menu" aria-label="Export image menu">
+        <button
+          className={`secondary-button compact-button ${activeSettingsPanel === "font" ? "active-tool" : ""}`}
+          type="button"
+          onClick={() => setFullscreenSettings("font")}
+        >
+          Font settings
+        </button>
+        <button
+          className={`secondary-button compact-button ${activeSettingsPanel === "image" ? "active-tool" : ""}`}
+          type="button"
+          onClick={() => setFullscreenSettings("image")}
+        >
+          Image settings
+        </button>
+        <button
+          className="primary-button compact-button"
+          type="button"
+          onClick={() => {
+            setFullscreenSettingsMenuOpen(false);
+            sharePhoneImage();
+          }}
+        >
+          Share
+        </button>
+        <button
+          className="secondary-button compact-button"
+          type="button"
+          onClick={() => {
+            setFullscreenSettingsMenuOpen(false);
+            downloadPhoneImage();
+          }}
+        >
+          Export PNG
+        </button>
       </div>
     );
   }
@@ -1490,11 +1543,23 @@ export default function TextPreview({
       {imageViewerOpen && (
         <section className="studio-panel phone-image-fullscreen" aria-label="Full screen preview image">
           <div className="panel-heading phone-image-fullscreen-heading">
-            <div>
-              <p className="eyebrow">Preview</p>
-              <h2>Export image</h2>
+            <div className="phone-image-menu-wrap">
+              <button
+                className={`secondary-button compact-button phone-image-menu-button ${fullscreenSettingsMenuOpen ? "active-tool" : ""}`}
+                type="button"
+                aria-expanded={fullscreenSettingsMenuOpen}
+                aria-label="Open export image settings"
+                onClick={() => setFullscreenSettingsMenuOpen((open) => !open)}
+              >
+                <span className="hamburger-lines" aria-hidden="true">
+                  <span />
+                  <span />
+                  <span />
+                </span>
+              </button>
+              {fullscreenSettingsMenuOpen && renderFullscreenSettingsMenu()}
             </div>
-            <button className="secondary-button compact-button" type="button" onClick={() => setImageViewerOpen(false)}>
+            <button className="secondary-button compact-button" type="button" onClick={closeFullscreenPreview}>
               Close
             </button>
           </div>
@@ -1508,7 +1573,6 @@ export default function TextPreview({
           </div>
 
           <div className="phone-image-fullscreen-settings">
-            {renderSettingsToggle("settings-toggle-row phone-image-fullscreen-settings-toggle")}
             {activeSettingsPanel === "font" ? (
               renderFontSettingsControls("phone-image-fullscreen-tools preview-layout-tools font-settings-tools")
             ) : (
@@ -1517,15 +1581,6 @@ export default function TextPreview({
                 {renderImageOptionControls("alignment-row image-option-row phone-image-fullscreen-options")}
               </>
             )}
-          </div>
-
-          <div className="phone-image-fullscreen-actions">
-            <button className="primary-button compact-button" type="button" onClick={sharePhoneImage}>
-              Share
-            </button>
-            <button className="secondary-button compact-button" type="button" onClick={downloadPhoneImage}>
-              Export PNG
-            </button>
           </div>
         </section>
       )}
