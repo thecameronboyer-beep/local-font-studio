@@ -96,6 +96,7 @@ export default function FontLibrary({
   getSavedGlyphCount,
 }: FontLibraryProps) {
   const activeFont = fonts.find((font) => font.id === activeFontId) ?? fonts[0];
+  const [createFormOpen, setCreateFormOpen] = useState(false);
   const [newFontName, setNewFontName] = useState("");
   const [newFontProfile, setNewFontProfile] = useState<FontRenderProfile>("plain");
   const [renameValue, setRenameValue] = useState(activeFont.name);
@@ -133,6 +134,8 @@ export default function FontLibrary({
     const name = newFontName.trim() || (newFontProfile === "quillParchment" ? "Quill on Parchment" : `Font ${fonts.length + 1}`);
     onCreateFont(name, newFontProfile);
     setNewFontName("");
+    setNewFontProfile("plain");
+    setCreateFormOpen(false);
   }
 
   function handleRenameFont() {
@@ -226,34 +229,49 @@ export default function FontLibrary({
         ))}
       </div>
 
-      <div className="library-form">
-        <label>
-          New font
-          <input
-            placeholder="New hand name"
-            value={newFontName}
-            onChange={(event) => setNewFontName(event.target.value)}
-          />
-        </label>
-        <div className="font-style-selector" aria-label="New font style">
-          {([
-            { id: "plain", label: "Plain" },
-            { id: "quillParchment", label: "Quill" },
-          ] as const).map((option) => (
-            <button
-              key={option.id}
-              className={`secondary-button compact-button ${newFontProfile === option.id ? "active-tool" : ""}`}
-              type="button"
-              onClick={() => setNewFontProfile(option.id)}
-            >
-              {option.label}
+      <form
+        className={`library-form ${createFormOpen ? "expanded" : "collapsed"}`}
+        onSubmit={(event) => {
+          event.preventDefault();
+          handleCreateFont();
+        }}
+      >
+        {createFormOpen ? (
+          <>
+            <label>
+              New font
+              <input
+                autoFocus
+                placeholder="New hand name"
+                value={newFontName}
+                onChange={(event) => setNewFontName(event.target.value)}
+              />
+            </label>
+            <div className="font-style-selector" aria-label="New font style">
+              {([
+                { id: "plain", label: "Pen" },
+                { id: "quillParchment", label: "Quill" },
+              ] as const).map((option) => (
+                <button
+                  key={option.id}
+                  className={`secondary-button compact-button ${newFontProfile === option.id ? "active-tool" : ""}`}
+                  type="button"
+                  onClick={() => setNewFontProfile(option.id)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <button className="primary-button" type="submit">
+              Create
             </button>
-          ))}
-        </div>
-        <button className="primary-button" type="button" onClick={handleCreateFont}>
-          Create
-        </button>
-      </div>
+          </>
+        ) : (
+          <button className="primary-button create-font-toggle" type="button" onClick={() => setCreateFormOpen(true)}>
+            Create new font
+          </button>
+        )}
+      </form>
 
     </section>
   );

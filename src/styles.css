@@ -493,10 +493,8 @@ h3 {
 
 .library-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto 118px;
-  align-items: end;
   gap: 10px;
-  padding: 10px 18px 18px;
+  margin: 10px 18px 18px;
 }
 
 .library-form label {
@@ -507,6 +505,17 @@ h3 {
   font-weight: 800;
 }
 
+.library-form.collapsed {
+  margin-top: 10px;
+}
+
+.library-form.expanded {
+  border: 1px solid rgba(248, 230, 194, 0.12);
+  border-radius: 8px;
+  background: #181617;
+  padding: 12px;
+}
+
 .library-form input {
   width: 100%;
   min-height: 48px;
@@ -515,6 +524,11 @@ h3 {
   background: #141315;
   color: #f8f0df;
   padding: 0 12px;
+}
+
+.create-font-toggle {
+  width: 100%;
+  min-height: 54px;
 }
 
 .font-style-selector {
