@@ -309,11 +309,6 @@ export default function App() {
               getSavedGlyphCount={getSavedGlyphCount}
             />
           </div>
-          <FontMetricsPanel
-            font={activeFont}
-            selectedCharacter={selectedCharacter}
-            onSelectCharacter={handleSelectCharacter}
-          />
           <div ref={previewRef}>
             <TextPreview
               font={activeFont}
@@ -325,6 +320,11 @@ export default function App() {
               spacebarGlyph={spacebarGlyph}
             />
           </div>
+          <FontMetricsPanel
+            font={activeFont}
+            selectedCharacter={selectedCharacter}
+            onSelectCharacter={handleSelectCharacter}
+          />
         </div>
       </div>
 
