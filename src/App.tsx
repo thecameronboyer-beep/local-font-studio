@@ -4,7 +4,6 @@ import FontLibrary from "./components/FontLibrary";
 import FontMetricsPanel from "./components/FontMetricsPanel";
 import GlyphEditor from "./components/GlyphEditor";
 import GlyphGrid from "./components/GlyphGrid";
-import ProjectSafetyPanel from "./components/ProjectSafetyPanel";
 import TextPreview from "./components/TextPreview";
 import { spacebar, supportedCharacters } from "./data/characterSets";
 import { hasDrawnGlyph } from "./render/glyphRenderer";
@@ -12,11 +11,7 @@ import {
   cloneFontSet,
   createEmptyGlyph,
   createFontSet,
-  createProjectBackup,
-  exportFontStudioProject,
-  importFontStudioProject,
   loadFontStudioDataWithHealth,
-  loadProjectBackups,
   recordProjectActivity,
   saveFontStudioData,
 } from "./storage/fontStorage";
@@ -24,7 +19,6 @@ import type { FontRenderProfile, FontSet, FontStudioData, Glyph, ProjectActivity
 
 export default function App() {
   const libraryRef = useRef<HTMLDivElement | null>(null);
-  const projectRef = useRef<HTMLDivElement | null>(null);
   const previewRef = useRef<HTMLDivElement | null>(null);
   const [initialLoad] = useState(() => {
     const result = loadFontStudioDataWithHealth();
@@ -35,8 +29,6 @@ export default function App() {
     return result;
   });
   const [studioData, setStudioData] = useState<FontStudioData>(initialLoad.data);
-  const [storageHealth, setStorageHealth] = useState(initialLoad.health);
-  const [projectBackups, setProjectBackups] = useState(() => loadProjectBackups());
   const [selectedCharacter, setSelectedCharacter] = useState("A");
   const [editorFullScreen, setEditorFullScreen] = useState(false);
   const [gridFullScreen, setGridFullScreen] = useState(false);
@@ -73,29 +65,6 @@ export default function App() {
 
     setStudioData(dataWithActivity);
     saveFontStudioData(dataWithActivity, { backupReason: activity?.type ?? "autosave" });
-    setProjectBackups(loadProjectBackups());
-    setStorageHealth({
-      checkedAt: new Date().toISOString(),
-      message: "Project storage is healthy.",
-      status: "ok",
-      storageVersion: dataWithActivity.version,
-      warnings: [],
-    });
-  }
-
-  function downloadTextFile(filename: string, text: string, mimeType: string) {
-    const blob = new Blob([text], { type: mimeType });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-
-    link.href = url;
-    link.download = filename;
-    link.click();
-    URL.revokeObjectURL(url);
-  }
-
-  function sanitizeFileName(value: string) {
-    return value.trim().replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "font-studio";
   }
 
   function handleSelectCharacter(character: string) {
@@ -235,102 +204,12 @@ export default function App() {
     });
   }
 
-  function handleCreateRestorePoint() {
-    const now = new Date().toISOString();
-    const nextData = recordProjectActivity(
-      {
-        ...studioData,
-        lastBackupAt: now,
-      },
-      {
-        message: "Created a manual restore point.",
-        type: "backup",
-      },
-    );
-    const backup = createProjectBackup(nextData, "manual restore point");
-
-    saveFontStudioData(nextData, { createBackup: false });
-    setStudioData({ ...nextData, lastBackupAt: backup.createdAt });
-    setProjectBackups(loadProjectBackups());
-    setStorageHealth({
-      checkedAt: now,
-      message: "Project storage is healthy.",
-      status: "ok",
-      storageVersion: nextData.version,
-      warnings: [],
-    });
-  }
-
-  function handleExportProject() {
-    const nextData = recordProjectActivity(studioData, {
-      fontId: activeFont.id,
-      message: "Exported project JSON.",
-      type: "export",
-    });
-    const filename = `${sanitizeFileName(activeFont.name)}-font-studio-project.json`;
-
-    setStudioData(nextData);
-    saveFontStudioData(nextData, { backupReason: "export" });
-    setProjectBackups(loadProjectBackups());
-    downloadTextFile(filename, exportFontStudioProject(nextData), "application/json");
-  }
-
   function handleRecordPreviewExport(message: string) {
     persist(studioData, {
       fontId: activeFont.id,
       message,
       type: "export",
     });
-  }
-
-  async function handleImportProject(file: File) {
-    const rawText = await file.text();
-    const importedData = importFontStudioProject(rawText);
-    const confirmed = window.confirm(
-      `Import "${file.name}" and replace the current project? A restore point will be created first.`,
-    );
-
-    if (!confirmed) {
-      return "Import cancelled.";
-    }
-
-    createProjectBackup(studioData, "before import");
-    persist(importedData, {
-      details: { fileName: file.name, fonts: importedData.fonts.length },
-      message: `Imported project "${file.name}".`,
-      type: "import",
-    });
-    setSelectedCharacter("A");
-    setEditorFullScreen(false);
-    setGridFullScreen(false);
-
-    return `Imported ${importedData.fonts.length} fonts from ${file.name}.`;
-  }
-
-  function handleRestoreBackup(backupId: string) {
-    const backup = projectBackups.find((item) => item.id === backupId);
-
-    if (!backup) {
-      return;
-    }
-
-    const confirmed = window.confirm(
-      `Restore "${backup.reason}" from ${new Date(backup.createdAt).toLocaleString()}? Your current project will be backed up first.`,
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    createProjectBackup(studioData, "before restore");
-    persist(backup.data, {
-      details: { backupId: backup.id },
-      message: `Restored backup "${backup.reason}".`,
-      type: "restore",
-    });
-    setSelectedCharacter("A");
-    setEditorFullScreen(false);
-    setGridFullScreen(false);
   }
 
   return (
@@ -374,9 +253,6 @@ export default function App() {
         <nav className="sidebar-nav">
           <button type="button" onClick={() => jumpToSection(libraryRef)}>
             Font library
-          </button>
-          <button type="button" onClick={() => jumpToSection(projectRef)}>
-            Project safety
           </button>
           <button
             type="button"
@@ -431,17 +307,6 @@ export default function App() {
               onDuplicateFont={handleDuplicateFont}
               onDeleteFont={handleDeleteFont}
               getSavedGlyphCount={getSavedGlyphCount}
-            />
-          </div>
-          <div ref={projectRef}>
-            <ProjectSafetyPanel
-              backups={projectBackups}
-              data={studioData}
-              health={storageHealth}
-              onCreateRestorePoint={handleCreateRestorePoint}
-              onExportProject={handleExportProject}
-              onImportProject={handleImportProject}
-              onRestoreBackup={handleRestoreBackup}
             />
           </div>
           <FontMetricsPanel
