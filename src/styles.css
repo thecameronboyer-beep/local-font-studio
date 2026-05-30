@@ -2126,7 +2126,7 @@ h1 {
   font-size: 0.72rem;
 }
 
-/* Full-screen draw mode: the drawing surface gets the room; adjustment controls toggle into the bottom toolbar. */
+/* Full-screen draw mode: keep the drawing surface dominant and float compact controls over it. */
 .fullscreen-draw-only {
   position: fixed;
   inset: 0 auto 0 50%;
@@ -2157,8 +2157,7 @@ h1 {
 }
 
 .draw-only-topbar,
-.draw-only-toolbar,
-.draw-save-status {
+.draw-fullscreen-controls {
   position: absolute;
   z-index: 2;
   left: max(8px, env(safe-area-inset-left));
@@ -2168,15 +2167,15 @@ h1 {
 .draw-only-topbar {
   top: max(8px, env(safe-area-inset-top));
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
 }
 
 .draw-character-pill {
   display: grid;
   place-items: center;
-  min-height: 38px;
+  min-height: 34px;
   border: 1px solid rgba(17, 16, 18, 0.2);
   border-radius: 8px;
   background: rgba(244, 234, 215, 0.78);
@@ -2185,73 +2184,79 @@ h1 {
 }
 
 .draw-character-pill strong {
-  font-size: 1.05rem;
+  font-size: 0.98rem;
   line-height: 1;
 }
 
 .draw-character-pill span {
   color: #4a4135;
-  font-size: 0.68rem;
+  font-size: 0.62rem;
   font-weight: 900;
 }
 
-.draw-only-toolbar {
-  bottom: max(8px, env(safe-area-inset-bottom));
+.draw-fullscreen-controls {
+  bottom: max(6px, env(safe-area-inset-bottom));
   display: grid;
-  gap: 4px;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.draw-fullscreen-controls > * {
+  pointer-events: auto;
+}
+
+.draw-only-toolbar {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 5px;
   border: 1px solid rgba(248, 230, 194, 0.16);
   border-radius: 8px;
   background: rgba(21, 19, 20, 0.86);
-  padding: 6px;
+  padding: 5px;
   backdrop-filter: blur(16px);
   box-shadow: 0 18px 55px rgba(0, 0, 0, 0.24);
 }
 
-.draw-tool-grid,
-.draw-compact-row,
-.draw-brush-ink-row,
-.draw-save-row {
+.draw-control-drawer {
   display: grid;
-  gap: 4px;
-}
-
-.draw-tool-grid {
-  grid-template-columns: repeat(4, 1fr);
-}
-
-.draw-only-toolbar .engine-option-row {
-  grid-template-columns: repeat(auto-fit, minmax(74px, 1fr));
-  gap: 4px;
-}
-
-.draw-compact-row {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.smoothing-row {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.ink-effect-row {
-  grid-template-columns: 1fr;
-}
-
-.draw-brush-ink-row {
-  grid-template-columns: minmax(0, 1fr) 74px;
-  align-items: center;
-}
-
-.draw-save-row {
-  grid-template-columns: 1fr 1.35fr;
+  gap: 8px;
+  border: 1px solid rgba(248, 230, 194, 0.16);
+  border-radius: 8px;
+  background: rgba(21, 19, 20, 0.93);
+  padding: 8px;
+  backdrop-filter: blur(16px);
+  box-shadow: 0 18px 55px rgba(0, 0, 0, 0.3);
 }
 
 .draw-glass-button,
-.draw-gold-button {
-  min-height: 31px;
+.draw-gold-button,
+.draw-drawer-button {
+  min-height: 40px;
   border-radius: 8px;
   padding: 0 6px;
   font-size: 0.68rem;
   font-weight: 900;
+}
+
+.draw-icon-button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0;
+}
+
+.draw-top-icon {
+  width: 36px;
+  min-height: 34px;
+}
+
+.draw-icon-button svg,
+.draw-drawer-button svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 2.7;
 }
 
 .draw-glass-button {
@@ -2273,28 +2278,135 @@ h1 {
   color: #f8f0df;
 }
 
-.draw-brush-control {
+.draw-ink-dot {
+  position: absolute;
+  right: 7px;
+  bottom: 6px;
+  width: 10px;
+  height: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.22),
+    0 0 0 2px rgba(0, 0, 0, 0.18);
+}
+
+.draw-drawer-grid {
+  display: grid;
+  gap: 6px;
+}
+
+.draw-drawer-grid.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.draw-drawer-grid.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.draw-drawer-grid.four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.draw-drawer-button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(248, 230, 194, 0.16);
+  background: rgba(25, 22, 24, 0.9);
+  color: #f8f0df;
+  text-align: left;
+}
+
+.draw-drawer-button.full {
+  width: 100%;
+}
+
+.draw-drawer-button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.draw-drawer-button.accent {
+  border-color: rgba(200, 164, 93, 0.46);
+  background: #c8a45d;
+  color: #17110b;
+}
+
+.draw-drawer-button.active-tool {
+  border-color: #82d0bc;
+  background: #1b2c2b;
+  color: #f8f0df;
+}
+
+.draw-drawer-range {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 6px;
+  gap: 8px;
   align-items: center;
+  min-height: 38px;
   color: #f4ead7;
-  font-size: 0.68rem;
+  font-size: 0.7rem;
   font-weight: 900;
 }
 
-.draw-brush-control input[type="range"] {
+.draw-drawer-range input[type="range"] {
   min-width: 0;
 }
 
+.draw-ink-swatches {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.draw-ink-swatch {
+  display: grid;
+  place-items: center;
+  min-height: 36px;
+  border: 1px solid rgba(248, 230, 194, 0.14);
+  border-radius: 8px;
+  background: rgba(13, 12, 14, 0.82);
+  padding: 4px;
+}
+
+.draw-ink-swatch.selected {
+  border-color: #82d0bc;
+  background: #1b2c2b;
+}
+
+.draw-ink-swatch span {
+  width: 100%;
+  height: 100%;
+  min-height: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+}
+
+.draw-control-drawer .eye-style-control {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.draw-control-drawer .eye-style-button {
+  min-height: 34px;
+  font-size: 0.66rem;
+}
+
 .draw-save-status {
-  bottom: calc(max(8px, env(safe-area-inset-bottom)) + 190px);
-  min-height: 18px;
+  justify-self: center;
+  min-height: 26px;
+  border: 1px solid rgba(27, 111, 92, 0.18);
+  border-radius: 999px;
+  background: rgba(244, 234, 215, 0.88);
+  padding: 5px 10px;
   color: #1b6f5c;
-  font-size: 0.78rem;
+  font-size: 0.7rem;
   font-weight: 900;
   text-align: center;
-  pointer-events: none;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.14);
 }
 
 .fullscreen-grid-page {

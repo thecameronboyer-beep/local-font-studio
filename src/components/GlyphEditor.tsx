@@ -1,4 +1,25 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Droplets,
+  Ellipsis,
+  Eraser,
+  Eye,
+  Feather,
+  Hand,
+  MousePointer2,
+  PenLine,
+  Redo2,
+  RotateCcw,
+  Save,
+  SkipForward,
+  SlidersHorizontal,
+  Undo2,
+  X,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
 import GlyphCanvas from "./GlyphCanvas";
 import type { CanvasViewOffset, DrawingTool, EraserMode, SmoothingMode } from "./GlyphCanvas";
 import SpacingControls from "./SpacingControls";
@@ -29,6 +50,8 @@ type GlyphEditorProps = {
   isFullScreen: boolean;
   onToggleFullScreen: () => void;
 };
+
+type FullscreenDrawer = "ink" | "more" | null;
 
 const glyphInkSwatches = ["#19140f", "#d93434", "#f0a934", "#16815f", "#2468c9", "#8b4bd9"];
 const DEFAULT_CANVAS_VIEW: CanvasViewOffset = { x: 0, y: 0 };
@@ -415,6 +438,8 @@ export default function GlyphEditor({
   const [viewScale, setViewScale] = useState(1);
   const [savedMessage, setSavedMessage] = useState("");
   const [historyCounts, setHistoryCounts] = useState({ past: 0, future: 0 });
+  const [activeFullscreenDrawer, setActiveFullscreenDrawer] = useState<FullscreenDrawer>(null);
+  const fullscreenControlsRef = useRef<HTMLDivElement | null>(null);
   const characterLabel = getCharacterLabel(glyph.character);
   const activeReferenceCharacter = referenceCharacter === glyph.character ? "" : referenceCharacter;
   const referenceGlyph = activeReferenceCharacter ? font.glyphs[activeReferenceCharacter] : null;
@@ -428,6 +453,7 @@ export default function GlyphEditor({
     setHistoryCounts({ past: 0, future: 0 });
     setReferenceCharacter((current) => (current === glyph.character ? "" : current));
     setSelectedStrokeId(null);
+    setActiveFullscreenDrawer(null);
     setSavedMessage("");
   }, [glyph.character]);
 
@@ -440,10 +466,33 @@ export default function GlyphEditor({
   useEffect(() => {
     document.body.classList.toggle("editor-fullscreen-open", isFullScreen);
 
+    if (!isFullScreen) {
+      setActiveFullscreenDrawer(null);
+    }
+
     return () => {
       document.body.classList.remove("editor-fullscreen-open");
     };
   }, [isFullScreen]);
+
+  useEffect(() => {
+    if (!isFullScreen || !activeFullscreenDrawer) {
+      return;
+    }
+
+    function closeDrawerOnOutsidePress(event: PointerEvent) {
+      const target = event.target;
+
+      if (!(target instanceof Node) || fullscreenControlsRef.current?.contains(target)) {
+        return;
+      }
+
+      setActiveFullscreenDrawer(null);
+    }
+
+    document.addEventListener("pointerdown", closeDrawerOnOutsidePress);
+    return () => document.removeEventListener("pointerdown", closeDrawerOnOutsidePress);
+  }, [activeFullscreenDrawer, isFullScreen]);
 
   function syncHistoryCounts() {
     setHistoryCounts({
@@ -483,6 +532,15 @@ export default function GlyphEditor({
     if (nextTool !== "select") {
       setSelectedStrokeId(null);
     }
+  }
+
+  function chooseDockTool(nextTool: DrawingTool) {
+    chooseTool(nextTool);
+    setActiveFullscreenDrawer(null);
+  }
+
+  function toggleFullscreenDrawer(drawer: Exclude<FullscreenDrawer, null>) {
+    setActiveFullscreenDrawer((current) => (current === drawer ? null : drawer));
   }
 
   function handleDeleteSelectedStroke() {
@@ -626,11 +684,23 @@ export default function GlyphEditor({
         />
 
         <div className="draw-only-topbar" aria-label="Drawing navigation">
-          <button className="draw-glass-button" type="button" onClick={onToggleFullScreen}>
-            Exit
+          <button
+            className="draw-glass-button draw-icon-button draw-top-icon"
+            type="button"
+            aria-label="Exit fullscreen drawing"
+            title="Exit"
+            onClick={onToggleFullScreen}
+          >
+            <X aria-hidden="true" />
           </button>
-          <button className="draw-glass-button" type="button" onClick={onPreviousCharacter}>
-            Prev
+          <button
+            className="draw-glass-button draw-icon-button draw-top-icon"
+            type="button"
+            aria-label="Previous glyph"
+            title="Previous"
+            onClick={onPreviousCharacter}
+          >
+            <ChevronLeft aria-hidden="true" />
           </button>
           <div className="draw-character-pill">
             <strong>{characterLabel}</strong>
@@ -638,170 +708,258 @@ export default function GlyphEditor({
               {characterIndex + 1}/{characterTotal}
             </span>
           </div>
-          <button className="draw-glass-button" type="button" onClick={onNextCharacter}>
-            Next
+          <button
+            className="draw-glass-button draw-icon-button draw-top-icon"
+            type="button"
+            aria-label="Next glyph"
+            title="Next"
+            onClick={onNextCharacter}
+          >
+            <ChevronRight aria-hidden="true" />
           </button>
         </div>
 
-        <div className="draw-only-toolbar" aria-label="Drawing tools">
-          <div className="draw-tool-grid">
-            <button
-              className={`draw-glass-button ${tool === "pen" ? "active-tool" : ""}`}
-              type="button"
-              onClick={() => chooseTool("pen")}
-            >
-              Pen
-            </button>
-            <button
-              className={`draw-glass-button ${tool === "quill" ? "active-tool" : ""}`}
-              type="button"
-              onClick={() => chooseTool("quill")}
-            >
-              Quill
-            </button>
-            <button
-              className={`draw-glass-button ${tool === "eyes" ? "active-tool" : ""}`}
-              type="button"
-              onClick={() => chooseTool("eyes")}
-            >
-              Eyes
-            </button>
-            <button
-              className={`draw-glass-button ${tool === "eraser" ? "active-tool" : ""}`}
-              type="button"
-              onClick={() => chooseTool("eraser")}
-            >
-              Eraser
-            </button>
-            <button
-              className={`draw-glass-button ${tool === "select" ? "active-tool" : ""}`}
-              type="button"
-              onClick={() => chooseTool("select")}
-            >
-              Select
-            </button>
-            <button
-              className={`draw-glass-button ${tool === "pan" ? "active-tool" : ""}`}
-              type="button"
-              onClick={() => chooseTool("pan")}
-            >
-              Pan
-            </button>
-            <button
-              className="draw-glass-button"
-              type="button"
-              disabled={historyCounts.past === 0}
-              onClick={handleUndo}
-            >
-              Undo
-            </button>
-            <button
-              className="draw-glass-button"
-              type="button"
-              disabled={historyCounts.future === 0}
-              onClick={handleRedo}
-            >
-              Redo
-            </button>
-          </div>
-
-          {tool === "eyes" && <EyeExpressionControl expression={eyeExpression} onExpressionChange={setEyeExpression} />}
-
-          {tool === "eraser" && (
-            <div className="engine-option-row" aria-label="Eraser mode">
-              <button
-                className={`draw-glass-button ${eraserMode === "stroke" ? "active-tool" : ""}`}
-                type="button"
-                onClick={() => setEraserMode("stroke")}
-              >
-                Stroke
-              </button>
-              <button
-                className={`draw-glass-button ${eraserMode === "point" ? "active-tool" : ""}`}
-                type="button"
-                onClick={() => setEraserMode("point")}
-              >
-                Point
-              </button>
+        <div className="draw-fullscreen-controls" ref={fullscreenControlsRef}>
+          {savedMessage && (
+            <div className="draw-save-status" aria-live="polite">
+              {savedMessage}
             </div>
           )}
 
-          <div className="draw-compact-row smoothing-row" aria-label="Stroke smoothing">
-            {smoothingOptions.map((option) => (
+          {activeFullscreenDrawer === "ink" && (
+            <div id="draw-ink-drawer" className="draw-control-drawer" aria-label="Ink drawer">
+              <div className="draw-drawer-grid two" aria-label="Ink tool">
+                <button
+                  className={`draw-drawer-button ${tool === "pen" ? "active-tool" : ""}`}
+                  type="button"
+                  onClick={() => chooseTool("pen")}
+                >
+                  <PenLine aria-hidden="true" />
+                  <span>Pen</span>
+                </button>
+                <button
+                  className={`draw-drawer-button ${tool === "quill" ? "active-tool" : ""}`}
+                  type="button"
+                  onClick={() => chooseTool("quill")}
+                >
+                  <Feather aria-hidden="true" />
+                  <span>Quill</span>
+                </button>
+              </div>
+
+              <label className="draw-drawer-range">
+                <span>Brush</span>
+                <input
+                  type="range"
+                  min="3"
+                  max="28"
+                  value={brushSize}
+                  onChange={(event) => setBrushSize(Number(event.target.value))}
+                />
+                <output>{brushSize}px</output>
+              </label>
+
+              <div className="draw-ink-swatches" aria-label="Ink colors">
+                {glyphInkSwatches.map((color) => (
+                  <button
+                    key={color}
+                    className={`draw-ink-swatch ${inkColor === color ? "selected" : ""}`}
+                    type="button"
+                    onClick={() => setInkColor(color)}
+                    aria-label={`Use ink color ${color}`}
+                  >
+                    <span style={{ backgroundColor: color }} />
+                  </button>
+                ))}
+              </div>
+
               <button
-                key={option.id}
-                className={`draw-glass-button ${smoothingMode === option.id ? "active-tool" : ""}`}
+                className={`draw-drawer-button full ${inkEffect === "dramaticPooling" ? "active-tool" : ""}`}
                 type="button"
-                onClick={() => setSmoothingMode(option.id)}
+                onClick={() => setInkEffect((current) => (current === "dramaticPooling" ? "none" : "dramaticPooling"))}
               >
-                {option.label}
+                <Droplets aria-hidden="true" />
+                <span>Dramatic ink</span>
               </button>
-            ))}
-          </div>
 
-          <div className="draw-compact-row ink-effect-row" aria-label="Ink effect">
-            <button
-              className={`draw-glass-button ${inkEffect === "dramaticPooling" ? "active-tool" : ""}`}
-              type="button"
-              onClick={() => setInkEffect((current) => (current === "dramaticPooling" ? "none" : "dramaticPooling"))}
-            >
-              Dramatic ink
-            </button>
-          </div>
-
-          <div className="draw-compact-row view-row" aria-label="Canvas view">
-            <button className="draw-glass-button" type="button" onClick={() => handleZoom(-0.15)}>
-              Zoom -
-            </button>
-            <button className="draw-glass-button" type="button" onClick={handleResetView}>
-              {Math.round(viewScale * 100)}%
-            </button>
-            <button className="draw-glass-button" type="button" onClick={() => handleZoom(0.15)}>
-              Zoom +
-            </button>
-            <button
-              className={`draw-glass-button ${showGuides ? "active-tool" : ""}`}
-              type="button"
-              onClick={() => setShowGuides((current) => !current)}
-            >
-              Guides
-            </button>
-          </div>
-
-          {selectedStrokeId && (
-            <button className="draw-glass-button danger-action" type="button" onClick={handleDeleteSelectedStroke}>
-              Delete stroke
-            </button>
+              <div className="draw-drawer-grid three" aria-label="Stroke smoothing">
+                {smoothingOptions.map((option) => (
+                  <button
+                    key={option.id}
+                    className={`draw-drawer-button ${smoothingMode === option.id ? "active-tool" : ""}`}
+                    type="button"
+                    onClick={() => setSmoothingMode(option.id)}
+                  >
+                    <SlidersHorizontal aria-hidden="true" />
+                    <span>{option.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
 
-          <div className="draw-brush-ink-row">
-            <label className="draw-brush-control">
-              <span>Brush</span>
-              <input
-                type="range"
-                min="3"
-                max="28"
-                value={brushSize}
-                onChange={(event) => setBrushSize(Number(event.target.value))}
-              />
-              <output>{brushSize}px</output>
-            </label>
+          {activeFullscreenDrawer === "more" && (
+            <div id="draw-more-drawer" className="draw-control-drawer" aria-label="More drawing controls">
+              <div className="draw-drawer-grid two" aria-label="Save actions">
+                <button
+                  className="draw-drawer-button"
+                  type="button"
+                  onClick={() => {
+                    handleSave();
+                    setActiveFullscreenDrawer(null);
+                  }}
+                >
+                  <Save aria-hidden="true" />
+                  <span>Save</span>
+                </button>
+                <button
+                  className="draw-drawer-button accent"
+                  type="button"
+                  onClick={() => {
+                    handleSaveAndNext();
+                    setActiveFullscreenDrawer(null);
+                  }}
+                >
+                  <SkipForward aria-hidden="true" />
+                  <span>Save + next</span>
+                </button>
+              </div>
 
-            <InkColorControl inkColor={inkColor} onInkColorChange={setInkColor} />
-          </div>
+              <div className="draw-drawer-grid four" aria-label="Canvas view">
+                <button className="draw-drawer-button" type="button" onClick={() => handleZoom(-0.15)}>
+                  <ZoomOut aria-hidden="true" />
+                  <span>Zoom</span>
+                </button>
+                <button className="draw-drawer-button" type="button" onClick={handleResetView}>
+                  <RotateCcw aria-hidden="true" />
+                  <span>{Math.round(viewScale * 100)}%</span>
+                </button>
+                <button className="draw-drawer-button" type="button" onClick={() => handleZoom(0.15)}>
+                  <ZoomIn aria-hidden="true" />
+                  <span>Zoom</span>
+                </button>
+                <button
+                  className={`draw-drawer-button ${showGuides ? "active-tool" : ""}`}
+                  type="button"
+                  onClick={() => setShowGuides((current) => !current)}
+                >
+                  <Eye aria-hidden="true" />
+                  <span>Guides</span>
+                </button>
+              </div>
 
-          <div className="draw-save-row">
-            <button className="draw-glass-button" type="button" onClick={handleSave}>
-              Save
+              <div className="draw-drawer-grid three" aria-label="Secondary tools">
+                <button
+                  className={`draw-drawer-button ${tool === "eyes" ? "active-tool" : ""}`}
+                  type="button"
+                  onClick={() => chooseTool("eyes")}
+                >
+                  <Eye aria-hidden="true" />
+                  <span>Eyes</span>
+                </button>
+                <button
+                  className={`draw-drawer-button ${eraserMode === "stroke" ? "active-tool" : ""}`}
+                  type="button"
+                  onClick={() => setEraserMode("stroke")}
+                >
+                  <Eraser aria-hidden="true" />
+                  <span>Stroke</span>
+                </button>
+                <button
+                  className={`draw-drawer-button ${eraserMode === "point" ? "active-tool" : ""}`}
+                  type="button"
+                  onClick={() => setEraserMode("point")}
+                >
+                  <Eraser aria-hidden="true" />
+                  <span>Point</span>
+                </button>
+              </div>
+
+              {tool === "eyes" && <EyeExpressionControl expression={eyeExpression} onExpressionChange={setEyeExpression} />}
+
+              {selectedStrokeId && (
+                <button className="draw-drawer-button danger-action full" type="button" onClick={handleDeleteSelectedStroke}>
+                  <X aria-hidden="true" />
+                  <span>Delete stroke</span>
+                </button>
+              )}
+            </div>
+          )}
+
+          <div className="draw-only-toolbar" aria-label="Drawing dock">
+            <button
+              className={`draw-glass-button draw-icon-button ${
+                activeFullscreenDrawer === "ink" || tool === "pen" || tool === "quill" ? "active-tool" : ""
+              }`}
+              type="button"
+              aria-label="Open ink tool settings"
+              aria-expanded={activeFullscreenDrawer === "ink"}
+              aria-controls="draw-ink-drawer"
+              title="Ink"
+              onClick={() => toggleFullscreenDrawer("ink")}
+            >
+              {tool === "quill" ? <Feather aria-hidden="true" /> : <PenLine aria-hidden="true" />}
+              <span className="draw-ink-dot" style={{ backgroundColor: inkColor }} />
             </button>
-            <button className="draw-gold-button" type="button" onClick={handleSaveAndNext}>
-              Save + next
+            <button
+              className={`draw-glass-button draw-icon-button ${tool === "eraser" ? "active-tool" : ""}`}
+              type="button"
+              aria-label="Use eraser"
+              title="Eraser"
+              onClick={() => chooseDockTool("eraser")}
+            >
+              <Eraser aria-hidden="true" />
+            </button>
+            <button
+              className={`draw-glass-button draw-icon-button ${tool === "select" ? "active-tool" : ""}`}
+              type="button"
+              aria-label="Use select"
+              title="Select"
+              onClick={() => chooseDockTool("select")}
+            >
+              <MousePointer2 aria-hidden="true" />
+            </button>
+            <button
+              className={`draw-glass-button draw-icon-button ${tool === "pan" ? "active-tool" : ""}`}
+              type="button"
+              aria-label="Use pan"
+              title="Pan"
+              onClick={() => chooseDockTool("pan")}
+            >
+              <Hand aria-hidden="true" />
+            </button>
+            <button
+              className="draw-glass-button draw-icon-button"
+              type="button"
+              aria-label="Undo"
+              title="Undo"
+              disabled={historyCounts.past === 0}
+              onClick={handleUndo}
+            >
+              <Undo2 aria-hidden="true" />
+            </button>
+            <button
+              className="draw-glass-button draw-icon-button"
+              type="button"
+              aria-label="Redo"
+              title="Redo"
+              disabled={historyCounts.future === 0}
+              onClick={handleRedo}
+            >
+              <Redo2 aria-hidden="true" />
+            </button>
+            <button
+              className={`draw-glass-button draw-icon-button ${activeFullscreenDrawer === "more" ? "active-tool" : ""}`}
+              type="button"
+              aria-label="Open more drawing controls"
+              aria-expanded={activeFullscreenDrawer === "more"}
+              aria-controls="draw-more-drawer"
+              title="More"
+              onClick={() => toggleFullscreenDrawer("more")}
+            >
+              <Ellipsis aria-hidden="true" />
             </button>
           </div>
-        </div>
-
-        <div className="draw-save-status" aria-live="polite">
-          {savedMessage}
         </div>
       </section>
     );
