@@ -21,10 +21,6 @@ function clamp(value: number) {
   return Math.min(1, Math.max(0, value));
 }
 
-function clampInk(value: number) {
-  return Math.min(1, Math.max(0, value));
-}
-
 function makeStrokeId() {
   return `stroke_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -69,13 +65,6 @@ export default function GlyphCanvas({
   const decorationsRef = useRef(decorations);
   const activeStrokeRef = useRef<GlyphStroke | null>(null);
   const activeDecorationIdRef = useRef<string | null>(null);
-  const activePointerRef = useRef<{
-    lastBloomAt: number;
-    lastSampleAt: number;
-    x: number;
-    y: number;
-  } | null>(null);
-  const inkPoolTimerRef = useRef<ReturnType<typeof window.setInterval> | null>(null);
   const erasingRef = useRef(false);
 
   useEffect(() => {
@@ -83,8 +72,6 @@ export default function GlyphCanvas({
     decorationsRef.current = decorations;
     drawCanvas(strokes, decorations);
   }, [brushSize, decorations, eyeExpression, strokes, tool]);
-
-  useEffect(() => () => stopInkPooling(), []);
 
   function drawCanvas(nextStrokes: GlyphStroke[], nextDecorations: GlyphDecoration[]) {
     const canvas = canvasRef.current;
@@ -214,15 +201,6 @@ export default function GlyphCanvas({
     return Math.min(1, Math.max(0.48, eventPressure ?? (event.pointerType === "mouse" ? 0.58 : 0.66)));
   }
 
-  function getMotionInk(distance: number, elapsed: number, pressure: number) {
-    const speed = elapsed > 0 ? distance / elapsed : 0;
-    const slowInk = clampInk((0.0042 - speed) / 0.0042);
-    const dwellInk = elapsed > 70 ? clampInk((elapsed - 70) / 360) : 0;
-    const pressureInk = clampInk((pressure - 0.5) / 0.5);
-
-    return clampInk(0.04 + slowInk * 0.42 + dwellInk * 0.34 + pressureInk * 0.2);
-  }
-
   function pushInkPoint(point: GlyphStroke["points"][number]) {
     const stroke = activeStrokeRef.current;
 
@@ -278,44 +256,6 @@ export default function GlyphCanvas({
     onChangeDecorations(nextDecorations);
   }
 
-  function startInkPooling() {
-    stopInkPooling();
-
-    inkPoolTimerRef.current = window.setInterval(() => {
-      const stroke = activeStrokeRef.current;
-      const activePointer = activePointerRef.current;
-
-      if (!stroke || !activePointer) {
-        return;
-      }
-
-      const now = performance.now();
-      const dwell = now - activePointer.lastSampleAt;
-
-      if (dwell < 150 || now - activePointer.lastBloomAt < 155) {
-        return;
-      }
-
-      activePointer.lastBloomAt = now;
-      const lastPoint = stroke.points[stroke.points.length - 1];
-      const bloom = clampInk((dwell - 90) / 820);
-
-      pushInkPoint({
-        x: activePointer.x,
-        y: activePointer.y,
-        pressure: Math.min(1, (lastPoint?.pressure ?? 0.62) + bloom * 0.18),
-        ink: Math.max(lastPoint?.ink ?? 0, 0.3 + bloom * 0.7),
-      });
-    }, 155);
-  }
-
-  function stopInkPooling() {
-    if (inkPoolTimerRef.current !== null) {
-      window.clearInterval(inkPoolTimerRef.current);
-      inkPoolTimerRef.current = null;
-    }
-  }
-
   function handlePointerDown(event: PointerEvent<HTMLCanvasElement>) {
     if (event.pointerType === "mouse" && event.button !== 0) {
       return;
@@ -324,7 +264,6 @@ export default function GlyphCanvas({
     event.currentTarget.setPointerCapture(event.pointerId);
 
     const point = getCanvasPoint(event);
-    const now = performance.now();
     const pressure = getEventPressure(event);
 
     onEditStart();
@@ -354,20 +293,13 @@ export default function GlyphCanvas({
         {
           ...point,
           pressure,
-          ink: 0.16 + pressure * 0.18,
+          ink: 0,
         },
       ],
       size: brushSize / CANVAS_SIZE,
     };
 
     activeStrokeRef.current = stroke;
-    activePointerRef.current = {
-      lastBloomAt: now,
-      lastSampleAt: now,
-      x: point.x,
-      y: point.y,
-    };
-    startInkPooling();
 
     const nextStrokes = [...strokesRef.current, stroke];
     strokesRef.current = nextStrokes;
@@ -396,27 +328,17 @@ export default function GlyphCanvas({
     const point = getCanvasPoint(event);
     const lastPoint = stroke.points[stroke.points.length - 1];
     const distance = Math.hypot(point.x - lastPoint.x, point.y - lastPoint.y);
-    const now = performance.now();
-    const activePointer = activePointerRef.current;
-    const elapsed = activePointer ? now - activePointer.lastSampleAt : 0;
 
-    if (distance < 0.0015 && elapsed < 80) {
+    if (distance < 0.0015) {
       return;
     }
 
     const pressure = getEventPressure(event);
-    const ink = getMotionInk(distance, elapsed, pressure);
-
-    if (activePointer) {
-      activePointer.lastSampleAt = now;
-      activePointer.x = point.x;
-      activePointer.y = point.y;
-    }
 
     pushInkPoint({
       ...point,
       pressure,
-      ink,
+      ink: 0,
     });
   }
 
@@ -427,9 +349,7 @@ export default function GlyphCanvas({
 
     activeStrokeRef.current = null;
     activeDecorationIdRef.current = null;
-    activePointerRef.current = null;
     erasingRef.current = false;
-    stopInkPooling();
   }
 
   function eraseAtPoint(x: number, y: number) {
