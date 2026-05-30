@@ -927,6 +927,66 @@ input[type="color"] {
   padding: 14px 18px 18px;
 }
 
+.missing-content {
+  gap: 10px;
+}
+
+.missing-group-card {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(248, 230, 194, 0.12);
+  border-radius: 8px;
+  background: #211e20;
+  padding: 10px;
+}
+
+.missing-group-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 4px 8px;
+}
+
+.missing-group-heading span {
+  grid-column: 1 / -1;
+  color: #cbbfae;
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.missing-group-heading strong {
+  color: #fff7e6;
+}
+
+.missing-group-heading em,
+.missing-complete {
+  color: #82d0bc;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.missing-character-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(42px, 1fr));
+  gap: 7px;
+}
+
+.missing-character-button {
+  min-height: 36px;
+  border: 1px solid rgba(248, 230, 194, 0.12);
+  border-radius: 8px;
+  background: #141315;
+  color: #f3dfb6;
+  padding: 0 8px;
+  font-weight: 900;
+}
+
+.missing-character-button.selected {
+  border-color: #82d0bc;
+  background: #1b2c2b;
+  color: #f8f0df;
+}
+
 .metric-readout-grid,
 .metric-group-grid,
 .consistency-grid,

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
 import FontLibrary from "./components/FontLibrary";
 import FontMetricsPanel from "./components/FontMetricsPanel";
-import type { FontMetricKey } from "./components/FontMetricsPanel";
 import GlyphEditor from "./components/GlyphEditor";
 import GlyphGrid from "./components/GlyphGrid";
 import ProjectSafetyPanel from "./components/ProjectSafetyPanel";
@@ -235,43 +234,6 @@ export default function App() {
     });
   }
 
-  function handleApplyMetricsToCharacters(characters: string[], metricKeys: FontMetricKey[]) {
-    const sourceGlyph = activeFont.glyphs[selectedCharacter] ?? createEmptyGlyph(selectedCharacter);
-    const now = new Date().toISOString();
-    const nextGlyphs = { ...activeFont.glyphs };
-
-    for (const character of characters) {
-      const currentGlyph = nextGlyphs[character] ?? createEmptyGlyph(character);
-      nextGlyphs[character] = {
-        ...currentGlyph,
-        ...Object.fromEntries(metricKeys.map((key) => [key, sourceGlyph[key]])),
-        updatedAt: now,
-      };
-    }
-
-    persist({
-      ...studioData,
-      fonts: studioData.fonts.map((font) =>
-        font.id === activeFont.id
-          ? {
-              ...font,
-              glyphs: nextGlyphs,
-              updatedAt: now,
-            }
-          : font,
-      ),
-    }, {
-      character: selectedCharacter,
-      details: {
-        characters: characters.length,
-        metrics: metricKeys.join(", "),
-      },
-      fontId: activeFont.id,
-      message: `Applied ${metricKeys.length} metrics to ${characters.length} glyphs.`,
-      type: "metrics_batch",
-    });
-  }
-
   function handleCreateRestorePoint() {
     const now = new Date().toISOString();
     const nextData = recordProjectActivity(
@@ -484,7 +446,6 @@ export default function App() {
           <FontMetricsPanel
             font={activeFont}
             selectedCharacter={selectedCharacter}
-            onApplyMetrics={handleApplyMetricsToCharacters}
             onSelectCharacter={handleSelectCharacter}
           />
           <div ref={previewRef}>
