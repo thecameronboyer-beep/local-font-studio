@@ -37,7 +37,7 @@ type TextPreviewProps = {
 type ExportPresetId = "phone" | "social" | "transparent";
 type FontMetricKey = "baselineOffset" | "leftBearing" | "rightBearing" | "width" | "xAdvance";
 type ImageMetricKey = "canvasHeight" | "canvasWidth" | "fontSize" | "lineSpacing" | "pagePadding";
-type SettingsPanel = "font" | "image";
+type SettingsPanel = "font" | "image" | "position";
 type TextAlignment = "left" | "center" | "right";
 
 type PreviewImageSettings = PreviewSettings & {
@@ -1170,6 +1170,16 @@ export default function TextPreview({
           Image settings
         </button>
         <button
+          className={`secondary-button compact-button ${activeSettingsPanel === "position" ? "active-tool" : ""}`}
+          type="button"
+          onClick={() => setFullscreenSettings("position")}
+        >
+          Position settings
+        </button>
+        <button className="secondary-button compact-button" type="button" onClick={openStyleEditor}>
+          Style
+        </button>
+        <button
           className="primary-button compact-button"
           type="button"
           onClick={() => {
@@ -1241,9 +1251,9 @@ export default function TextPreview({
     );
   }
 
-  function renderImageOptionControls(className = "alignment-row image-option-row") {
+  function renderPositionSettingsControls(className = "alignment-row image-option-row") {
     return (
-      <div className={className} aria-label="Image options">
+      <div className={className} aria-label="Position settings">
         {(["left", "center", "right"] as const).map((alignment) => (
           <button
             key={alignment}
@@ -1264,9 +1274,6 @@ export default function TextPreview({
           />
           Fit
         </label>
-        <button className="secondary-button compact-button" type="button" onClick={openStyleEditor}>
-          Style
-        </button>
       </div>
     );
   }
@@ -1514,14 +1521,12 @@ export default function TextPreview({
           </div>
 
           <div className="phone-image-fullscreen-settings">
-            {activeSettingsPanel === "font" ? (
-              renderFontSettingsControls("phone-image-fullscreen-tools preview-layout-tools font-settings-tools")
-            ) : (
-              <>
-                {renderImageLayoutControls("phone-image-fullscreen-tools preview-layout-tools")}
-                {renderImageOptionControls("alignment-row image-option-row phone-image-fullscreen-options")}
-              </>
-            )}
+            {activeSettingsPanel === "font" &&
+              renderFontSettingsControls("phone-image-fullscreen-tools preview-layout-tools font-settings-tools")}
+            {activeSettingsPanel === "image" &&
+              renderImageLayoutControls("phone-image-fullscreen-tools preview-layout-tools")}
+            {activeSettingsPanel === "position" &&
+              renderPositionSettingsControls("alignment-row image-option-row phone-image-fullscreen-options")}
           </div>
         </section>
       )}
