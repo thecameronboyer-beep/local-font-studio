@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import type { FontSet } from "../types/fontTypes";
+import type { FontRenderProfile, FontSet } from "../types/fontTypes";
 
 type FontLibraryProps = {
   fonts: FontSet[];
   activeFontId: string;
   onSelectFont: (fontId: string) => void;
-  onCreateFont: (name: string) => void;
+  onCreateFont: (name: string, renderProfile: FontRenderProfile) => void;
   onRenameFont: (fontId: string, name: string) => void;
   onDuplicateFont: (fontId: string) => void;
   onDeleteFont: (fontId: string) => void;
@@ -24,6 +24,7 @@ export default function FontLibrary({
 }: FontLibraryProps) {
   const activeFont = fonts.find((font) => font.id === activeFontId) ?? fonts[0];
   const [newFontName, setNewFontName] = useState("");
+  const [newFontProfile, setNewFontProfile] = useState<FontRenderProfile>("plain");
   const [renameValue, setRenameValue] = useState(activeFont.name);
 
   useEffect(() => {
@@ -31,8 +32,8 @@ export default function FontLibrary({
   }, [activeFont.id, activeFont.name]);
 
   function handleCreateFont() {
-    const name = newFontName.trim() || `Font ${fonts.length + 1}`;
-    onCreateFont(name);
+    const name = newFontName.trim() || (newFontProfile === "quillParchment" ? "Quill on Parchment" : `Font ${fonts.length + 1}`);
+    onCreateFont(name, newFontProfile);
     setNewFontName("");
   }
 
@@ -94,6 +95,21 @@ export default function FontLibrary({
             onChange={(event) => setNewFontName(event.target.value)}
           />
         </label>
+        <div className="font-style-selector" aria-label="New font style">
+          {([
+            { id: "plain", label: "Plain" },
+            { id: "quillParchment", label: "Quill" },
+          ] as const).map((option) => (
+            <button
+              key={option.id}
+              className={`secondary-button compact-button ${newFontProfile === option.id ? "active-tool" : ""}`}
+              type="button"
+              onClick={() => setNewFontProfile(option.id)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
         <button className="primary-button" type="button" onClick={handleCreateFont}>
           Create
         </button>

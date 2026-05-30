@@ -1,8 +1,10 @@
 import { supportedCharacters } from "../data/characterSets";
 import type {
   BackgroundStyle,
+  FontRenderProfile,
   FontSet,
   FontStudioData,
+  FontTheme,
   Glyph,
   GlyphDecoration,
   GlyphPoint,
@@ -21,7 +23,7 @@ const CURRENT_STORAGE_VERSION = 2;
 const MAX_ACTIVITY_ENTRIES = 80;
 const MAX_BACKUPS = 12;
 const AUTO_BACKUP_INTERVAL_MS = 5 * 60 * 1000;
-const GLYPH_CANVAS_SIZE = 430;
+const GLYPH_CANVAS_SIZE = 720;
 const DEFAULT_STROKE_SIZE = 4 / GLYPH_CANVAS_SIZE;
 const MIN_STROKE_SIZE = 3 / GLYPH_CANVAS_SIZE;
 const MAX_STROKE_SIZE = 64 / GLYPH_CANVAS_SIZE;
@@ -45,6 +47,13 @@ export const defaultGlyphMetrics = {
   rightBearing: 0.08,
 };
 
+export const quillParchmentTheme: FontTheme = {
+  accentColor: "#9b6f3b",
+  backgroundColor: "#efe0bd",
+  backgroundStyle: "parchment",
+  inkColor: "#2a160d",
+};
+
 export function createId(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -59,7 +68,7 @@ export function createEmptyGlyph(character: string): Glyph {
   };
 }
 
-export function createFontSet(name: string): FontSet {
+export function createFontSet(name: string, renderProfile: FontRenderProfile = "plain"): FontSet {
   const glyphs = supportedCharacters.reduce<Record<string, Glyph>>((map, character) => {
     map[character] = createEmptyGlyph(character);
     return map;
@@ -72,6 +81,7 @@ export function createFontSet(name: string): FontSet {
     name,
     glyphs,
     createdAt: now,
+    ...(renderProfile === "quillParchment" ? { renderProfile, theme: quillParchmentTheme } : {}),
     updatedAt: now,
   };
 }
@@ -135,6 +145,10 @@ function safeNumber(value: unknown, fallback: number, min = 0, max = 4) {
 
 function isRemovedAngryPreset(font: Partial<FontSet>) {
   return font.name === "Angry Face" || font.theme?.backgroundStyle === "rage";
+}
+
+function normalizeRenderProfile(value: unknown): FontRenderProfile | undefined {
+  return value === "quillParchment" ? "quillParchment" : undefined;
 }
 
 function normalizePoint(point: unknown): GlyphPoint | null {
@@ -253,6 +267,7 @@ function normalizeFont(font: unknown, usedFontIds: Set<string>, fallbackName: st
     name: safeString(font.name, fallbackName),
     glyphs,
     createdAt: safeString(font.createdAt, now),
+    ...(normalizeRenderProfile(font.renderProfile) ? { renderProfile: "quillParchment" as const } : {}),
     ...(isRecord(font.theme)
       ? {
           theme: {

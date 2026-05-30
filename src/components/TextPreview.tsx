@@ -184,6 +184,14 @@ const backgroundPresets: Array<{
     preview: "#f4ead7",
   },
   {
+    id: "parchment",
+    label: "Parchment",
+    backgroundColor: "#efe0bd",
+    inkColor: "#2a160d",
+    accentColor: "#9b6f3b",
+    preview: "linear-gradient(135deg, #f6eccd, #d6b97c 58%, #8f5f30)",
+  },
+  {
     id: "midnight",
     label: "Midnight",
     backgroundColor: "#111827",
@@ -525,6 +533,7 @@ export default function TextPreview({ font, onRecordExport, onSaveImage, preview
             y: glyphY,
             size: renderSettings.fontSize,
             color: renderSettings.inkColor,
+            renderProfile: font.renderProfile,
             widthScale: glyph.width,
           });
           x += getGlyphAdvance(glyph, renderSettings.fontSize);
@@ -567,6 +576,56 @@ export default function TextPreview({ font, onRecordExport, onSaveImage, preview
     ctx.restore();
   }
 
+  function drawParchmentTexture(ctx: CanvasRenderingContext2D, renderSettings: PreviewImageSettings) {
+    const imageWidth = renderSettings.canvasWidth;
+    const imageHeight = renderSettings.canvasHeight;
+    const gradient = ctx.createLinearGradient(0, 0, imageWidth, imageHeight);
+    gradient.addColorStop(0, "#f8edcb");
+    gradient.addColorStop(0.46, renderSettings.backgroundColor);
+    gradient.addColorStop(1, "#c69b5f");
+
+    ctx.save();
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, imageWidth, imageHeight);
+    drawPaperTexture(ctx, renderSettings.accentColor, imageWidth, imageHeight);
+
+    ctx.globalAlpha = 0.14;
+    ctx.strokeStyle = "#8b5d2e";
+    ctx.lineWidth = Math.max(1, imageWidth / 1400);
+    for (let index = 0; index < 46; index += 1) {
+      const y = ((index * 157) % imageHeight) + Math.sin(index * 1.7) * 18;
+      const xStart = (index * 71) % Math.max(1, renderSettings.pagePadding);
+      ctx.beginPath();
+      ctx.moveTo(xStart, y);
+      ctx.bezierCurveTo(
+        imageWidth * 0.3,
+        y + Math.sin(index) * 28,
+        imageWidth * 0.68,
+        y - Math.cos(index * 0.6) * 34,
+        imageWidth,
+        y + Math.sin(index * 0.4) * 16,
+      );
+      ctx.stroke();
+    }
+
+    const edge = Math.max(60, imageWidth * 0.11);
+    const edgeGradient = ctx.createRadialGradient(
+      imageWidth / 2,
+      imageHeight / 2,
+      Math.min(imageWidth, imageHeight) * 0.22,
+      imageWidth / 2,
+      imageHeight / 2,
+      Math.max(imageWidth, imageHeight) * 0.72,
+    );
+    edgeGradient.addColorStop(0, "rgba(92, 50, 21, 0)");
+    edgeGradient.addColorStop(0.76, "rgba(92, 50, 21, 0.12)");
+    edgeGradient.addColorStop(1, "rgba(54, 28, 12, 0.34)");
+    ctx.fillStyle = edgeGradient;
+    ctx.globalAlpha = 1;
+    ctx.fillRect(-edge, -edge, imageWidth + edge * 2, imageHeight + edge * 2);
+    ctx.restore();
+  }
+
   function drawPreviewBackground(ctx: CanvasRenderingContext2D, renderSettings: PreviewImageSettings) {
     const imageWidth = renderSettings.canvasWidth;
     const imageHeight = renderSettings.canvasHeight;
@@ -574,6 +633,11 @@ export default function TextPreview({ font, onRecordExport, onSaveImage, preview
     ctx.clearRect(0, 0, imageWidth, imageHeight);
 
     if (renderSettings.transparent) {
+      return;
+    }
+
+    if (renderSettings.backgroundStyle === "parchment") {
+      drawParchmentTexture(ctx, renderSettings);
       return;
     }
 

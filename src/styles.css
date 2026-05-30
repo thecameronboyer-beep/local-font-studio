@@ -314,7 +314,8 @@ h3 {
 
 .library-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 120px;
+  grid-template-columns: minmax(0, 1fr) auto 120px;
+  align-items: end;
   gap: 10px;
   padding: 10px 18px 0;
 }
@@ -335,6 +336,17 @@ h3 {
   background: #141315;
   color: #f8f0df;
   padding: 0 12px;
+}
+
+.font-style-selector {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.font-style-selector .compact-button {
+  min-width: 74px;
+  min-height: 48px;
 }
 
 .library-actions {
@@ -1600,6 +1612,10 @@ h1 {
   grid-template-columns: 1fr;
   padding-right: 14px;
   padding-left: 14px;
+}
+
+.font-style-selector {
+  grid-template-columns: 1fr 1fr;
 }
 
 .glyph-grid {

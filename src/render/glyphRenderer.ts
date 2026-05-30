@@ -1,4 +1,4 @@
-import type { Glyph, GlyphDecoration, GlyphStroke } from "../types/fontTypes";
+import type { FontRenderProfile, Glyph, GlyphDecoration, GlyphStroke } from "../types/fontTypes";
 
 export type GlyphDrawOptions = {
   x: number;
@@ -6,7 +6,12 @@ export type GlyphDrawOptions = {
   size: number;
   color: string;
   alpha?: number;
+  renderProfile?: FontRenderProfile;
   widthScale?: number;
+};
+
+type StrokeDrawOptions = {
+  renderProfile?: FontRenderProfile;
 };
 
 export function hasDrawnGlyph(glyph: Glyph | undefined) {
@@ -56,6 +61,82 @@ function getLineWidth(baseWidth: number, point: GlyphStroke["points"][number]) {
   return baseWidth * (0.82 + pressure * 0.34);
 }
 
+const QUILL_NIB_ANGLE = (38 * Math.PI) / 180;
+
+function getSeed(value: string, salt: number) {
+  let seed = salt;
+
+  for (let index = 0; index < value.length; index += 1) {
+    seed = (seed * 33 + value.charCodeAt(index)) % 104729;
+  }
+
+  return seed / 104729;
+}
+
+function getQuillSegmentWidth(
+  baseWidth: number,
+  strokeId: string,
+  start: GlyphStroke["points"][number],
+  end: GlyphStroke["points"][number],
+  segmentIndex: number,
+  segmentCount: number,
+  salt: number,
+) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const angle = Math.atan2(dy, dx);
+  const directionContrast = Math.abs(Math.sin(angle - QUILL_NIB_ANGLE));
+  const pressure = (getPointPressure(start) + getPointPressure(end)) / 2;
+  const taperProgress = segmentCount <= 1 ? 1 : segmentIndex / (segmentCount - 1);
+  const endTaper = Math.min(1, Math.max(0.42, Math.sin(Math.PI * Math.max(0.08, Math.min(0.92, taperProgress))) * 1.18));
+  const grain = 0.88 + getSeed(strokeId, segmentIndex + salt) * 0.28;
+
+  return baseWidth * (0.44 + directionContrast * 1.35) * pressure * endTaper * grain;
+}
+
+function getCanvasPoint(
+  point: GlyphStroke["points"][number],
+  x: number,
+  y: number,
+  sizeX: number,
+  sizeY: number,
+) {
+  return {
+    x: x + point.x * sizeX,
+    y: y + point.y * sizeY,
+  };
+}
+
+function getMidpoint(
+  first: GlyphStroke["points"][number],
+  second: GlyphStroke["points"][number],
+) {
+  return {
+    x: (first.x + second.x) / 2,
+    y: (first.y + second.y) / 2,
+  };
+}
+
+function drawCurveSegment(
+  ctx: CanvasRenderingContext2D,
+  start: GlyphStroke["points"][number],
+  control: GlyphStroke["points"][number],
+  end: GlyphStroke["points"][number],
+  x: number,
+  y: number,
+  sizeX: number,
+  sizeY: number,
+) {
+  const startPoint = getCanvasPoint(start, x, y, sizeX, sizeY);
+  const controlPoint = getCanvasPoint(control, x, y, sizeX, sizeY);
+  const endPoint = getCanvasPoint(end, x, y, sizeX, sizeY);
+
+  ctx.beginPath();
+  ctx.moveTo(startPoint.x, startPoint.y);
+  ctx.quadraticCurveTo(controlPoint.x, controlPoint.y, endPoint.x, endPoint.y);
+  ctx.stroke();
+}
+
 function drawPointDot(
   ctx: CanvasRenderingContext2D,
   point: GlyphStroke["points"][number],
@@ -78,6 +159,111 @@ function drawPointDot(
   ctx.restore();
 }
 
+function drawQuillPointMark(
+  ctx: CanvasRenderingContext2D,
+  stroke: GlyphStroke,
+  point: GlyphStroke["points"][number],
+  x: number,
+  y: number,
+  baseWidth: number,
+  sizeX: number,
+  sizeY: number,
+) {
+  const { x: px, y: py } = getCanvasPoint(point, x, y, sizeX, sizeY);
+  const grain = 0.92 + getSeed(stroke.id, 17) * 0.22;
+  const radius = getLineWidth(baseWidth, point) * grain;
+
+  ctx.save();
+  ctx.translate(px, py);
+  ctx.rotate(QUILL_NIB_ANGLE);
+  ctx.fillStyle = ctx.strokeStyle;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, radius * 0.66, radius * 0.22, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawQuillTexture(
+  ctx: CanvasRenderingContext2D,
+  strokeId: string,
+  start: GlyphStroke["points"][number],
+  end: GlyphStroke["points"][number],
+  x: number,
+  y: number,
+  sizeX: number,
+  sizeY: number,
+  width: number,
+  segmentIndex: number,
+) {
+  const drawMark = getSeed(strokeId, segmentIndex + 401) > 0.36;
+
+  if (!drawMark) {
+    return;
+  }
+
+  const startPoint = getCanvasPoint(start, x, y, sizeX, sizeY);
+  const endPoint = getCanvasPoint(end, x, y, sizeX, sizeY);
+  const dx = endPoint.x - startPoint.x;
+  const dy = endPoint.y - startPoint.y;
+  const length = Math.hypot(dx, dy);
+
+  if (length < 0.01) {
+    return;
+  }
+
+  const side = getSeed(strokeId, segmentIndex + 509) > 0.5 ? 1 : -1;
+  const offset = side * width * (0.28 + getSeed(strokeId, segmentIndex + 613) * 0.24);
+  const nx = (-dy / length) * offset;
+  const ny = (dx / length) * offset;
+  const inset = 0.16 + getSeed(strokeId, segmentIndex + 727) * 0.22;
+
+  ctx.save();
+  ctx.globalAlpha *= 0.3;
+  ctx.lineWidth = Math.max(0.6, width * 0.16);
+  ctx.beginPath();
+  ctx.moveTo(startPoint.x + dx * inset + nx, startPoint.y + dy * inset + ny);
+  ctx.lineTo(endPoint.x - dx * inset + nx, endPoint.y - dy * inset + ny);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawQuillStrokePath(
+  ctx: CanvasRenderingContext2D,
+  stroke: GlyphStroke,
+  x: number,
+  y: number,
+  size: number,
+  sizeX = size,
+  sizeY = size,
+) {
+  const baseWidth = Math.max(1.2, stroke.size * size * 0.95);
+  const [firstPoint, ...rest] = stroke.points;
+
+  if (rest.length === 0) {
+    drawQuillPointMark(ctx, stroke, firstPoint, x, y, baseWidth, sizeX, sizeY);
+    return;
+  }
+
+  const points = stroke.points;
+  const segmentCount = points.length - 1;
+
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  for (let index = 1; index < points.length; index += 1) {
+    const previousPreviousPoint = points[index - 2];
+    const previousPoint = points[index - 1];
+    const point = points[index];
+    const startPoint = previousPreviousPoint ? getMidpoint(previousPreviousPoint, previousPoint) : previousPoint;
+    const endPoint = index < points.length - 1 ? getMidpoint(previousPoint, point) : point;
+    const segmentWidth = getQuillSegmentWidth(baseWidth, stroke.id, previousPoint, point, index - 1, segmentCount, 73);
+
+    ctx.lineWidth = segmentWidth;
+    drawCurveSegment(ctx, startPoint, previousPoint, endPoint, x, y, sizeX, sizeY);
+    drawQuillTexture(ctx, stroke.id, startPoint, endPoint, x, y, sizeX, sizeY, segmentWidth, index);
+  }
+}
+
 export function drawStrokePath(
   ctx: CanvasRenderingContext2D,
   stroke: GlyphStroke,
@@ -87,6 +273,7 @@ export function drawStrokePath(
   sizeX = size,
   sizeY = size,
   fallbackColor?: string,
+  options: StrokeDrawOptions = {},
 ) {
   if (stroke.points.length === 0) {
     return;
@@ -97,6 +284,12 @@ export function drawStrokePath(
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   const baseWidth = Math.max(1.5, stroke.size * size);
+
+  if (options.renderProfile === "quillParchment") {
+    drawQuillStrokePath(ctx, stroke, x, y, size, sizeX, sizeY);
+    ctx.restore();
+    return;
+  }
 
   const [firstPoint, ...rest] = stroke.points;
 
@@ -258,14 +451,14 @@ export function drawGlyphDecoration(
 export function drawGlyph(
   ctx: CanvasRenderingContext2D,
   glyph: Glyph,
-  { x, y, size, color, alpha = 1, widthScale = glyph.width }: GlyphDrawOptions,
+  { x, y, size, color, alpha = 1, renderProfile = "plain", widthScale = glyph.width }: GlyphDrawOptions,
 ) {
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.strokeStyle = color;
 
   for (const stroke of glyph.strokes) {
-    drawStrokePath(ctx, stroke, x, y, size, size * widthScale, size, color);
+    drawStrokePath(ctx, stroke, x, y, size, size * widthScale, size, color, { renderProfile });
   }
 
   for (const decoration of glyph.decorations ?? []) {

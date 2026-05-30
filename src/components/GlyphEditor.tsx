@@ -271,6 +271,8 @@ function EditorLivePreview({
     const fontSize = 42;
     const padding = 12;
     const lineHeight = fontSize * 1.16;
+    const previewBackground = font.renderProfile === "quillParchment" ? font.theme?.backgroundColor ?? "#efe0bd" : "#171516";
+    const previewInkColor = font.renderProfile === "quillParchment" ? font.theme?.inkColor ?? "#2a160d" : "#f4ead7";
     const glyphs = {
       ...font.glyphs,
       [draftGlyph.character]: draftGlyph,
@@ -308,7 +310,7 @@ function EditorLivePreview({
     canvas.height = height * dpr;
     canvas.style.height = `${height}px`;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = "#171516";
+    ctx.fillStyle = previewBackground;
     ctx.fillRect(0, 0, width, height);
     ctx.font = getFallbackFont(fontSize);
     ctx.textBaseline = "top";
@@ -326,7 +328,8 @@ function EditorLivePreview({
             x: x + glyph.leftBearing * fontSize,
             y: baselineY - glyph.baselineOffset * fontSize,
             size: fontSize,
-            color: "#f4ead7",
+            color: previewInkColor,
+            renderProfile: font.renderProfile,
             widthScale: glyph.width,
           });
           x += getGlyphAdvance(glyph, fontSize);
@@ -338,7 +341,7 @@ function EditorLivePreview({
           continue;
         }
 
-        ctx.fillStyle = "#f4ead7";
+        ctx.fillStyle = previewInkColor;
         ctx.fillText(character, x, y + fontSize * 0.04);
         x += ctx.measureText(character).width;
       }
@@ -379,7 +382,7 @@ export default function GlyphEditor({
   const [brushSize, setBrushSize] = useState(9);
   const [eraserMode, setEraserMode] = useState<EraserMode>("stroke");
   const [eyeExpression, setEyeExpression] = useState<NonNullable<GlyphDecoration["expression"]>>("googly");
-  const [inkColor, setInkColor] = useState("#19140f");
+  const [inkColor, setInkColor] = useState(font.theme?.inkColor ?? "#19140f");
   const [referenceCharacter, setReferenceCharacter] = useState("");
   const [selectedStrokeId, setSelectedStrokeId] = useState<string | null>(null);
   const [showGuides, setShowGuides] = useState(true);
@@ -580,6 +583,7 @@ export default function GlyphEditor({
           eraserMode={eraserMode}
           inkColor={inkColor}
           referenceGlyph={referenceGlyph}
+          renderProfile={font.renderProfile}
           selectedStrokeId={selectedStrokeId}
           showGuides={showGuides}
           smoothingMode={smoothingMode}
@@ -893,6 +897,7 @@ export default function GlyphEditor({
         eraserMode={eraserMode}
         inkColor={inkColor}
         referenceGlyph={referenceGlyph}
+        renderProfile={font.renderProfile}
         selectedStrokeId={selectedStrokeId}
         showGuides={showGuides}
         smoothingMode={smoothingMode}

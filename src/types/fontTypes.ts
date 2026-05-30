@@ -37,6 +37,7 @@ export type Glyph = {
 export type BackgroundStyle =
   | "solid"
   | "paper"
+  | "parchment"
   | "midnight"
   | "rage"
   | "blush"
@@ -45,6 +46,8 @@ export type BackgroundStyle =
   | "lavender"
   | "lined"
   | "grid";
+
+export type FontRenderProfile = "plain" | "quillParchment";
 
 export type FontTheme = {
   accentColor: string;
@@ -58,6 +61,7 @@ export type FontSet = {
   name: string;
   glyphs: Record<string, Glyph>;
   createdAt: string;
+  renderProfile?: FontRenderProfile;
   theme?: FontTheme;
   updatedAt: string;
 };

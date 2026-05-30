@@ -35,6 +35,17 @@ for (const file of filesToScan) {
   }
 }
 
+const rendererSource = readFileSync(resolve(root, "src/render/glyphRenderer.ts"), "utf8");
+const canvasSource = readFileSync(resolve(root, "src/components/GlyphCanvas.tsx"), "utf8");
+
+if (!/quillParchment/.test(rendererSource) || !/QUILL_NIB_ANGLE/.test(rendererSource)) {
+  failures.push("src/render/glyphRenderer.ts: quill profile renderer is missing");
+}
+
+if (!/renderProfile/.test(canvasSource)) {
+  failures.push("src/components/GlyphCanvas.tsx: canvas must pass render profile into stroke rendering");
+}
+
 if (failures.length > 0) {
   console.error("Renderer regression guard failed:");
   for (const failure of failures) {

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { PointerEvent } from "react";
-import type { Glyph, GlyphDecoration, GlyphStroke } from "../types/fontTypes";
+import type { FontRenderProfile, Glyph, GlyphDecoration, GlyphStroke } from "../types/fontTypes";
 import { drawGlyphDecoration, drawStrokePath } from "../render/glyphRenderer";
 
 const CANVAS_SIZE = 720;
@@ -22,6 +22,7 @@ type GlyphCanvasProps = {
   eraserMode: EraserMode;
   inkColor: string;
   referenceGlyph?: Glyph | null;
+  renderProfile?: FontRenderProfile;
   selectedStrokeId: string | null;
   showGuides: boolean;
   smoothingMode: SmoothingMode;
@@ -176,6 +177,7 @@ export default function GlyphCanvas({
   eraserMode,
   inkColor,
   referenceGlyph,
+  renderProfile = "plain",
   selectedStrokeId,
   showGuides,
   smoothingMode,
@@ -207,7 +209,7 @@ export default function GlyphCanvas({
     decorationsRef.current = decorations;
     selectedStrokeIdRef.current = selectedStrokeId;
     drawCanvas(strokes, decorations);
-  }, [brushSize, decorations, eyeExpression, referenceGlyph, selectedStrokeId, showGuides, strokes, tool]);
+  }, [brushSize, decorations, eyeExpression, referenceGlyph, renderProfile, selectedStrokeId, showGuides, strokes, tool]);
 
   useEffect(() => {
     viewOffsetRef.current = viewOffset;
@@ -244,7 +246,7 @@ export default function GlyphCanvas({
     }
 
     for (const stroke of nextStrokes) {
-      drawStrokePath(ctx, stroke, 0, 0, CANVAS_SIZE, CANVAS_SIZE, CANVAS_SIZE, "#19140f");
+      drawStrokePath(ctx, stroke, 0, 0, CANVAS_SIZE, CANVAS_SIZE, CANVAS_SIZE, "#19140f", { renderProfile });
     }
 
     const selectedStroke = nextStrokes.find((stroke) => stroke.id === selectedStrokeId);
@@ -389,6 +391,7 @@ export default function GlyphCanvas({
         CANVAS_SIZE,
         CANVAS_SIZE,
         "#2468c9",
+        { renderProfile },
       );
     }
 

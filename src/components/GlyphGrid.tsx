@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { getCharacterLabel, supportedCharacters } from "../data/characterSets";
 import { drawGlyph, hasDrawnGlyph } from "../render/glyphRenderer";
-import type { FontSet, Glyph } from "../types/fontTypes";
+import type { FontRenderProfile, FontSet, Glyph } from "../types/fontTypes";
 
 type GlyphGridProps = {
   font: FontSet;
@@ -11,7 +11,7 @@ type GlyphGridProps = {
   onSelectCharacter: (character: string) => void;
 };
 
-function GlyphMiniPreview({ glyph }: { glyph: Glyph }) {
+function GlyphMiniPreview({ glyph, renderProfile }: { glyph: Glyph; renderProfile?: FontRenderProfile }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isDrawn = hasDrawnGlyph(glyph);
 
@@ -35,8 +35,8 @@ function GlyphMiniPreview({ glyph }: { glyph: Glyph }) {
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, size, size);
-    drawGlyph(ctx, glyph, { x: 8, y: 8, size: 56, color: "#f4ead7" });
-  }, [glyph, isDrawn]);
+    drawGlyph(ctx, glyph, { x: 8, y: 8, size: 56, color: "#f4ead7", renderProfile });
+  }, [glyph, isDrawn, renderProfile]);
 
   if (!isDrawn) {
     return <span className="glyph-placeholder">Empty</span>;
@@ -86,7 +86,7 @@ export default function GlyphGrid({
               aria-pressed={selected}
             >
               <span className="glyph-label">{getCharacterLabel(character)}</span>
-              <GlyphMiniPreview glyph={glyph} />
+              <GlyphMiniPreview glyph={glyph} renderProfile={font.renderProfile} />
             </button>
           );
         })}

@@ -21,7 +21,7 @@ import {
   recordProjectActivity,
   saveFontStudioData,
 } from "./storage/fontStorage";
-import type { FontSet, FontStudioData, Glyph, ProjectActivityDraft } from "./types/fontTypes";
+import type { FontRenderProfile, FontSet, FontStudioData, Glyph, ProjectActivityDraft } from "./types/fontTypes";
 
 export default function App() {
   const libraryRef = useRef<HTMLDivElement | null>(null);
@@ -125,8 +125,8 @@ export default function App() {
     });
   }
 
-  function handleCreateFont(name: string) {
-    const font = createFontSet(name);
+  function handleCreateFont(name: string, renderProfile: FontRenderProfile = "plain") {
+    const font = createFontSet(name, renderProfile);
 
     persist({
       ...studioData,
@@ -134,7 +134,7 @@ export default function App() {
       fonts: [...studioData.fonts, font],
     }, {
       fontId: font.id,
-      message: `Created font "${font.name}".`,
+      message: `Created ${renderProfile === "quillParchment" ? "quill" : "font"} "${font.name}".`,
       type: "font_create",
     });
   }
