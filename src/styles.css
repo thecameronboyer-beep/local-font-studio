@@ -1207,18 +1207,6 @@ input[type="color"] {
   padding: 0 18px 14px;
 }
 
-.settings-toggle-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  padding: 0 18px 12px;
-}
-
-.settings-toggle-row .compact-button {
-  min-height: 42px;
-  white-space: normal;
-}
-
 .phone-image-tools label,
 .check-control {
   display: grid;
@@ -2383,7 +2371,6 @@ h1 {
   background: #151314;
 }
 
-.phone-image-fullscreen-settings .settings-toggle-row,
 .phone-image-fullscreen-settings .phone-image-fullscreen-tools,
 .phone-image-fullscreen-settings .phone-image-fullscreen-options {
   padding: 0;

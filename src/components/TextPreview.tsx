@@ -1183,26 +1183,6 @@ export default function TextPreview({
     );
   }
 
-  function renderSettingsToggle(className = "settings-toggle-row") {
-    return (
-      <div className={className} aria-label="Settings mode">
-        {([
-          ["font", "Font settings"],
-          ["image", "Image settings"],
-        ] as const).map(([panel, label]) => (
-          <button
-            key={panel}
-            className={`secondary-button compact-button ${activeSettingsPanel === panel ? "active-tool" : ""}`}
-            type="button"
-            onClick={() => setActiveSettingsPanel(panel)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-    );
-  }
-
   function setFullscreenSettings(panel: SettingsPanel) {
     setActiveSettingsPanel(panel);
     setFullscreenSettingsMenuOpen(false);
@@ -1490,17 +1470,6 @@ export default function TextPreview({
           aria-label="Generated preview image"
         />
       </button>
-
-      {renderSettingsToggle()}
-
-      {activeSettingsPanel === "font" ? (
-        renderFontSettingsControls()
-      ) : (
-        <>
-          {renderImageLayoutControls()}
-          {renderImageOptionControls()}
-        </>
-      )}
 
       {styleEditorOpen && (
         <section className="studio-panel phone-style-fullscreen" aria-label="Preview style editor">
