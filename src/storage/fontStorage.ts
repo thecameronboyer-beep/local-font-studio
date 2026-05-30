@@ -21,6 +21,10 @@ const CURRENT_STORAGE_VERSION = 2;
 const MAX_ACTIVITY_ENTRIES = 80;
 const MAX_BACKUPS = 12;
 const AUTO_BACKUP_INTERVAL_MS = 5 * 60 * 1000;
+const GLYPH_CANVAS_SIZE = 430;
+const DEFAULT_STROKE_SIZE = 4 / GLYPH_CANVAS_SIZE;
+const MIN_STROKE_SIZE = 3 / GLYPH_CANVAS_SIZE;
+const MAX_STROKE_SIZE = 64 / GLYPH_CANVAS_SIZE;
 
 type SaveOptions = {
   backupReason?: string;
@@ -146,6 +150,16 @@ function normalizePoint(point: unknown): GlyphPoint | null {
   };
 }
 
+function normalizeStrokeSize(size: unknown) {
+  if (typeof size !== "number" || !Number.isFinite(size) || size <= 0) {
+    return DEFAULT_STROKE_SIZE;
+  }
+
+  const normalizedSize = size > 0.5 ? size / GLYPH_CANVAS_SIZE : size;
+
+  return Math.min(MAX_STROKE_SIZE, Math.max(MIN_STROKE_SIZE, normalizedSize));
+}
+
 function normalizeStroke(stroke: unknown): GlyphStroke | null {
   if (!isRecord(stroke)) {
     return null;
@@ -163,7 +177,7 @@ function normalizeStroke(stroke: unknown): GlyphStroke | null {
     ...(typeof stroke.color === "string" ? { color: stroke.color } : {}),
     id: safeString(stroke.id, createId("stroke")),
     points,
-    size: safeNumber(stroke.size, 8, 1, 64),
+    size: normalizeStrokeSize(stroke.size),
   };
 }
 
