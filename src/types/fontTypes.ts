@@ -62,10 +62,66 @@ export type FontSet = {
   updatedAt: string;
 };
 
+export type ProjectActivityType =
+  | "backup"
+  | "font_create"
+  | "font_delete"
+  | "font_duplicate"
+  | "font_rename"
+  | "glyph_edit"
+  | "import"
+  | "export"
+  | "metrics_batch"
+  | "migration"
+  | "recovery"
+  | "restore";
+
+export type ProjectActivity = {
+  character?: string;
+  createdAt: string;
+  details?: Record<string, boolean | number | string | null>;
+  fontId?: string;
+  id: string;
+  message: string;
+  type: ProjectActivityType;
+};
+
+export type ProjectActivityDraft = Omit<ProjectActivity, "createdAt" | "id">;
+
 export type FontStudioData = {
-  version: 1;
+  version: 2;
   activeFontId: string;
+  activityLog: ProjectActivity[];
   fonts: FontSet[];
+  lastBackupAt?: string;
+};
+
+export type ProjectBackup = {
+  activeFontName: string;
+  createdAt: string;
+  data: FontStudioData;
+  fontCount: number;
+  glyphCount: number;
+  id: string;
+  reason: string;
+};
+
+export type StorageHealthStatus = "ok" | "migrated" | "recovered" | "reset";
+
+export type StorageHealthCheck = {
+  checkedAt: string;
+  message: string;
+  recoveredBackupId?: string;
+  status: StorageHealthStatus;
+  storageVersion: number;
+  warnings: string[];
+};
+
+export type ProjectExportFile = {
+  app: "local-font-studio";
+  data: FontStudioData;
+  exportedAt: string;
+  schemaVersion: 2;
 };
 
 export type PreviewSettings = {

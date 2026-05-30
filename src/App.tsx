@@ -5,55 +5,39 @@ import FontMetricsPanel from "./components/FontMetricsPanel";
 import type { FontMetricKey } from "./components/FontMetricsPanel";
 import GlyphEditor from "./components/GlyphEditor";
 import GlyphGrid from "./components/GlyphGrid";
+import ProjectSafetyPanel from "./components/ProjectSafetyPanel";
 import TextPreview from "./components/TextPreview";
 import { supportedCharacters } from "./data/characterSets";
 import { hasDrawnGlyph } from "./render/glyphRenderer";
 import {
+  cloneFontSet,
   createEmptyGlyph,
   createFontSet,
-  createId,
-  loadFontStudioData,
+  createProjectBackup,
+  exportFontStudioProject,
+  importFontStudioProject,
+  loadFontStudioDataWithHealth,
+  loadProjectBackups,
+  recordProjectActivity,
   saveFontStudioData,
 } from "./storage/fontStorage";
-import type { FontSet, FontStudioData, Glyph } from "./types/fontTypes";
-
-function cloneFontSet(font: FontSet, name: string): FontSet {
-  const now = new Date().toISOString();
-
-  return {
-    ...font,
-    id: createId("font"),
-    name,
-    glyphs: Object.fromEntries(
-      Object.entries(font.glyphs).map(([character, glyph]) => [
-        character,
-        {
-          ...glyph,
-          decorations: (glyph.decorations ?? []).map((decoration) => ({
-            ...decoration,
-            id: createId("decoration"),
-          })),
-          strokes: glyph.strokes.map((stroke) => ({
-            ...stroke,
-            id: createId("stroke"),
-            points: stroke.points.map((point) => ({ ...point })),
-          })),
-        },
-      ]),
-    ),
-    createdAt: now,
-    updatedAt: now,
-  };
-}
+import type { FontSet, FontStudioData, Glyph, ProjectActivityDraft } from "./types/fontTypes";
 
 export default function App() {
   const libraryRef = useRef<HTMLDivElement | null>(null);
+  const projectRef = useRef<HTMLDivElement | null>(null);
   const previewRef = useRef<HTMLDivElement | null>(null);
-  const [studioData, setStudioData] = useState<FontStudioData>(() => {
-    const data = loadFontStudioData();
-    saveFontStudioData(data);
-    return data;
+  const [initialLoad] = useState(() => {
+    const result = loadFontStudioDataWithHealth();
+    saveFontStudioData(result.data, {
+      backupReason: result.health.status === "migrated" ? "migration" : "autosave",
+      createBackup: result.health.status === "migrated",
+    });
+    return result;
   });
+  const [studioData, setStudioData] = useState<FontStudioData>(initialLoad.data);
+  const [storageHealth, setStorageHealth] = useState(initialLoad.health);
+  const [projectBackups, setProjectBackups] = useState(() => loadProjectBackups());
   const [selectedCharacter, setSelectedCharacter] = useState("A");
   const [editorFullScreen, setEditorFullScreen] = useState(false);
   const [gridFullScreen, setGridFullScreen] = useState(false);
@@ -84,9 +68,34 @@ export default function App() {
     };
   }, [editorFullScreen, gridFullScreen]);
 
-  function persist(nextData: FontStudioData) {
-    setStudioData(nextData);
-    saveFontStudioData(nextData);
+  function persist(nextData: FontStudioData, activity?: ProjectActivityDraft) {
+    const dataWithActivity = activity ? recordProjectActivity(nextData, activity) : nextData;
+
+    setStudioData(dataWithActivity);
+    saveFontStudioData(dataWithActivity, { backupReason: activity?.type ?? "autosave" });
+    setProjectBackups(loadProjectBackups());
+    setStorageHealth({
+      checkedAt: new Date().toISOString(),
+      message: "Project storage is healthy.",
+      status: "ok",
+      storageVersion: dataWithActivity.version,
+      warnings: [],
+    });
+  }
+
+  function downloadTextFile(filename: string, text: string, mimeType: string) {
+    const blob = new Blob([text], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function sanitizeFileName(value: string) {
+    return value.trim().replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "font-studio";
   }
 
   function handleSelectCharacter(character: string) {
@@ -123,6 +132,10 @@ export default function App() {
       ...studioData,
       activeFontId: font.id,
       fonts: [...studioData.fonts, font],
+    }, {
+      fontId: font.id,
+      message: `Created font "${font.name}".`,
+      type: "font_create",
     });
   }
 
@@ -140,6 +153,10 @@ export default function App() {
             }
           : font,
       ),
+    }, {
+      fontId,
+      message: `Renamed font to "${name}".`,
+      type: "font_rename",
     });
   }
 
@@ -150,12 +167,17 @@ export default function App() {
       return;
     }
 
-    const copy = cloneFontSet(sourceFont, `${sourceFont.name} Copy`);
+    const copy = cloneFontSet(sourceFont, studioData.fonts);
 
     persist({
       ...studioData,
       activeFontId: copy.id,
       fonts: [...studioData.fonts, copy],
+    }, {
+      details: { sourceFontId: sourceFont.id },
+      fontId: copy.id,
+      message: `Duplicated "${sourceFont.name}" as "${copy.name}".`,
+      type: "font_duplicate",
     });
   }
 
@@ -180,6 +202,10 @@ export default function App() {
       ...studioData,
       activeFontId,
       fonts: remainingFonts,
+    }, {
+      fontId,
+      message: `Deleted font "${font?.name ?? "Untitled"}".`,
+      type: "font_delete",
     });
   }
 
@@ -201,7 +227,12 @@ export default function App() {
       ),
     };
 
-    persist(nextData);
+    persist(nextData, {
+      character: glyph.character,
+      fontId: activeFont.id,
+      message: `Saved glyph "${glyph.character}" in "${activeFont.name}".`,
+      type: "glyph_edit",
+    });
   }
 
   function handleApplyMetricsToCharacters(characters: string[], metricKeys: FontMetricKey[]) {
@@ -229,7 +260,114 @@ export default function App() {
             }
           : font,
       ),
+    }, {
+      character: selectedCharacter,
+      details: {
+        characters: characters.length,
+        metrics: metricKeys.join(", "),
+      },
+      fontId: activeFont.id,
+      message: `Applied ${metricKeys.length} metrics to ${characters.length} glyphs.`,
+      type: "metrics_batch",
     });
+  }
+
+  function handleCreateRestorePoint() {
+    const now = new Date().toISOString();
+    const nextData = recordProjectActivity(
+      {
+        ...studioData,
+        lastBackupAt: now,
+      },
+      {
+        message: "Created a manual restore point.",
+        type: "backup",
+      },
+    );
+    const backup = createProjectBackup(nextData, "manual restore point");
+
+    saveFontStudioData(nextData, { createBackup: false });
+    setStudioData({ ...nextData, lastBackupAt: backup.createdAt });
+    setProjectBackups(loadProjectBackups());
+    setStorageHealth({
+      checkedAt: now,
+      message: "Project storage is healthy.",
+      status: "ok",
+      storageVersion: nextData.version,
+      warnings: [],
+    });
+  }
+
+  function handleExportProject() {
+    const nextData = recordProjectActivity(studioData, {
+      fontId: activeFont.id,
+      message: "Exported project JSON.",
+      type: "export",
+    });
+    const filename = `${sanitizeFileName(activeFont.name)}-font-studio-project.json`;
+
+    setStudioData(nextData);
+    saveFontStudioData(nextData, { backupReason: "export" });
+    setProjectBackups(loadProjectBackups());
+    downloadTextFile(filename, exportFontStudioProject(nextData), "application/json");
+  }
+
+  function handleRecordPreviewExport(message: string) {
+    persist(studioData, {
+      fontId: activeFont.id,
+      message,
+      type: "export",
+    });
+  }
+
+  async function handleImportProject(file: File) {
+    const rawText = await file.text();
+    const importedData = importFontStudioProject(rawText);
+    const confirmed = window.confirm(
+      `Import "${file.name}" and replace the current project? A restore point will be created first.`,
+    );
+
+    if (!confirmed) {
+      return "Import cancelled.";
+    }
+
+    createProjectBackup(studioData, "before import");
+    persist(importedData, {
+      details: { fileName: file.name, fonts: importedData.fonts.length },
+      message: `Imported project "${file.name}".`,
+      type: "import",
+    });
+    setSelectedCharacter("A");
+    setEditorFullScreen(false);
+    setGridFullScreen(false);
+
+    return `Imported ${importedData.fonts.length} fonts from ${file.name}.`;
+  }
+
+  function handleRestoreBackup(backupId: string) {
+    const backup = projectBackups.find((item) => item.id === backupId);
+
+    if (!backup) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Restore "${backup.reason}" from ${new Date(backup.createdAt).toLocaleString()}? Your current project will be backed up first.`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    createProjectBackup(studioData, "before restore");
+    persist(backup.data, {
+      details: { backupId: backup.id },
+      message: `Restored backup "${backup.reason}".`,
+      type: "restore",
+    });
+    setSelectedCharacter("A");
+    setEditorFullScreen(false);
+    setGridFullScreen(false);
   }
 
   return (
@@ -273,6 +411,9 @@ export default function App() {
         <nav className="sidebar-nav">
           <button type="button" onClick={() => jumpToSection(libraryRef)}>
             Font library
+          </button>
+          <button type="button" onClick={() => jumpToSection(projectRef)}>
+            Project safety
           </button>
           <button
             type="button"
@@ -329,6 +470,17 @@ export default function App() {
               getSavedGlyphCount={getSavedGlyphCount}
             />
           </div>
+          <div ref={projectRef}>
+            <ProjectSafetyPanel
+              backups={projectBackups}
+              data={studioData}
+              health={storageHealth}
+              onCreateRestorePoint={handleCreateRestorePoint}
+              onExportProject={handleExportProject}
+              onImportProject={handleImportProject}
+              onRestoreBackup={handleRestoreBackup}
+            />
+          </div>
           <FontMetricsPanel
             font={activeFont}
             selectedCharacter={selectedCharacter}
@@ -338,6 +490,7 @@ export default function App() {
           <div ref={previewRef}>
             <TextPreview
               font={activeFont}
+              onRecordExport={handleRecordPreviewExport}
               previewText={previewText}
               onPreviewTextChange={setPreviewText}
             />

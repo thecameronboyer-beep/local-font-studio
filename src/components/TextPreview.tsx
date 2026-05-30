@@ -12,6 +12,7 @@ type SavedPreviewImage = {
 
 type TextPreviewProps = {
   font: FontSet;
+  onRecordExport?: (message: string) => void;
   onSaveImage?: (image: SavedPreviewImage) => boolean;
   previewText: string;
   onPreviewTextChange: (text: string) => void;
@@ -308,7 +309,7 @@ function formatPairGap(value: number) {
   return value.toFixed(2);
 }
 
-export default function TextPreview({ font, onSaveImage, previewText, onPreviewTextChange }: TextPreviewProps) {
+export default function TextPreview({ font, onRecordExport, onSaveImage, previewText, onPreviewTextChange }: TextPreviewProps) {
   const imageCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const styleCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const viewerCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -830,6 +831,7 @@ export default function TextPreview({ font, onSaveImage, previewText, onPreviewT
       link.click();
       URL.revokeObjectURL(objectUrl);
       setShareStatus(savedLocally === false ? "Saved PNG. Could not add to Saved Images." : "Saved PNG.");
+      onRecordExport?.(`Exported ${imageSettings.exportPreset} preview PNG.`);
     } catch {
       setShareStatus("Could not save the PNG.");
     }
@@ -854,6 +856,7 @@ export default function TextPreview({ font, onSaveImage, previewText, onPreviewT
       if (navigator.canShare?.(shareData)) {
         await navigator.share(shareData);
         setShareStatus("Share opened.");
+        onRecordExport?.(`Shared ${imageSettings.exportPreset} preview PNG.`);
         return;
       }
 
@@ -863,6 +866,7 @@ export default function TextPreview({ font, onSaveImage, previewText, onPreviewT
           title: font.name,
         });
         setShareStatus("This browser shared the app text, but not the image file.");
+        onRecordExport?.("Shared Local Font Studio preview text.");
         return;
       }
 
