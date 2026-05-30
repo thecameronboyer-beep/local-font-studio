@@ -1,9 +1,9 @@
 import { useMemo } from "react";
-import { lowercase, numbers, punctuation, uppercase } from "../data/characterSets";
+import { forgotten, getCharacterLabel, lowercase, numbers, punctuation, uppercase } from "../data/characterSets";
 import { hasDrawnGlyph } from "../render/glyphRenderer";
 import type { FontSet } from "../types/fontTypes";
 
-type MetricGroupId = "uppercase" | "lowercase" | "numbers" | "punctuation";
+type MetricGroupId = "uppercase" | "lowercase" | "numbers" | "punctuation" | "forgotten";
 
 type FontMetricsPanelProps = {
   font: FontSet;
@@ -15,17 +15,13 @@ const groupDefinitions: Array<{
   characters: string[];
   id: MetricGroupId;
   label: string;
-  status: "Required" | "Recommended";
 }> = [
-  { id: "uppercase", label: "Uppercase", status: "Required", characters: uppercase },
-  { id: "lowercase", label: "Lowercase", status: "Required", characters: lowercase },
-  { id: "numbers", label: "Numbers", status: "Required", characters: numbers },
-  { id: "punctuation", label: "Punctuation", status: "Recommended", characters: punctuation },
+  { id: "uppercase", label: "Uppercase", characters: uppercase },
+  { id: "lowercase", label: "Lowercase", characters: lowercase },
+  { id: "numbers", label: "Numbers", characters: numbers },
+  { id: "punctuation", label: "Punctuation", characters: punctuation },
+  { id: "forgotten", label: "Forgotten", characters: forgotten },
 ];
-
-function getCharacterLabel(character: string) {
-  return character === " " ? "space" : character;
-}
 
 export default function FontMetricsPanel({
   font,
@@ -52,7 +48,6 @@ export default function FontMetricsPanel({
     <section className="studio-panel metrics-panel" aria-label="Missing glyphs">
       <div className="panel-heading compact-heading">
         <div>
-          <p className="eyebrow">Font system</p>
           <h2>Missing</h2>
         </div>
         <div className="glyph-pill">{totalMissing} left</div>
@@ -62,7 +57,6 @@ export default function FontMetricsPanel({
         {missingGroups.map((group) => (
           <div key={group.id} className="missing-group-card">
             <div className="missing-group-heading">
-              <span>{group.status}</span>
               <strong>{group.label}</strong>
               <em>
                 {group.drawnCount}/{group.characters.length}

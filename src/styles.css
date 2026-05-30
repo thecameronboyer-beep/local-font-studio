@@ -944,14 +944,7 @@ input[type="color"] {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
-  gap: 4px 8px;
-}
-
-.missing-group-heading span {
-  grid-column: 1 / -1;
-  color: #cbbfae;
-  font-size: 0.68rem;
-  font-weight: 900;
+  gap: 8px;
 }
 
 .missing-group-heading strong {
