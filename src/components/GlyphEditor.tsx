@@ -415,7 +415,6 @@ export default function GlyphEditor({
   const [viewScale, setViewScale] = useState(1);
   const [savedMessage, setSavedMessage] = useState("");
   const [historyCounts, setHistoryCounts] = useState({ past: 0, future: 0 });
-  const [fullScreenPage, setFullScreenPage] = useState<"draw" | "adjust">("draw");
   const characterLabel = getCharacterLabel(glyph.character);
   const activeReferenceCharacter = referenceCharacter === glyph.character ? "" : referenceCharacter;
   const referenceGlyph = activeReferenceCharacter ? font.glyphs[activeReferenceCharacter] : null;
@@ -440,10 +439,6 @@ export default function GlyphEditor({
 
   useEffect(() => {
     document.body.classList.toggle("editor-fullscreen-open", isFullScreen);
-
-    if (isFullScreen) {
-      setFullScreenPage("draw");
-    }
 
     return () => {
       document.body.classList.remove("editor-fullscreen-open");
@@ -646,193 +641,163 @@ export default function GlyphEditor({
           <button className="draw-glass-button" type="button" onClick={onNextCharacter}>
             Next
           </button>
-          <button
-            className={`draw-glass-button accent ${fullScreenPage === "adjust" ? "active-tool" : ""}`}
-            type="button"
-            onClick={() => setFullScreenPage((current) => (current === "adjust" ? "draw" : "adjust"))}
-          >
-            Adjust
-          </button>
         </div>
 
-        <div
-          className={`draw-only-toolbar ${fullScreenPage === "adjust" ? "adjust-mode" : ""}`}
-          aria-label={fullScreenPage === "adjust" ? "Glyph adjustment sliders" : "Drawing tools"}
-        >
-          {fullScreenPage === "adjust" ? (
-            <div className="draw-adjust-panel">
-              <SpacingControls glyph={draftGlyph} onChange={handleMetricChange} />
-              <div className="draw-save-row">
-                <button className="draw-glass-button" type="button" onClick={handleSave}>
-                  Save
-                </button>
-                <button className="draw-gold-button" type="button" onClick={handleSaveAndNext}>
-                  Save + next
-                </button>
-              </div>
+        <div className="draw-only-toolbar" aria-label="Drawing tools">
+          <div className="draw-tool-grid">
+            <button
+              className={`draw-glass-button ${tool === "pen" ? "active-tool" : ""}`}
+              type="button"
+              onClick={() => chooseTool("pen")}
+            >
+              Pen
+            </button>
+            <button
+              className={`draw-glass-button ${tool === "quill" ? "active-tool" : ""}`}
+              type="button"
+              onClick={() => chooseTool("quill")}
+            >
+              Quill
+            </button>
+            <button
+              className={`draw-glass-button ${tool === "eyes" ? "active-tool" : ""}`}
+              type="button"
+              onClick={() => chooseTool("eyes")}
+            >
+              Eyes
+            </button>
+            <button
+              className={`draw-glass-button ${tool === "eraser" ? "active-tool" : ""}`}
+              type="button"
+              onClick={() => chooseTool("eraser")}
+            >
+              Eraser
+            </button>
+            <button
+              className={`draw-glass-button ${tool === "select" ? "active-tool" : ""}`}
+              type="button"
+              onClick={() => chooseTool("select")}
+            >
+              Select
+            </button>
+            <button
+              className={`draw-glass-button ${tool === "pan" ? "active-tool" : ""}`}
+              type="button"
+              onClick={() => chooseTool("pan")}
+            >
+              Pan
+            </button>
+            <button
+              className="draw-glass-button"
+              type="button"
+              disabled={historyCounts.past === 0}
+              onClick={handleUndo}
+            >
+              Undo
+            </button>
+            <button
+              className="draw-glass-button"
+              type="button"
+              disabled={historyCounts.future === 0}
+              onClick={handleRedo}
+            >
+              Redo
+            </button>
+          </div>
+
+          {tool === "eyes" && <EyeExpressionControl expression={eyeExpression} onExpressionChange={setEyeExpression} />}
+
+          {tool === "eraser" && (
+            <div className="engine-option-row" aria-label="Eraser mode">
+              <button
+                className={`draw-glass-button ${eraserMode === "stroke" ? "active-tool" : ""}`}
+                type="button"
+                onClick={() => setEraserMode("stroke")}
+              >
+                Stroke
+              </button>
+              <button
+                className={`draw-glass-button ${eraserMode === "point" ? "active-tool" : ""}`}
+                type="button"
+                onClick={() => setEraserMode("point")}
+              >
+                Point
+              </button>
             </div>
-          ) : (
-            <>
-              <div className="draw-tool-grid">
-                <button
-                  className={`draw-glass-button ${tool === "pen" ? "active-tool" : ""}`}
-                  type="button"
-                  onClick={() => chooseTool("pen")}
-                >
-                  Pen
-                </button>
-                <button
-                  className={`draw-glass-button ${tool === "quill" ? "active-tool" : ""}`}
-                  type="button"
-                  onClick={() => chooseTool("quill")}
-                >
-                  Quill
-                </button>
-                <button
-                  className={`draw-glass-button ${tool === "eyes" ? "active-tool" : ""}`}
-                  type="button"
-                  onClick={() => chooseTool("eyes")}
-                >
-                  Eyes
-                </button>
-                <button
-                  className={`draw-glass-button ${tool === "eraser" ? "active-tool" : ""}`}
-                  type="button"
-                  onClick={() => chooseTool("eraser")}
-                >
-                  Eraser
-                </button>
-                <button
-                  className={`draw-glass-button ${tool === "select" ? "active-tool" : ""}`}
-                  type="button"
-                  onClick={() => chooseTool("select")}
-                >
-                  Select
-                </button>
-                <button
-                  className={`draw-glass-button ${tool === "pan" ? "active-tool" : ""}`}
-                  type="button"
-                  onClick={() => chooseTool("pan")}
-                >
-                  Pan
-                </button>
-                <button
-                  className="draw-glass-button"
-                  type="button"
-                  disabled={historyCounts.past === 0}
-                  onClick={handleUndo}
-                >
-                  Undo
-                </button>
-                <button
-                  className="draw-glass-button"
-                  type="button"
-                  disabled={historyCounts.future === 0}
-                  onClick={handleRedo}
-                >
-                  Redo
-                </button>
-              </div>
-
-              {tool === "eyes" && (
-                <EyeExpressionControl expression={eyeExpression} onExpressionChange={setEyeExpression} />
-              )}
-
-              {tool === "eraser" && (
-                <div className="engine-option-row" aria-label="Eraser mode">
-                  <button
-                    className={`draw-glass-button ${eraserMode === "stroke" ? "active-tool" : ""}`}
-                    type="button"
-                    onClick={() => setEraserMode("stroke")}
-                  >
-                    Stroke
-                  </button>
-                  <button
-                    className={`draw-glass-button ${eraserMode === "point" ? "active-tool" : ""}`}
-                    type="button"
-                    onClick={() => setEraserMode("point")}
-                  >
-                    Point
-                  </button>
-                </div>
-              )}
-
-              <div className="draw-compact-row smoothing-row" aria-label="Stroke smoothing">
-                {smoothingOptions.map((option) => (
-                  <button
-                    key={option.id}
-                    className={`draw-glass-button ${smoothingMode === option.id ? "active-tool" : ""}`}
-                    type="button"
-                    onClick={() => setSmoothingMode(option.id)}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="draw-compact-row ink-effect-row" aria-label="Ink effect">
-                <button
-                  className={`draw-glass-button ${inkEffect === "dramaticPooling" ? "active-tool" : ""}`}
-                  type="button"
-                  onClick={() =>
-                    setInkEffect((current) => (current === "dramaticPooling" ? "none" : "dramaticPooling"))
-                  }
-                >
-                  Dramatic ink
-                </button>
-              </div>
-
-              <div className="draw-compact-row view-row" aria-label="Canvas view">
-                <button className="draw-glass-button" type="button" onClick={() => handleZoom(-0.15)}>
-                  Zoom -
-                </button>
-                <button className="draw-glass-button" type="button" onClick={handleResetView}>
-                  {Math.round(viewScale * 100)}%
-                </button>
-                <button className="draw-glass-button" type="button" onClick={() => handleZoom(0.15)}>
-                  Zoom +
-                </button>
-                <button
-                  className={`draw-glass-button ${showGuides ? "active-tool" : ""}`}
-                  type="button"
-                  onClick={() => setShowGuides((current) => !current)}
-                >
-                  Guides
-                </button>
-              </div>
-
-              {selectedStrokeId && (
-                <button className="draw-glass-button danger-action" type="button" onClick={handleDeleteSelectedStroke}>
-                  Delete stroke
-                </button>
-              )}
-
-              <div className="draw-brush-ink-row">
-                <label className="draw-brush-control">
-                  <span>Brush</span>
-                  <input
-                    type="range"
-                    min="3"
-                    max="28"
-                    value={brushSize}
-                    onChange={(event) => setBrushSize(Number(event.target.value))}
-                  />
-                  <output>{brushSize}px</output>
-                </label>
-
-                <InkColorControl inkColor={inkColor} onInkColorChange={setInkColor} />
-              </div>
-
-              <div className="draw-save-row">
-                <button className="draw-glass-button" type="button" onClick={handleSave}>
-                  Save
-                </button>
-                <button className="draw-gold-button" type="button" onClick={handleSaveAndNext}>
-                  Save + next
-                </button>
-              </div>
-            </>
           )}
+
+          <div className="draw-compact-row smoothing-row" aria-label="Stroke smoothing">
+            {smoothingOptions.map((option) => (
+              <button
+                key={option.id}
+                className={`draw-glass-button ${smoothingMode === option.id ? "active-tool" : ""}`}
+                type="button"
+                onClick={() => setSmoothingMode(option.id)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="draw-compact-row ink-effect-row" aria-label="Ink effect">
+            <button
+              className={`draw-glass-button ${inkEffect === "dramaticPooling" ? "active-tool" : ""}`}
+              type="button"
+              onClick={() => setInkEffect((current) => (current === "dramaticPooling" ? "none" : "dramaticPooling"))}
+            >
+              Dramatic ink
+            </button>
+          </div>
+
+          <div className="draw-compact-row view-row" aria-label="Canvas view">
+            <button className="draw-glass-button" type="button" onClick={() => handleZoom(-0.15)}>
+              Zoom -
+            </button>
+            <button className="draw-glass-button" type="button" onClick={handleResetView}>
+              {Math.round(viewScale * 100)}%
+            </button>
+            <button className="draw-glass-button" type="button" onClick={() => handleZoom(0.15)}>
+              Zoom +
+            </button>
+            <button
+              className={`draw-glass-button ${showGuides ? "active-tool" : ""}`}
+              type="button"
+              onClick={() => setShowGuides((current) => !current)}
+            >
+              Guides
+            </button>
+          </div>
+
+          {selectedStrokeId && (
+            <button className="draw-glass-button danger-action" type="button" onClick={handleDeleteSelectedStroke}>
+              Delete stroke
+            </button>
+          )}
+
+          <div className="draw-brush-ink-row">
+            <label className="draw-brush-control">
+              <span>Brush</span>
+              <input
+                type="range"
+                min="3"
+                max="28"
+                value={brushSize}
+                onChange={(event) => setBrushSize(Number(event.target.value))}
+              />
+              <output>{brushSize}px</output>
+            </label>
+
+            <InkColorControl inkColor={inkColor} onInkColorChange={setInkColor} />
+          </div>
+
+          <div className="draw-save-row">
+            <button className="draw-glass-button" type="button" onClick={handleSave}>
+              Save
+            </button>
+            <button className="draw-gold-button" type="button" onClick={handleSaveAndNext}>
+              Save + next
+            </button>
+          </div>
         </div>
 
         <div className="draw-save-status" aria-live="polite">
