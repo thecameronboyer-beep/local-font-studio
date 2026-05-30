@@ -14,6 +14,7 @@ import type {
   ProjectActivity,
   ProjectActivityDraft,
   ProjectBackup,
+  FontExportFile,
   ProjectExportFile,
   StorageHealthCheck,
 } from "../types/fontTypes";
@@ -646,6 +647,18 @@ export function exportFontStudioProject(data: FontStudioData) {
     app: "local-font-studio",
     data: migrateFontStudioData(data),
     exportedAt: new Date().toISOString(),
+    schemaVersion: CURRENT_STORAGE_VERSION,
+  };
+
+  return JSON.stringify(exportFile, null, 2);
+}
+
+export function exportFontSet(font: FontSet) {
+  const exportFile: FontExportFile = {
+    app: "local-font-studio",
+    exportType: "font",
+    exportedAt: new Date().toISOString(),
+    font,
     schemaVersion: CURRENT_STORAGE_VERSION,
   };
 

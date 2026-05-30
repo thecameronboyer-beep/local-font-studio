@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { drawGlyph, findPreviewGlyph, getGlyphAdvance } from "../render/glyphRenderer";
+import { exportFontSet } from "../storage/fontStorage";
 import type { FontRenderProfile, FontSet } from "../types/fontTypes";
 
 type FontLibraryProps = {
@@ -83,6 +84,23 @@ function FontNamePreview({ font }: { font: FontSet }) {
   }, [font]);
 
   return <canvas ref={canvasRef} className="font-name-preview" aria-hidden="true" />;
+}
+
+function sanitizeFileName(value: string) {
+  return value.trim().replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "") || "font";
+}
+
+function downloadFontJson(font: FontSet) {
+  const blob = new Blob([exportFontSet(font)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = `${sanitizeFileName(font.name)}.font-studio.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 export default function FontLibrary({
@@ -209,6 +227,16 @@ export default function FontLibrary({
                       }}
                     >
                       Duplicate
+                    </button>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => {
+                        downloadFontJson(activeFont);
+                        setSettingsOpen(false);
+                      }}
+                    >
+                      Export JSON
                     </button>
                     <button
                       className="danger-button"

@@ -134,6 +134,14 @@ export type ProjectExportFile = {
   schemaVersion: 2;
 };
 
+export type FontExportFile = {
+  app: "local-font-studio";
+  exportType: "font";
+  exportedAt: string;
+  font: FontSet;
+  schemaVersion: 2;
+};
+
 export type PreviewSettings = {
   fontSize: number;
   lineSpacing: number;
