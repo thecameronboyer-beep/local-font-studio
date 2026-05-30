@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
 import FontLibrary from "./components/FontLibrary";
+import FontMetricsPanel from "./components/FontMetricsPanel";
+import type { FontMetricKey } from "./components/FontMetricsPanel";
 import GlyphEditor from "./components/GlyphEditor";
 import GlyphGrid from "./components/GlyphGrid";
 import TextPreview from "./components/TextPreview";
@@ -202,6 +204,34 @@ export default function App() {
     persist(nextData);
   }
 
+  function handleApplyMetricsToCharacters(characters: string[], metricKeys: FontMetricKey[]) {
+    const sourceGlyph = activeFont.glyphs[selectedCharacter] ?? createEmptyGlyph(selectedCharacter);
+    const now = new Date().toISOString();
+    const nextGlyphs = { ...activeFont.glyphs };
+
+    for (const character of characters) {
+      const currentGlyph = nextGlyphs[character] ?? createEmptyGlyph(character);
+      nextGlyphs[character] = {
+        ...currentGlyph,
+        ...Object.fromEntries(metricKeys.map((key) => [key, sourceGlyph[key]])),
+        updatedAt: now,
+      };
+    }
+
+    persist({
+      ...studioData,
+      fonts: studioData.fonts.map((font) =>
+        font.id === activeFont.id
+          ? {
+              ...font,
+              glyphs: nextGlyphs,
+              updatedAt: now,
+            }
+          : font,
+      ),
+    });
+  }
+
   return (
     <main className="app-shell">
       <button
@@ -299,6 +329,12 @@ export default function App() {
               getSavedGlyphCount={getSavedGlyphCount}
             />
           </div>
+          <FontMetricsPanel
+            font={activeFont}
+            selectedCharacter={selectedCharacter}
+            onApplyMetrics={handleApplyMetricsToCharacters}
+            onSelectCharacter={handleSelectCharacter}
+          />
           <div ref={previewRef}>
             <TextPreview
               font={activeFont}

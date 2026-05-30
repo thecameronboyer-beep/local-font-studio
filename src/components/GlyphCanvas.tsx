@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { PointerEvent } from "react";
-import type { GlyphDecoration, GlyphStroke } from "../types/fontTypes";
+import type { Glyph, GlyphDecoration, GlyphStroke } from "../types/fontTypes";
 import { drawGlyphDecoration, drawStrokePath } from "../render/glyphRenderer";
 
 const CANVAS_SIZE = 720;
@@ -21,6 +21,7 @@ type GlyphCanvasProps = {
   eyeExpression: NonNullable<GlyphDecoration["expression"]>;
   eraserMode: EraserMode;
   inkColor: string;
+  referenceGlyph?: Glyph | null;
   selectedStrokeId: string | null;
   showGuides: boolean;
   smoothingMode: SmoothingMode;
@@ -174,6 +175,7 @@ export default function GlyphCanvas({
   eyeExpression,
   eraserMode,
   inkColor,
+  referenceGlyph,
   selectedStrokeId,
   showGuides,
   smoothingMode,
@@ -205,7 +207,7 @@ export default function GlyphCanvas({
     decorationsRef.current = decorations;
     selectedStrokeIdRef.current = selectedStrokeId;
     drawCanvas(strokes, decorations);
-  }, [brushSize, decorations, eyeExpression, selectedStrokeId, showGuides, strokes, tool]);
+  }, [brushSize, decorations, eyeExpression, referenceGlyph, selectedStrokeId, showGuides, strokes, tool]);
 
   useEffect(() => {
     viewOffsetRef.current = viewOffset;
@@ -235,6 +237,10 @@ export default function GlyphCanvas({
 
     if (showGuides) {
       drawGuides(ctx);
+    }
+
+    if (referenceGlyph) {
+      drawReferenceGlyph(ctx, referenceGlyph);
     }
 
     for (const stroke of nextStrokes) {
@@ -363,6 +369,34 @@ export default function GlyphCanvas({
       ctx.arc(point.x * CANVAS_SIZE, point.y * CANVAS_SIZE, 4, 0, Math.PI * 2);
       ctx.fill();
     }
+    ctx.restore();
+  }
+
+  function drawReferenceGlyph(ctx: CanvasRenderingContext2D, glyph: Glyph) {
+    ctx.save();
+    ctx.globalAlpha = 0.18;
+
+    for (const stroke of glyph.strokes) {
+      drawStrokePath(
+        ctx,
+        {
+          ...stroke,
+          color: "#2468c9",
+        },
+        0,
+        0,
+        CANVAS_SIZE,
+        CANVAS_SIZE,
+        CANVAS_SIZE,
+        "#2468c9",
+      );
+    }
+
+    ctx.globalAlpha = 0.24;
+    for (const decoration of glyph.decorations ?? []) {
+      drawGlyphDecoration(ctx, decoration, 0, 0, CANVAS_SIZE);
+    }
+
     ctx.restore();
   }
 

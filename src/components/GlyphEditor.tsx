@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import GlyphCanvas from "./GlyphCanvas";
 import type { CanvasViewOffset, DrawingTool, EraserMode, SmoothingMode } from "./GlyphCanvas";
 import SpacingControls from "./SpacingControls";
+import { getCharacterLabel, supportedCharacters } from "../data/characterSets";
 import { drawGlyph, findPreviewGlyph, getGlyphAdvance } from "../render/glyphRenderer";
 import type { FontSet, Glyph, GlyphDecoration, GlyphStroke } from "../types/fontTypes";
 
@@ -368,6 +369,7 @@ export default function GlyphEditor({
   const [eraserMode, setEraserMode] = useState<EraserMode>("stroke");
   const [eyeExpression, setEyeExpression] = useState<NonNullable<GlyphDecoration["expression"]>>("googly");
   const [inkColor, setInkColor] = useState("#19140f");
+  const [referenceCharacter, setReferenceCharacter] = useState("");
   const [selectedStrokeId, setSelectedStrokeId] = useState<string | null>(null);
   const [showGuides, setShowGuides] = useState(true);
   const [smoothingMode, setSmoothingMode] = useState<SmoothingMode>("gentle");
@@ -377,7 +379,9 @@ export default function GlyphEditor({
   const [savedMessage, setSavedMessage] = useState("");
   const [historyCounts, setHistoryCounts] = useState({ past: 0, future: 0 });
   const [fullScreenPage, setFullScreenPage] = useState<"draw" | "adjust">("draw");
-  const characterLabel = glyph.character === " " ? "space" : glyph.character;
+  const characterLabel = getCharacterLabel(glyph.character);
+  const activeReferenceCharacter = referenceCharacter === glyph.character ? "" : referenceCharacter;
+  const referenceGlyph = activeReferenceCharacter ? font.glyphs[activeReferenceCharacter] : null;
 
   useEffect(() => {
     const nextGlyph = cloneGlyph(glyph);
@@ -386,6 +390,7 @@ export default function GlyphEditor({
     futureRef.current = [];
     setDraftGlyph(nextGlyph);
     setHistoryCounts({ past: 0, future: 0 });
+    setReferenceCharacter((current) => (current === glyph.character ? "" : current));
     setSelectedStrokeId(null);
     setSavedMessage("");
   }, [glyph.character]);
@@ -460,6 +465,24 @@ export default function GlyphEditor({
   function handleResetView() {
     setViewScale(1);
     setViewOffset(DEFAULT_CANVAS_VIEW);
+  }
+
+  function renderReferenceGlyphControl() {
+    return (
+      <label className="reference-control">
+        <span>Reference</span>
+        <select value={activeReferenceCharacter} onChange={(event) => setReferenceCharacter(event.target.value)}>
+          <option value="">None</option>
+          {supportedCharacters
+            .filter((character) => character !== glyph.character)
+            .map((character) => (
+              <option key={character} value={character}>
+                {getCharacterLabel(character)}
+              </option>
+            ))}
+        </select>
+      </label>
+    );
   }
 
   function handleSave() {
@@ -545,6 +568,7 @@ export default function GlyphEditor({
           eyeExpression={eyeExpression}
           eraserMode={eraserMode}
           inkColor={inkColor}
+          referenceGlyph={referenceGlyph}
           selectedStrokeId={selectedStrokeId}
           showGuides={showGuides}
           smoothingMode={smoothingMode}
@@ -689,6 +713,8 @@ export default function GlyphEditor({
             </button>
           </div>
 
+          {renderReferenceGlyphControl()}
+
           {selectedStrokeId && (
             <button className="draw-glass-button danger-action" type="button" onClick={handleDeleteSelectedStroke}>
               Delete stroke
@@ -767,6 +793,8 @@ export default function GlyphEditor({
         />
 
         <div className="adjust-controls-page">
+          {renderReferenceGlyphControl()}
+
           <div className="center-row" aria-label="Center glyph">
             <button className="secondary-button" type="button" onClick={() => handleCenter("x")}>
               Center X
@@ -853,6 +881,7 @@ export default function GlyphEditor({
         eyeExpression={eyeExpression}
         eraserMode={eraserMode}
         inkColor={inkColor}
+        referenceGlyph={referenceGlyph}
         selectedStrokeId={selectedStrokeId}
         showGuides={showGuides}
         smoothingMode={smoothingMode}
@@ -991,6 +1020,8 @@ export default function GlyphEditor({
             Guides
           </button>
         </div>
+
+        {renderReferenceGlyphControl()}
 
         {selectedStrokeId && (
           <button className="danger-button" type="button" onClick={handleDeleteSelectedStroke}>
