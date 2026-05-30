@@ -1237,7 +1237,7 @@ input[type="color"] {
 }
 
 .preview-diagnostics {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: 1fr;
 }
 
 .diagnostic-card {
@@ -1272,6 +1272,13 @@ input[type="color"] {
   font-size: 0.72rem;
   font-weight: 750;
   line-height: 1.35;
+}
+
+.diagnostic-card-section {
+  display: grid;
+  gap: 4px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(248, 230, 194, 0.12);
 }
 
 .preview-layout-tools {

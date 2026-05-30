@@ -1451,21 +1451,17 @@ export default function TextPreview({
       )}
 
       <div className="preview-diagnostics" aria-label="Preview diagnostics">
-        <div className={`diagnostic-card ${diagnostics.missingCharacters.length > 0 ? "warn" : "ok"}`}>
+        <div className={`diagnostic-card ${diagnostics.missingCharacters.length > 0 || diagnostics.pairWarnings.length > 0 ? "warn" : "ok"}`}>
           <strong>Missing</strong>
-          <span>{diagnostics.missingCharacters.length > 0 ? diagnostics.missingCharacters.join(" ") : "None"}</span>
-        </div>
-        <div className={`diagnostic-card ${diagnostics.pairWarnings.length > 0 ? "warn" : "ok"}`}>
-          <strong>Pairs</strong>
-          <span>
-            {diagnostics.pairWarnings.length > 0
-              ? diagnostics.pairWarnings.slice(0, 3).map((pair) => `${pair.pair} ${pair.status}`).join(", ")
-              : "No obvious pair issues"}
-          </span>
-        </div>
-        <div className={`diagnostic-card ${diagnostics.oversizedWords.length > 0 ? "warn" : "ok"}`}>
-          <strong>Words</strong>
-          <span>{diagnostics.oversizedWords.length > 0 ? diagnostics.oversizedWords.join(", ") : "Fit current width"}</span>
+          <span>{diagnostics.missingCharacters.length > 0 ? "Highlighted in image" : "None"}</span>
+          <div className="diagnostic-card-section">
+            <strong>Pairs</strong>
+            <span>
+              {diagnostics.pairWarnings.length > 0
+                ? diagnostics.pairWarnings.slice(0, 3).map((pair) => `${pair.pair} ${pair.status}`).join(", ")
+                : "No obvious pair issues"}
+            </span>
+          </div>
         </div>
       </div>
 
