@@ -2,26 +2,160 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { BackgroundStyle, FontSet, PreviewSettings } from "../types/fontTypes";
 import { drawGlyph, findPreviewGlyph, getGlyphAdvance, hasDrawnGlyph } from "../render/glyphRenderer";
 
+type SavedPreviewImage = {
+  fontName: string;
+  height: number;
+  imageDataUrl: string;
+  message: string;
+  width: number;
+};
+
 type TextPreviewProps = {
   font: FontSet;
+  onSaveImage?: (image: SavedPreviewImage) => boolean;
   previewText: string;
   onPreviewTextChange: (text: string) => void;
 };
 
-type PhoneImageSettings = PreviewSettings & {
+type ExportPresetId = "phone" | "social" | "print" | "transparent";
+type ImageMetricKey = "canvasHeight" | "canvasWidth" | "fontSize" | "lineSpacing" | "pagePadding";
+type TextAlignment = "left" | "center" | "right";
+
+type PreviewImageSettings = PreviewSettings & {
   accentColor: string;
+  alignment: TextAlignment;
   autoFit: boolean;
   backgroundStyle: BackgroundStyle;
+  canvasHeight: number;
+  canvasWidth: number;
+  exportPreset: ExportPresetId;
+  transparent: boolean;
 };
-
-const PHONE_IMAGE_WIDTH = 1080;
-const MIN_PHONE_IMAGE_HEIGHT = 240;
 
 type PhoneImageLayout = {
-  height: number;
   lines: string[];
-  settings: PhoneImageSettings;
+  settings: PreviewImageSettings;
 };
+
+type PreviewDocument = {
+  id: string;
+  name: string;
+  settings: PreviewImageSettings;
+  text: string;
+  updatedAt: string;
+};
+
+const PREVIEW_DOCUMENTS_KEY = "local-font-studio:preview-documents:v1";
+const MIN_PHONE_IMAGE_HEIGHT = 240;
+
+const exportPresets: Array<{
+  id: ExportPresetId;
+  label: string;
+  settings: Partial<PreviewImageSettings>;
+}> = [
+  {
+    id: "phone",
+    label: "Phone",
+    settings: {
+      canvasWidth: 1080,
+      canvasHeight: 1920,
+      exportPreset: "phone",
+      fontSize: 118,
+      pagePadding: 92,
+      transparent: false,
+    },
+  },
+  {
+    id: "social",
+    label: "Social",
+    settings: {
+      canvasWidth: 1080,
+      canvasHeight: 1080,
+      exportPreset: "social",
+      fontSize: 96,
+      pagePadding: 86,
+      transparent: false,
+    },
+  },
+  {
+    id: "print",
+    label: "Print",
+    settings: {
+      canvasWidth: 2550,
+      canvasHeight: 3300,
+      exportPreset: "print",
+      fontSize: 156,
+      pagePadding: 210,
+      transparent: false,
+    },
+  },
+  {
+    id: "transparent",
+    label: "Transparent",
+    settings: {
+      canvasWidth: 1600,
+      canvasHeight: 900,
+      exportPreset: "transparent",
+      fontSize: 112,
+      pagePadding: 80,
+      transparent: true,
+    },
+  },
+];
+
+const defaultPhoneImageSettings: PreviewImageSettings = {
+  accentColor: "#d3bf97",
+  alignment: "left",
+  autoFit: true,
+  backgroundColor: "#f4ead7",
+  backgroundStyle: "paper",
+  canvasHeight: 1920,
+  canvasWidth: 1080,
+  exportPreset: "phone",
+  fontSize: 118,
+  inkColor: "#17110b",
+  lineSpacing: 1.18,
+  pagePadding: 92,
+  transparent: false,
+};
+
+const previewPresets = [
+  {
+    id: "pangram",
+    label: "Pangram",
+    text: "The quick brown fox jumps over 13 lazy dogs.\nSphinx of black quartz, judge my vow.",
+  },
+  {
+    id: "journal",
+    label: "Journal",
+    text: "Tuesday, 7:45 p.m.\nI walked home under a blue evening sky and wrote down the small things before they vanished.",
+  },
+  {
+    id: "labels",
+    label: "Labels",
+    text: "Basil\nCinnamon\nStudio keys\nSeed packets\nJune receipts",
+  },
+  {
+    id: "address",
+    label: "Address",
+    text: "Mara Vale\n1048 North Cedar Lane\nPortland, OR 97205",
+  },
+  {
+    id: "notes",
+    label: "Notes",
+    text: "Call Theo about proofs.\nBuy black ink.\nCheck spacing: lift, moon, AV, To.",
+  },
+  {
+    id: "dialogue",
+    label: "Dialogue",
+    text: "\"Are you coming?\"\n\"After I finish this letter.\"\n\"Make it legible this time.\"",
+  },
+  {
+    id: "alphabet",
+    label: "Alphabet",
+    text: "ABCDEFGHIJKLMNOPQRSTUVWXYZ\nabcdefghijklmnopqrstuvwxyz\n0123456789\n.,?!:;'\"-()",
+  },
+];
 
 const inkSwatches = [
   { label: "Ink", color: "#17110b" },
@@ -114,6 +248,10 @@ const backgroundPresets: Array<{
   },
 ];
 
+function createPreviewId() {
+  return `preview_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
 function getFallbackFont(size: number) {
   return `600 ${size}px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
 }
@@ -127,38 +265,140 @@ function tokenizeParagraph(paragraph: string) {
   return paragraph.match(/\S+\s*|\s+/g) ?? [];
 }
 
-export default function TextPreview({ font, previewText, onPreviewTextChange }: TextPreviewProps) {
+function normalizePreviewSettings(settings?: Partial<PreviewImageSettings>): PreviewImageSettings {
+  return {
+    ...defaultPhoneImageSettings,
+    ...settings,
+  };
+}
+
+function loadPreviewDocuments() {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(PREVIEW_DOCUMENTS_KEY) ?? "[]") as PreviewDocument[];
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .filter((document) => document?.id && typeof document.text === "string")
+      .map((document) => ({
+        ...document,
+        name: document.name || "Untitled preview",
+        settings: normalizePreviewSettings(document.settings),
+      }));
+  } catch {
+    return [];
+  }
+}
+
+function savePreviewDocuments(documents: PreviewDocument[]) {
+  window.localStorage.setItem(PREVIEW_DOCUMENTS_KEY, JSON.stringify(documents));
+}
+
+function isMissingGlyph(font: FontSet, character: string) {
+  return character !== "\n" && character !== " " && !findPreviewGlyph(font.glyphs, character);
+}
+
+function formatPairGap(value: number) {
+  return value.toFixed(2);
+}
+
+export default function TextPreview({ font, onSaveImage, previewText, onPreviewTextChange }: TextPreviewProps) {
   const imageCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const styleCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const viewerCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [activeDocumentId, setActiveDocumentId] = useState<string | null>(null);
+  const [documentName, setDocumentName] = useState("Untitled preview");
+  const [imageViewerOpen, setImageViewerOpen] = useState(false);
+  const [savedDocuments, setSavedDocuments] = useState<PreviewDocument[]>(() => loadPreviewDocuments());
   const [shareStatus, setShareStatus] = useState("");
   const [styleEditorOpen, setStyleEditorOpen] = useState(false);
-  const [imageSettings, setImageSettings] = useState<PhoneImageSettings>({
-    fontSize: 118,
-    lineSpacing: 1.18,
-    inkColor: "#17110b",
-    backgroundColor: "#f4ead7",
-    accentColor: "#d3bf97",
-    backgroundStyle: "paper",
-    pagePadding: 92,
-    autoFit: true,
-  });
+  const [imageSettings, setImageSettings] = useState<PreviewImageSettings>(() => ({
+    ...defaultPhoneImageSettings,
+  }));
 
   const savedGlyphCount = useMemo(
     () => Object.values(font.glyphs).filter((glyph) => hasDrawnGlyph(glyph)).length,
     [font.glyphs],
   );
 
-  useEffect(() => {
-    renderPhoneImage();
-  }, [font, previewText, imageSettings, styleEditorOpen]);
+  const diagnostics = useMemo(() => {
+    if (typeof document === "undefined") {
+      return {
+        missingCharacters: [] as string[],
+        pairWarnings: [] as Array<{ detail: string; pair: string; status: "tight" | "loose" | "missing" }>,
+        oversizedWords: [] as string[],
+      };
+    }
+
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+
+    if (!ctx) {
+      return {
+        missingCharacters: [] as string[],
+        pairWarnings: [] as Array<{ detail: string; pair: string; status: "tight" | "loose" | "missing" }>,
+        oversizedWords: [] as string[],
+      };
+    }
+
+    ctx.font = getFallbackFont(imageSettings.fontSize);
+    const maxLineWidth = imageSettings.canvasWidth - imageSettings.pagePadding * 2;
+    const missingCharacters = [...new Set([...previewText].filter((character) => isMissingGlyph(font, character)))];
+    const oversizedWords = previewText
+      .split(/\s+/)
+      .filter(Boolean)
+      .filter((word) => measureTextRun(ctx, word, imageSettings.fontSize) > maxLineWidth)
+      .slice(0, 8);
+    const pairWarnings: Array<{ detail: string; pair: string; status: "tight" | "loose" | "missing" }> = [];
+    const characters = [...previewText.replace(/\s+/g, "")];
+
+    for (let index = 0; index < characters.length - 1; index += 1) {
+      const left = characters[index];
+      const right = characters[index + 1];
+      const leftGlyph = findPreviewGlyph(font.glyphs, left);
+      const rightGlyph = findPreviewGlyph(font.glyphs, right);
+      const pair = `${left}${right}`;
+
+      if (!leftGlyph || !rightGlyph) {
+        if (pairWarnings.length < 10) {
+          pairWarnings.push({ pair, status: "missing", detail: "Missing glyph" });
+        }
+        continue;
+      }
+
+      const gap = leftGlyph.rightBearing + rightGlyph.leftBearing;
+
+      if (gap < -0.02 && pairWarnings.length < 10) {
+        pairWarnings.push({ pair, status: "tight", detail: `${formatPairGap(gap)} gap` });
+      } else if (gap > 0.28 && pairWarnings.length < 10) {
+        pairWarnings.push({ pair, status: "loose", detail: `${formatPairGap(gap)} gap` });
+      }
+    }
+
+    return {
+      missingCharacters: missingCharacters.slice(0, 18),
+      oversizedWords,
+      pairWarnings,
+    };
+  }, [font, imageSettings.canvasWidth, imageSettings.fontSize, imageSettings.pagePadding, previewText]);
 
   useEffect(() => {
-    document.body.classList.toggle("editor-fullscreen-open", styleEditorOpen);
+    renderPhoneImage();
+  }, [font, imageSettings, imageViewerOpen, previewText, styleEditorOpen]);
+
+  useEffect(() => {
+    document.body.classList.toggle("editor-fullscreen-open", imageViewerOpen || styleEditorOpen);
 
     return () => {
       document.body.classList.remove("editor-fullscreen-open");
     };
-  }, [styleEditorOpen]);
+  }, [imageViewerOpen, styleEditorOpen]);
 
   useEffect(() => {
     if (!font.theme) {
@@ -244,17 +484,31 @@ export default function TextPreview({ font, previewText, onPreviewTextChange }: 
       .some((word) => measureTextRun(ctx, word, fontSize) > maxLineWidth);
   }
 
+  function getLineX(ctx: CanvasRenderingContext2D, line: string, renderSettings: PreviewImageSettings) {
+    const lineWidth = measureTextRun(ctx, line, renderSettings.fontSize);
+
+    if (renderSettings.alignment === "center") {
+      return Math.max(renderSettings.pagePadding, (renderSettings.canvasWidth - lineWidth) / 2);
+    }
+
+    if (renderSettings.alignment === "right") {
+      return Math.max(renderSettings.pagePadding, renderSettings.canvasWidth - renderSettings.pagePadding - lineWidth);
+    }
+
+    return renderSettings.pagePadding;
+  }
+
   function drawTextToCanvas(
     ctx: CanvasRenderingContext2D,
     lines: string[],
-    renderSettings: PreviewSettings,
+    renderSettings: PreviewImageSettings,
   ) {
     const lineHeight = renderSettings.fontSize * renderSettings.lineSpacing;
     ctx.font = getFallbackFont(renderSettings.fontSize);
     ctx.textBaseline = "top";
 
     lines.forEach((line, lineIndex) => {
-      let x = renderSettings.pagePadding;
+      let x = getLineX(ctx, line, renderSettings);
       const y = renderSettings.pagePadding + lineIndex * lineHeight;
 
       for (const character of line) {
@@ -281,21 +535,26 @@ export default function TextPreview({ font, previewText, onPreviewTextChange }: 
           continue;
         }
 
+        const fallbackWidth = ctx.measureText(character).width;
+        ctx.save();
+        ctx.fillStyle = "rgba(204, 102, 94, 0.24)";
+        ctx.fillRect(x - 3, y + renderSettings.fontSize * 0.02, fallbackWidth + 6, renderSettings.fontSize * 1.02);
+        ctx.restore();
         ctx.fillStyle = renderSettings.inkColor;
         ctx.fillText(character, x, y + renderSettings.fontSize * 0.04);
-        x += ctx.measureText(character).width;
+        x += fallbackWidth;
       }
     });
   }
 
-  function drawPaperTexture(ctx: CanvasRenderingContext2D, color: string, imageHeight: number) {
+  function drawPaperTexture(ctx: CanvasRenderingContext2D, color: string, imageWidth: number, imageHeight: number) {
     ctx.save();
     ctx.fillStyle = color;
 
-    const speckleCount = Math.max(80, Math.ceil((PHONE_IMAGE_WIDTH * imageHeight) / 4000));
+    const speckleCount = Math.max(80, Math.ceil((imageWidth * imageHeight) / 4000));
 
     for (let index = 0; index < speckleCount; index += 1) {
-      const x = (index * 97) % PHONE_IMAGE_WIDTH;
+      const x = (index * 97) % imageWidth;
       const y = (index * 193) % imageHeight;
       const radius = 0.8 + (index % 5) * 0.42;
       ctx.globalAlpha = 0.035 + (index % 4) * 0.008;
@@ -307,92 +566,95 @@ export default function TextPreview({ font, previewText, onPreviewTextChange }: 
     ctx.restore();
   }
 
-  function drawPhoneBackground(
-    ctx: CanvasRenderingContext2D,
-    renderSettings: PhoneImageSettings,
-    imageHeight: number,
-  ) {
+  function drawPreviewBackground(ctx: CanvasRenderingContext2D, renderSettings: PreviewImageSettings) {
+    const imageWidth = renderSettings.canvasWidth;
+    const imageHeight = renderSettings.canvasHeight;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, imageWidth, imageHeight);
+
+    if (renderSettings.transparent) {
+      return;
+    }
 
     if (renderSettings.backgroundStyle === "rage") {
-      const gradient = ctx.createLinearGradient(0, 0, PHONE_IMAGE_WIDTH, imageHeight);
+      const gradient = ctx.createLinearGradient(0, 0, imageWidth, imageHeight);
       gradient.addColorStop(0, "#130305");
       gradient.addColorStop(0.56, renderSettings.backgroundColor);
       gradient.addColorStop(1, "#6f1115");
       ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, PHONE_IMAGE_WIDTH, imageHeight);
+      ctx.fillRect(0, 0, imageWidth, imageHeight);
 
-      const glow = ctx.createRadialGradient(820, 220, 40, 820, 220, 760);
+      const glow = ctx.createRadialGradient(imageWidth * 0.76, imageHeight * 0.14, 40, imageWidth * 0.76, imageHeight * 0.14, imageWidth * 0.7);
       glow.addColorStop(0, "rgba(255, 176, 0, 0.42)");
       glow.addColorStop(1, "rgba(255, 176, 0, 0)");
       ctx.fillStyle = glow;
-      ctx.fillRect(0, 0, PHONE_IMAGE_WIDTH, imageHeight);
-      drawPaperTexture(ctx, renderSettings.accentColor, imageHeight);
+      ctx.fillRect(0, 0, imageWidth, imageHeight);
+      drawPaperTexture(ctx, renderSettings.accentColor, imageWidth, imageHeight);
       return;
     }
 
     if (renderSettings.backgroundStyle === "midnight") {
-      const gradient = ctx.createLinearGradient(0, 0, PHONE_IMAGE_WIDTH, imageHeight);
+      const gradient = ctx.createLinearGradient(0, 0, imageWidth, imageHeight);
       gradient.addColorStop(0, renderSettings.backgroundColor);
       gradient.addColorStop(1, "#1f3037");
       ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, PHONE_IMAGE_WIDTH, imageHeight);
-      drawPaperTexture(ctx, renderSettings.accentColor, imageHeight);
+      ctx.fillRect(0, 0, imageWidth, imageHeight);
+      drawPaperTexture(ctx, renderSettings.accentColor, imageWidth, imageHeight);
       return;
     }
 
     if (["blush", "sage", "sky", "lavender"].includes(renderSettings.backgroundStyle)) {
-      const gradient = ctx.createLinearGradient(0, 0, PHONE_IMAGE_WIDTH, imageHeight);
+      const gradient = ctx.createLinearGradient(0, 0, imageWidth, imageHeight);
       gradient.addColorStop(0, "#fff7e8");
       gradient.addColorStop(0.42, renderSettings.backgroundColor);
       gradient.addColorStop(1, renderSettings.accentColor);
       ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, PHONE_IMAGE_WIDTH, imageHeight);
-      drawPaperTexture(ctx, "#ffffff", imageHeight);
+      ctx.fillRect(0, 0, imageWidth, imageHeight);
+      drawPaperTexture(ctx, "#ffffff", imageWidth, imageHeight);
       return;
     }
 
     ctx.fillStyle = renderSettings.backgroundColor;
-    ctx.fillRect(0, 0, PHONE_IMAGE_WIDTH, imageHeight);
+    ctx.fillRect(0, 0, imageWidth, imageHeight);
 
     if (renderSettings.backgroundStyle === "paper") {
-      drawPaperTexture(ctx, renderSettings.accentColor, imageHeight);
+      drawPaperTexture(ctx, renderSettings.accentColor, imageWidth, imageHeight);
     }
 
     if (renderSettings.backgroundStyle === "lined") {
       ctx.save();
       ctx.strokeStyle = renderSettings.accentColor;
       ctx.globalAlpha = 0.62;
-      ctx.lineWidth = 2;
+      ctx.lineWidth = Math.max(2, imageWidth / 720);
 
-      for (let y = 220; y < imageHeight - 120; y += 84) {
+      for (let y = renderSettings.pagePadding + renderSettings.fontSize; y < imageHeight - renderSettings.pagePadding / 2; y += renderSettings.fontSize * renderSettings.lineSpacing) {
         ctx.beginPath();
-        ctx.moveTo(72, y);
-        ctx.lineTo(PHONE_IMAGE_WIDTH - 72, y);
+        ctx.moveTo(renderSettings.pagePadding * 0.78, y);
+        ctx.lineTo(imageWidth - renderSettings.pagePadding * 0.78, y);
         ctx.stroke();
       }
 
       ctx.restore();
-      drawPaperTexture(ctx, renderSettings.accentColor, imageHeight);
+      drawPaperTexture(ctx, renderSettings.accentColor, imageWidth, imageHeight);
     }
 
     if (renderSettings.backgroundStyle === "grid") {
       ctx.save();
       ctx.strokeStyle = renderSettings.accentColor;
       ctx.globalAlpha = 0.34;
-      ctx.lineWidth = 2;
+      ctx.lineWidth = Math.max(2, imageWidth / 900);
 
-      for (let x = 72; x < PHONE_IMAGE_WIDTH; x += 72) {
+      for (let x = renderSettings.pagePadding * 0.78; x < imageWidth; x += renderSettings.fontSize * 0.62) {
         ctx.beginPath();
         ctx.moveTo(x, 0);
         ctx.lineTo(x, imageHeight);
         ctx.stroke();
       }
 
-      for (let y = 72; y < imageHeight; y += 72) {
+      for (let y = renderSettings.pagePadding * 0.78; y < imageHeight; y += renderSettings.fontSize * 0.62) {
         ctx.beginPath();
         ctx.moveTo(0, y);
-        ctx.lineTo(PHONE_IMAGE_WIDTH, y);
+        ctx.lineTo(imageWidth, y);
         ctx.stroke();
       }
 
@@ -400,30 +662,26 @@ export default function TextPreview({ font, previewText, onPreviewTextChange }: 
     }
   }
 
-  function getPhoneImageHeight(lines: string[], renderSettings: PreviewSettings) {
-    const lineCount = Math.max(1, lines.length);
-    const lineHeight = renderSettings.fontSize * renderSettings.lineSpacing;
-    const textBlockHeight = (lineCount - 1) * lineHeight + renderSettings.fontSize * 1.08;
-
-    return Math.max(MIN_PHONE_IMAGE_HEIGHT, Math.ceil(renderSettings.pagePadding * 2 + textBlockHeight));
-  }
-
   function getFittedImageLayout(ctx: CanvasRenderingContext2D): PhoneImageLayout {
     let fontSize = imageSettings.fontSize;
     let wrappedLines: string[] = [];
-    const minimumFontSize = 34;
+    const minimumFontSize = 24;
 
     while (fontSize >= minimumFontSize) {
       const candidateSettings = { ...imageSettings, fontSize };
-      const maxLineWidth = PHONE_IMAGE_WIDTH - candidateSettings.pagePadding * 2;
+      const maxLineWidth = candidateSettings.canvasWidth - candidateSettings.pagePadding * 2;
+      const maxTextHeight = candidateSettings.canvasHeight - candidateSettings.pagePadding * 2;
       ctx.font = getFallbackFont(fontSize);
       wrappedLines = buildWordWrappedLines(ctx, previewText, maxLineWidth, fontSize);
 
+      const lineCount = Math.max(1, wrappedLines.length);
+      const lineHeight = fontSize * candidateSettings.lineSpacing;
+      const textBlockHeight = (lineCount - 1) * lineHeight + fontSize * 1.08;
       const wordsFit = !hasOversizeWord(ctx, previewText, maxLineWidth, fontSize);
+      const heightFits = textBlockHeight <= maxTextHeight || candidateSettings.canvasHeight <= MIN_PHONE_IMAGE_HEIGHT;
 
-      if (!imageSettings.autoFit || wordsFit) {
+      if (!imageSettings.autoFit || (wordsFit && heightFits)) {
         return {
-          height: getPhoneImageHeight(wrappedLines, candidateSettings),
           settings: candidateSettings,
           lines: wrappedLines,
         };
@@ -433,12 +691,11 @@ export default function TextPreview({ font, previewText, onPreviewTextChange }: 
     }
 
     const fittedSettings = { ...imageSettings, fontSize: minimumFontSize };
-    const maxLineWidth = PHONE_IMAGE_WIDTH - fittedSettings.pagePadding * 2;
+    const maxLineWidth = fittedSettings.canvasWidth - fittedSettings.pagePadding * 2;
     ctx.font = getFallbackFont(minimumFontSize);
     wrappedLines = buildWordWrappedLines(ctx, previewText, maxLineWidth, minimumFontSize);
 
     return {
-      height: getPhoneImageHeight(wrappedLines, fittedSettings),
       settings: fittedSettings,
       lines: wrappedLines,
     };
@@ -452,15 +709,15 @@ export default function TextPreview({ font, previewText, onPreviewTextChange }: 
     }
 
     const fittedLayout = getFittedImageLayout(ctx);
-    canvas.width = PHONE_IMAGE_WIDTH;
-    canvas.height = fittedLayout.height;
+    canvas.width = fittedLayout.settings.canvasWidth;
+    canvas.height = fittedLayout.settings.canvasHeight;
 
-    drawPhoneBackground(ctx, fittedLayout.settings, fittedLayout.height);
+    drawPreviewBackground(ctx, fittedLayout.settings);
     drawTextToCanvas(ctx, fittedLayout.lines, fittedLayout.settings);
   }
 
   function renderPhoneImage() {
-    const canvases = [imageCanvasRef.current, styleCanvasRef.current].filter(
+    const canvases = [imageCanvasRef.current, styleCanvasRef.current, viewerCanvasRef.current].filter(
       (canvas): canvas is HTMLCanvasElement => Boolean(canvas),
     );
 
@@ -468,7 +725,7 @@ export default function TextPreview({ font, previewText, onPreviewTextChange }: 
   }
 
   function getPhoneImageFileName() {
-    return `${sanitizeFileName(font.name)}-phone-image.png`;
+    return `${sanitizeFileName(font.name)}-${imageSettings.exportPreset}.png`;
   }
 
   function getPhoneImageBlob() {
@@ -483,22 +740,96 @@ export default function TextPreview({ font, previewText, onPreviewTextChange }: 
     });
   }
 
+  function applyTextPreset(preset: (typeof previewPresets)[number]) {
+    onPreviewTextChange(preset.text);
+    setDocumentName(preset.label);
+    setActiveDocumentId(null);
+    setShareStatus(`Loaded ${preset.label}.`);
+  }
+
+  function applyExportPreset(presetId: ExportPresetId) {
+    const preset = exportPresets.find((item) => item.id === presetId);
+
+    if (!preset) {
+      return;
+    }
+
+    setImageSettings((current) => ({
+      ...current,
+      ...preset.settings,
+    }));
+  }
+
+  function savePreviewDocument() {
+    const now = new Date().toISOString();
+    const nextDocument: PreviewDocument = {
+      id: activeDocumentId ?? createPreviewId(),
+      name: documentName.trim() || "Untitled preview",
+      settings: imageSettings,
+      text: previewText,
+      updatedAt: now,
+    };
+    const nextDocuments = activeDocumentId
+      ? savedDocuments.map((document) => (document.id === activeDocumentId ? nextDocument : document))
+      : [nextDocument, ...savedDocuments].slice(0, 16);
+
+    setActiveDocumentId(nextDocument.id);
+    setSavedDocuments(nextDocuments);
+    savePreviewDocuments(nextDocuments);
+    setShareStatus("Saved preview document.");
+  }
+
+  function loadPreviewDocument(documentId: string) {
+    const document = savedDocuments.find((item) => item.id === documentId);
+
+    if (!document) {
+      return;
+    }
+
+    setActiveDocumentId(document.id);
+    setDocumentName(document.name);
+    setImageSettings(normalizePreviewSettings(document.settings));
+    onPreviewTextChange(document.text);
+    setShareStatus(`Loaded ${document.name}.`);
+  }
+
+  function deletePreviewDocument(documentId: string) {
+    const nextDocuments = savedDocuments.filter((document) => document.id !== documentId);
+
+    setSavedDocuments(nextDocuments);
+    savePreviewDocuments(nextDocuments);
+
+    if (activeDocumentId === documentId) {
+      setActiveDocumentId(null);
+    }
+
+    setShareStatus("Deleted preview document.");
+  }
+
   async function downloadPhoneImage() {
     const blob = await getPhoneImageBlob();
+    const canvas = imageCanvasRef.current;
 
-    if (!blob) {
+    if (!blob || !canvas) {
       setShareStatus("Could not make an image yet.");
       return;
     }
 
     try {
+      const savedLocally = onSaveImage?.({
+        fontName: font.name,
+        height: canvas.height,
+        imageDataUrl: canvas.toDataURL("image/png"),
+        message: previewText.trim() || "(blank message)",
+        width: canvas.width,
+      });
       const objectUrl = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = objectUrl;
       link.download = getPhoneImageFileName();
       link.click();
       URL.revokeObjectURL(objectUrl);
-      setShareStatus("Saved PNG.");
+      setShareStatus(savedLocally === false ? "Saved PNG. Could not add to Saved Images." : "Saved PNG.");
     } catch {
       setShareStatus("Could not save the PNG.");
     }
@@ -565,6 +896,7 @@ export default function TextPreview({ font, previewText, onPreviewTextChange }: 
           <input
             type="color"
             value={imageSettings.backgroundColor}
+            disabled={imageSettings.transparent}
             onChange={(event) =>
               setImageSettings((current) => ({ ...current, backgroundColor: event.target.value }))
             }
@@ -575,6 +907,7 @@ export default function TextPreview({ font, previewText, onPreviewTextChange }: 
           <input
             type="color"
             value={imageSettings.accentColor}
+            disabled={imageSettings.transparent}
             onChange={(event) =>
               setImageSettings((current) => ({ ...current, accentColor: event.target.value }))
             }
@@ -613,8 +946,9 @@ export default function TextPreview({ font, previewText, onPreviewTextChange }: 
           {backgroundPresets.map((preset) => (
             <button
               key={preset.id}
-              className={`background-preset ${imageSettings.backgroundStyle === preset.id ? "selected" : ""}`}
+              className={`background-preset ${imageSettings.backgroundStyle === preset.id && !imageSettings.transparent ? "selected" : ""}`}
               type="button"
+              disabled={imageSettings.transparent}
               onClick={() =>
                 setImageSettings((current) => ({
                   ...current,
@@ -622,6 +956,7 @@ export default function TextPreview({ font, previewText, onPreviewTextChange }: 
                   backgroundColor: preset.backgroundColor,
                   backgroundStyle: preset.id,
                   inkColor: preset.inkColor,
+                  transparent: false,
                 }))
               }
             >
@@ -634,29 +969,165 @@ export default function TextPreview({ font, previewText, onPreviewTextChange }: 
     );
   }
 
+  function getSteppedValue(value: number, delta: number, min: number, max: number, precision = 0) {
+    const nextValue = Math.min(max, Math.max(min, value + delta));
+
+    return Number(nextValue.toFixed(precision));
+  }
+
+  function updateImageMetric(
+    metric: ImageMetricKey,
+    delta: number,
+    min: number,
+    max: number,
+    precision = 0,
+  ) {
+    setImageSettings((current) => ({
+      ...current,
+      [metric]: getSteppedValue(current[metric], delta, min, max, precision),
+    }));
+  }
+
+  function renderImageMetricControl({
+    label,
+    max,
+    metric,
+    min,
+    precision = 0,
+    step,
+    value,
+  }: {
+    label: string;
+    max: number;
+    metric: ImageMetricKey;
+    min: number;
+    precision?: number;
+    step: number;
+    value: number;
+  }) {
+    const displayValue = precision > 0 ? value.toFixed(precision) : value.toString();
+
+    return (
+      <div className="phone-metric-stepper">
+        <div className="phone-metric-readout">
+          <span>{label}</span>
+          <strong>{displayValue}</strong>
+        </div>
+        <div className="phone-metric-buttons">
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => updateImageMetric(metric, -step, min, max, precision)}
+            aria-label={`Decrease ${label}`}
+          >
+            Down
+          </button>
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => updateImageMetric(metric, step, min, max, precision)}
+            aria-label={`Increase ${label}`}
+          >
+            Up
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <section className="studio-panel preview-panel phone-generator-panel" aria-label="Phone image generator">
+    <section className="studio-panel preview-panel phone-generator-panel" aria-label="Preview test bench">
       <div className="panel-heading phone-image-heading">
         <div>
-          <p className="eyebrow">Phone image</p>
-          <h2>Share image</h2>
+          <p className="eyebrow">Preview test bench</p>
+          <h2>Real text</h2>
         </div>
         <div className="glyph-pill">{savedGlyphCount} saved</div>
+      </div>
+
+      <div className="preview-preset-grid" aria-label="Preview presets">
+        {previewPresets.map((preset) => (
+          <button key={preset.id} className="secondary-button compact-button" type="button" onClick={() => applyTextPreset(preset)}>
+            {preset.label}
+          </button>
+        ))}
       </div>
 
       <textarea
         className="preview-input phone-text-input"
         value={previewText}
-        onChange={(event) => onPreviewTextChange(event.target.value)}
+        onChange={(event) => {
+          onPreviewTextChange(event.target.value);
+          setActiveDocumentId(null);
+        }}
         spellCheck={false}
       />
+
+      <div className="preview-document-tools" aria-label="Preview documents">
+        <input
+          aria-label="Preview document name"
+          value={documentName}
+          onChange={(event) => setDocumentName(event.target.value)}
+        />
+        <button className="primary-button compact-button" type="button" onClick={savePreviewDocument}>
+          Save doc
+        </button>
+      </div>
+
+      {savedDocuments.length > 0 && (
+        <div className="preview-document-list" aria-label="Saved preview documents">
+          {savedDocuments.map((document) => (
+            <div key={document.id} className={`preview-document-card ${activeDocumentId === document.id ? "selected" : ""}`}>
+              <button type="button" onClick={() => loadPreviewDocument(document.id)}>
+                <strong>{document.name}</strong>
+                <span>{document.text.slice(0, 42) || "(blank)"}</span>
+              </button>
+              <button className="metric-default-button" type="button" onClick={() => deletePreviewDocument(document.id)}>
+                Delete
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="preview-diagnostics" aria-label="Preview diagnostics">
+        <div className={`diagnostic-card ${diagnostics.missingCharacters.length > 0 ? "warn" : "ok"}`}>
+          <strong>Missing</strong>
+          <span>{diagnostics.missingCharacters.length > 0 ? diagnostics.missingCharacters.join(" ") : "None"}</span>
+        </div>
+        <div className={`diagnostic-card ${diagnostics.pairWarnings.length > 0 ? "warn" : "ok"}`}>
+          <strong>Pairs</strong>
+          <span>
+            {diagnostics.pairWarnings.length > 0
+              ? diagnostics.pairWarnings.slice(0, 3).map((pair) => `${pair.pair} ${pair.status}`).join(", ")
+              : "No obvious pair issues"}
+          </span>
+        </div>
+        <div className={`diagnostic-card ${diagnostics.oversizedWords.length > 0 ? "warn" : "ok"}`}>
+          <strong>Words</strong>
+          <span>{diagnostics.oversizedWords.length > 0 ? diagnostics.oversizedWords.join(", ") : "Fit current width"}</span>
+        </div>
+      </div>
+
+      <div className="export-preset-grid" aria-label="Export presets">
+        {exportPresets.map((preset) => (
+          <button
+            key={preset.id}
+            className={`secondary-button compact-button ${imageSettings.exportPreset === preset.id ? "active-tool" : ""}`}
+            type="button"
+            onClick={() => applyExportPreset(preset.id)}
+          >
+            {preset.label}
+          </button>
+        ))}
+      </div>
 
       <div className="phone-image-actions primary-share-actions">
         <button className="primary-button compact-button" type="button" onClick={sharePhoneImage}>
           Share
         </button>
         <button className="secondary-button compact-button" type="button" onClick={downloadPhoneImage}>
-          Save PNG
+          Export PNG
         </button>
         <button className="secondary-button compact-button" type="button" onClick={() => setStyleEditorOpen(true)}>
           Style
@@ -666,52 +1137,74 @@ export default function TextPreview({ font, previewText, onPreviewTextChange }: 
         {shareStatus}
       </div>
 
-      <div className="phone-image-preview">
+      <button
+        className={`phone-image-preview phone-image-open-button ${imageSettings.transparent ? "transparent-preview" : ""}`}
+        type="button"
+        aria-label="Open preview image full screen"
+        onClick={() => setImageViewerOpen(true)}
+      >
         <canvas
           ref={imageCanvasRef}
           className="phone-image-canvas"
-          aria-label="Generated phone image preview"
+          aria-label="Generated preview image"
         />
+      </button>
+
+      <div className="phone-image-tools preview-layout-tools">
+        {renderImageMetricControl({
+          label: "Size",
+          max: 220,
+          metric: "fontSize",
+          min: 24,
+          step: 4,
+          value: imageSettings.fontSize,
+        })}
+        {renderImageMetricControl({
+          label: "Width",
+          max: 3300,
+          metric: "canvasWidth",
+          min: 640,
+          step: 80,
+          value: imageSettings.canvasWidth,
+        })}
+        {renderImageMetricControl({
+          label: "Height",
+          max: 3600,
+          metric: "canvasHeight",
+          min: 480,
+          step: 80,
+          value: imageSettings.canvasHeight,
+        })}
+        {renderImageMetricControl({
+          label: "Line",
+          max: 2,
+          metric: "lineSpacing",
+          min: 0.85,
+          precision: 2,
+          step: 0.05,
+          value: imageSettings.lineSpacing,
+        })}
+        {renderImageMetricControl({
+          label: "Pad",
+          max: 260,
+          metric: "pagePadding",
+          min: 0,
+          step: 8,
+          value: imageSettings.pagePadding,
+        })}
       </div>
 
-      <div className="phone-image-tools">
-        <label>
-          Size
-          <input
-            type="number"
-            min="34"
-            max="220"
-            value={imageSettings.fontSize}
-            onChange={(event) =>
-              setImageSettings((current) => ({ ...current, fontSize: Number(event.target.value) }))
-            }
-          />
-        </label>
-        <label>
-          Line
-          <input
-            type="number"
-            min="0.9"
-            max="2"
-            step="0.05"
-            value={imageSettings.lineSpacing}
-            onChange={(event) =>
-              setImageSettings((current) => ({ ...current, lineSpacing: Number(event.target.value) }))
-            }
-          />
-        </label>
-        <label>
-          Pad
-          <input
-            type="number"
-            min="36"
-            max="180"
-            value={imageSettings.pagePadding}
-            onChange={(event) =>
-              setImageSettings((current) => ({ ...current, pagePadding: Number(event.target.value) }))
-            }
-          />
-        </label>
+      <div className="alignment-row" aria-label="Text alignment">
+        {(["left", "center", "right"] as const).map((alignment) => (
+          <button
+            key={alignment}
+            className={`secondary-button compact-button ${imageSettings.alignment === alignment ? "active-tool" : ""}`}
+            type="button"
+            onClick={() => setImageSettings((current) => ({ ...current, alignment }))}
+          >
+            {alignment}
+          </button>
+        ))}
         <label className="check-control">
           <input
             type="checkbox"
@@ -720,15 +1213,15 @@ export default function TextPreview({ font, previewText, onPreviewTextChange }: 
               setImageSettings((current) => ({ ...current, autoFit: event.target.checked }))
             }
           />
-          Fit text
+          Fit
         </label>
       </div>
 
       {styleEditorOpen && (
-        <section className="studio-panel phone-style-fullscreen" aria-label="Phone image style editor">
+        <section className="studio-panel phone-style-fullscreen" aria-label="Preview style editor">
           <div className="panel-heading phone-style-heading">
             <div>
-              <p className="eyebrow">Image style</p>
+              <p className="eyebrow">Preview style</p>
               <h2>Colors</h2>
             </div>
             <button className="secondary-button compact-button" type="button" onClick={() => setStyleEditorOpen(false)}>
@@ -736,18 +1229,59 @@ export default function TextPreview({ font, previewText, onPreviewTextChange }: 
             </button>
           </div>
 
-          <div className="phone-image-preview phone-style-preview">
+          <div className={`phone-image-preview phone-style-preview ${imageSettings.transparent ? "transparent-preview" : ""}`}>
             <canvas
               ref={styleCanvasRef}
               className="phone-image-canvas"
-              aria-label="Generated phone image style preview"
+              aria-label="Generated preview style image"
             />
           </div>
 
           <div className="phone-style-content">
             {renderColorInputs()}
+            <label className="check-control">
+              <input
+                type="checkbox"
+                checked={imageSettings.transparent}
+                onChange={(event) =>
+                  setImageSettings((current) => ({ ...current, transparent: event.target.checked }))
+                }
+              />
+              Transparent background
+            </label>
             {renderInkControls()}
             {renderBackgroundControls()}
+          </div>
+        </section>
+      )}
+
+      {imageViewerOpen && (
+        <section className="studio-panel phone-image-fullscreen" aria-label="Full screen preview image">
+          <div className="panel-heading phone-image-fullscreen-heading">
+            <div>
+              <p className="eyebrow">Preview</p>
+              <h2>Export image</h2>
+            </div>
+            <button className="secondary-button compact-button" type="button" onClick={() => setImageViewerOpen(false)}>
+              Close
+            </button>
+          </div>
+
+          <div className={`phone-image-fullscreen-surface ${imageSettings.transparent ? "transparent-preview" : ""}`}>
+            <canvas
+              ref={viewerCanvasRef}
+              className="phone-image-canvas phone-image-fullscreen-canvas"
+              aria-label="Full screen generated preview image"
+            />
+          </div>
+
+          <div className="phone-image-fullscreen-actions">
+            <button className="primary-button compact-button" type="button" onClick={sharePhoneImage}>
+              Share
+            </button>
+            <button className="secondary-button compact-button" type="button" onClick={downloadPhoneImage}>
+              Export PNG
+            </button>
           </div>
         </section>
       )}
