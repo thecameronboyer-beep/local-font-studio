@@ -72,12 +72,20 @@ export type FontShapeSettings = {
   widthScale: number;
 };
 
+export type FontGuideSettings = {
+  ascender: number;
+  baseline: number;
+  descender: number;
+  xHeight: number;
+};
+
 export type FontSet = {
   id: string;
   name: string;
   characterSettings: FontCharacterSettings;
   glyphs: Record<string, Glyph>;
   createdAt: string;
+  guideSettings: FontGuideSettings;
   renderProfile?: FontRenderProfile;
   shapeSettings: FontShapeSettings;
   theme?: FontTheme;

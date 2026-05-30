@@ -17,9 +17,9 @@ import {
 } from "./storage/fontStorage";
 import type {
   FontCharacterSettings,
+  FontGuideSettings,
   FontRenderProfile,
   FontSet,
-  FontShapeSettings,
   FontStudioData,
   Glyph,
   ProjectActivityDraft,
@@ -113,9 +113,9 @@ export default function App() {
     name: string,
     renderProfile: FontRenderProfile = "plain",
     characterSettings?: FontCharacterSettings,
-    shapeSettings?: FontShapeSettings,
+    guideSettings?: FontGuideSettings,
   ) {
-    const font = createFontSet(name, renderProfile, characterSettings, shapeSettings);
+    const font = createFontSet(name, renderProfile, characterSettings, guideSettings);
 
     persist({
       ...studioData,

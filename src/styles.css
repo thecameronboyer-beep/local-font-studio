@@ -599,6 +599,113 @@ h3 {
   accent-color: #82d0bc;
 }
 
+.font-guide-launch {
+  width: 100%;
+  min-height: 46px;
+}
+
+.font-guide-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  color: #cfbfaa;
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.font-guide-summary span {
+  border: 1px solid rgba(248, 230, 194, 0.12);
+  border-radius: 8px;
+  background: #101012;
+  padding: 8px 10px;
+}
+
+.font-guide-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  background: rgba(10, 9, 10, 0.86);
+  padding: 16px;
+}
+
+.font-guide-card {
+  display: grid;
+  gap: 14px;
+  width: min(1040px, 100%);
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  border: 1px solid rgba(248, 230, 194, 0.16);
+  border-radius: 10px;
+  background: #181617;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+  padding: 14px;
+}
+
+.font-guide-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.font-guide-heading h2 {
+  margin: 0;
+  color: #fff4df;
+}
+
+.font-guide-editor-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(220px, 320px);
+  gap: 14px;
+  align-items: start;
+}
+
+.font-guide-canvas {
+  width: 100%;
+  max-height: min(68dvh, 720px);
+  aspect-ratio: 1;
+  border: 1px solid rgba(25, 20, 15, 0.24);
+  border-radius: 8px;
+  background: #f4ead7;
+  touch-action: none;
+}
+
+.font-guide-controls {
+  display: grid;
+  gap: 10px;
+}
+
+.font-guide-control {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(248, 230, 194, 0.12);
+  border-radius: 8px;
+  background: #111012;
+  padding: 10px;
+  color: #f3dfb6;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.font-guide-control span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.font-guide-control output {
+  color: #82d0bc;
+}
+
+.font-guide-control input[type="range"] {
+  width: 100%;
+  accent-color: #82d0bc;
+}
+
 .grid-panel {
   overflow: hidden;
 }
@@ -1589,6 +1696,18 @@ input[type="color"] {
 }
 
 @media (max-width: 640px) {
+  .font-guide-editor-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .font-guide-card {
+    padding: 10px;
+  }
+
+  .font-guide-heading {
+    align-items: flex-start;
+  }
+
   .app-shell {
     padding: 72px 14px 14px;
   }

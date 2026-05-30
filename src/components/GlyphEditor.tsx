@@ -612,6 +612,7 @@ export default function GlyphEditor({
           brushSize={brushSize}
           eyeExpression={eyeExpression}
           eraserMode={eraserMode}
+          guideSettings={font.guideSettings}
           inkEffect={inkEffect}
           inkColor={inkColor}
           referenceGlyph={referenceGlyph}
@@ -880,6 +881,7 @@ export default function GlyphEditor({
         brushSize={brushSize}
         eyeExpression={eyeExpression}
         eraserMode={eraserMode}
+        guideSettings={font.guideSettings}
         inkEffect={inkEffect}
         inkColor={inkColor}
         referenceGlyph={referenceGlyph}

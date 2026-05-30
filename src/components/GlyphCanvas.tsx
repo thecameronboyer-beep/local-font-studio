@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
 import type { PointerEvent } from "react";
-import type { FontRenderProfile, Glyph, GlyphDecoration, GlyphInkEffect, GlyphStroke } from "../types/fontTypes";
+import type { FontGuideSettings, FontRenderProfile, Glyph, GlyphDecoration, GlyphInkEffect, GlyphStroke } from "../types/fontTypes";
 import { drawGlyphDecoration, drawStrokePath } from "../render/glyphRenderer";
+import { defaultFontGuideSettings } from "../storage/fontStorage";
 
 const CANVAS_SIZE = 720;
 
@@ -22,6 +23,7 @@ type GlyphCanvasProps = {
   eraserMode: EraserMode;
   inkEffect: GlyphInkEffect;
   inkColor: string;
+  guideSettings?: FontGuideSettings;
   referenceGlyph?: Glyph | null;
   renderProfile?: FontRenderProfile;
   selectedStrokeId: string | null;
@@ -178,6 +180,7 @@ export default function GlyphCanvas({
   eraserMode,
   inkEffect,
   inkColor,
+  guideSettings = defaultFontGuideSettings,
   referenceGlyph,
   renderProfile = "plain",
   selectedStrokeId,
@@ -211,7 +214,7 @@ export default function GlyphCanvas({
     decorationsRef.current = decorations;
     selectedStrokeIdRef.current = selectedStrokeId;
     drawCanvas(strokes, decorations);
-  }, [brushSize, decorations, eyeExpression, inkEffect, referenceGlyph, renderProfile, selectedStrokeId, showGuides, strokes, tool]);
+  }, [brushSize, decorations, eyeExpression, guideSettings, inkEffect, referenceGlyph, renderProfile, selectedStrokeId, showGuides, strokes, tool]);
 
   useEffect(() => {
     viewOffsetRef.current = viewOffset;
@@ -311,10 +314,10 @@ export default function GlyphCanvas({
 
   function drawGuides(ctx: CanvasRenderingContext2D) {
     const horizontalGuides = [
-      { y: 0.14, color: "rgba(41, 128, 145, 0.55)", label: "ascender" },
-      { y: 0.42, color: "rgba(181, 132, 42, 0.58)", label: "x-height" },
-      { y: 0.76, color: "rgba(35, 112, 76, 0.7)", label: "baseline" },
-      { y: 0.9, color: "rgba(133, 58, 57, 0.58)", label: "descender" },
+      { y: guideSettings.ascender, color: "rgba(41, 128, 145, 0.55)", label: "ascender" },
+      { y: guideSettings.xHeight, color: "rgba(181, 132, 42, 0.58)", label: "height" },
+      { y: guideSettings.baseline, color: "rgba(35, 112, 76, 0.7)", label: "baseline" },
+      { y: guideSettings.descender, color: "rgba(133, 58, 57, 0.58)", label: "descender" },
     ];
 
     ctx.save();

@@ -2,6 +2,7 @@ import { fontCharacters, spacebar } from "../data/characterSets";
 import type {
   BackgroundStyle,
   FontCharacterSettings,
+  FontGuideSettings,
   FontRenderProfile,
   FontSet,
   FontShapeSettings,
@@ -77,6 +78,13 @@ export const defaultFontShapeSettings: FontShapeSettings = {
   widthScale: 1,
 };
 
+export const defaultFontGuideSettings: FontGuideSettings = {
+  ascender: 0.14,
+  baseline: 0.76,
+  descender: 0.9,
+  xHeight: 0.42,
+};
+
 const legacyFontCharacterSettings: FontCharacterSettings = {
   showForgotten: true,
   showSpacebar: false,
@@ -100,10 +108,18 @@ export function createFontSet(
   name: string,
   renderProfile: FontRenderProfile = "plain",
   characterSettings: FontCharacterSettings = defaultFontCharacterSettings,
+  guideSettings: FontGuideSettings = defaultFontGuideSettings,
   shapeSettings: FontShapeSettings = defaultFontShapeSettings,
 ): FontSet {
+  const safeGuideSettings = normalizeGuideSettings(guideSettings, defaultFontGuideSettings);
   const glyphs = fontCharacters.reduce<Record<string, Glyph>>((map, character) => {
-    map[character] = createEmptyGlyph(character);
+    const glyph = createEmptyGlyph(character);
+    map[character] = character === spacebar
+      ? glyph
+      : {
+          ...glyph,
+          baselineOffset: safeGuideSettings.baseline,
+        };
     return map;
   }, {});
 
@@ -115,6 +131,7 @@ export function createFontSet(
     characterSettings: { ...characterSettings },
     glyphs,
     createdAt: now,
+    guideSettings: { ...safeGuideSettings },
     ...(renderProfile === "quillParchment" ? { renderProfile, theme: quillParchmentTheme } : {}),
     shapeSettings: { ...shapeSettings },
     updatedAt: now,
@@ -202,6 +219,28 @@ function normalizeCharacterSettings(value: unknown, fallback: FontCharacterSetti
   return {
     showForgotten: typeof value.showForgotten === "boolean" ? value.showForgotten : fallback.showForgotten,
     showSpacebar: typeof value.showSpacebar === "boolean" ? value.showSpacebar : fallback.showSpacebar,
+  };
+}
+
+function normalizeGuideSettings(value: unknown, fallback: FontGuideSettings): FontGuideSettings {
+  if (!isRecord(value)) {
+    return fallback;
+  }
+
+  const ascender = safeNumber(value.ascender, fallback.ascender, 0.04, 0.72);
+  const xHeight = safeNumber(value.xHeight, fallback.xHeight, 0.08, 0.82);
+  const baseline = safeNumber(value.baseline, fallback.baseline, 0.12, 0.92);
+  const descender = safeNumber(value.descender, fallback.descender, 0.2, 0.98);
+  const safeAscender = Math.min(0.72, Math.max(0.04, ascender));
+  const safeXHeight = Math.min(0.82, Math.max(safeAscender + 0.04, xHeight));
+  const safeBaseline = Math.min(0.92, Math.max(safeXHeight + 0.04, baseline));
+  const safeDescender = Math.min(0.98, Math.max(safeBaseline + 0.04, descender));
+
+  return {
+    ascender: Number(safeAscender.toFixed(2)),
+    baseline: Number(safeBaseline.toFixed(2)),
+    descender: Number(safeDescender.toFixed(2)),
+    xHeight: Number(safeXHeight.toFixed(2)),
   };
 }
 
@@ -352,6 +391,7 @@ function normalizeFont(font: unknown, usedFontIds: Set<string>, fallbackName: st
     characterSettings: normalizeCharacterSettings(font.characterSettings, legacyFontCharacterSettings),
     glyphs,
     createdAt: safeString(font.createdAt, now),
+    guideSettings: normalizeGuideSettings(font.guideSettings, defaultFontGuideSettings),
     ...(normalizeRenderProfile(font.renderProfile) ? { renderProfile: "quillParchment" as const } : {}),
     shapeSettings: normalizeShapeSettings(font.shapeSettings, defaultFontShapeSettings),
     ...(isRecord(font.theme)

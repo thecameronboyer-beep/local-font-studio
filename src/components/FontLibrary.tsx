@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import {
   drawGlyph,
   findPreviewGlyph,
@@ -9,8 +10,8 @@ import {
   getGlyphRenderScales,
   getGlyphTopForBaseline,
 } from "../render/glyphRenderer";
-import { defaultFontCharacterSettings, defaultFontShapeSettings, exportFontSet } from "../storage/fontStorage";
-import type { FontCharacterSettings, FontRenderProfile, FontSet, FontShapeSettings } from "../types/fontTypes";
+import { defaultFontCharacterSettings, defaultFontGuideSettings, exportFontSet } from "../storage/fontStorage";
+import type { FontCharacterSettings, FontGuideSettings, FontRenderProfile, FontSet } from "../types/fontTypes";
 
 type FontLibraryProps = {
   fonts: FontSet[];
@@ -20,7 +21,7 @@ type FontLibraryProps = {
     name: string,
     renderProfile: FontRenderProfile,
     characterSettings: FontCharacterSettings,
-    shapeSettings: FontShapeSettings,
+    guideSettings: FontGuideSettings,
   ) => void;
   onRenameFont: (fontId: string, name: string) => void;
   onDuplicateFont: (fontId: string) => void;
@@ -121,6 +122,220 @@ function downloadFontJson(font: FontSet) {
   URL.revokeObjectURL(url);
 }
 
+type GuideKey = keyof FontGuideSettings;
+
+const guideRows: Array<{
+  color: string;
+  key: GuideKey;
+  label: string;
+}> = [
+  { key: "ascender", label: "Ascender", color: "rgba(41, 128, 145, 0.86)" },
+  { key: "xHeight", label: "Height", color: "rgba(181, 132, 42, 0.9)" },
+  { key: "baseline", label: "Baseline", color: "rgba(35, 112, 76, 0.92)" },
+  { key: "descender", label: "Descender", color: "rgba(133, 58, 57, 0.86)" },
+];
+
+function clampGuideValue(settings: FontGuideSettings, key: GuideKey, value: number): FontGuideSettings {
+  const next = {
+    ...settings,
+    [key]: Math.min(0.98, Math.max(0.04, value)),
+  };
+
+  if (key === "ascender") {
+    next.ascender = Math.min(next.xHeight - 0.04, Math.max(0.04, next.ascender));
+  }
+
+  if (key === "xHeight") {
+    next.xHeight = Math.min(next.baseline - 0.04, Math.max(next.ascender + 0.04, next.xHeight));
+  }
+
+  if (key === "baseline") {
+    next.baseline = Math.min(next.descender - 0.04, Math.max(next.xHeight + 0.04, next.baseline));
+  }
+
+  if (key === "descender") {
+    next.descender = Math.min(0.98, Math.max(next.baseline + 0.04, next.descender));
+  }
+
+  return {
+    ascender: Number(next.ascender.toFixed(2)),
+    baseline: Number(next.baseline.toFixed(2)),
+    descender: Number(next.descender.toFixed(2)),
+    xHeight: Number(next.xHeight.toFixed(2)),
+  };
+}
+
+function FontGuideEditor({
+  settings,
+  onChange,
+  onClose,
+  onReset,
+}: {
+  settings: FontGuideSettings;
+  onChange: (settings: FontGuideSettings) => void;
+  onClose: () => void;
+  onReset: () => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const activeGuideRef = useRef<GuideKey | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+
+    if (!canvas) {
+      return;
+    }
+
+    const dpr = window.devicePixelRatio || 1;
+    const size = 720;
+    const ctx = canvas.getContext("2d");
+
+    canvas.width = size * dpr;
+    canvas.height = size * dpr;
+
+    if (!ctx) {
+      return;
+    }
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, size, size);
+    ctx.fillStyle = "#f4ead7";
+    ctx.fillRect(0, 0, size, size);
+    ctx.strokeStyle = "rgba(23, 17, 11, 0.1)";
+    ctx.lineWidth = 1;
+
+    for (let index = 1; index < 12; index += 1) {
+      const offset = (index / 12) * size;
+      ctx.beginPath();
+      ctx.moveTo(offset, 0);
+      ctx.lineTo(offset, size);
+      ctx.moveTo(0, offset);
+      ctx.lineTo(size, offset);
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = "rgba(23, 17, 11, 0.18)";
+    ctx.lineWidth = 2;
+    for (const x of [0.1, 0.9]) {
+      const px = x * size;
+      ctx.beginPath();
+      ctx.moveTo(px, 0);
+      ctx.lineTo(px, size);
+      ctx.stroke();
+    }
+
+    ctx.font = "900 18px Inter, ui-sans-serif, system-ui";
+    ctx.textBaseline = "middle";
+
+    for (const guide of guideRows) {
+      const y = settings[guide.key] * size;
+      ctx.strokeStyle = guide.color;
+      ctx.fillStyle = guide.color;
+      ctx.lineWidth = guide.key === "baseline" ? 4 : 3;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(size, y);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(size - 42, y, 15, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillText(guide.label, 18, Math.max(24, y - 18));
+    }
+  }, [settings]);
+
+  function getPointerY(event: ReactPointerEvent<HTMLCanvasElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return Math.min(0.98, Math.max(0.04, (event.clientY - rect.top) / rect.height));
+  }
+
+  function findNearestGuide(y: number) {
+    return guideRows.reduce((nearest, guide) => {
+      const distance = Math.abs(settings[guide.key] - y);
+      return distance < nearest.distance ? { distance, key: guide.key } : nearest;
+    }, {
+      distance: Number.POSITIVE_INFINITY,
+      key: "baseline" as GuideKey,
+    }).key;
+  }
+
+  function updateGuide(key: GuideKey, value: number) {
+    onChange(clampGuideValue(settings, key, value));
+  }
+
+  function handlePointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
+    const y = getPointerY(event);
+    const guideKey = findNearestGuide(y);
+    activeGuideRef.current = guideKey;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    updateGuide(guideKey, y);
+  }
+
+  function handlePointerMove(event: ReactPointerEvent<HTMLCanvasElement>) {
+    if (!activeGuideRef.current) {
+      return;
+    }
+
+    updateGuide(activeGuideRef.current, getPointerY(event));
+  }
+
+  function handlePointerUp(event: ReactPointerEvent<HTMLCanvasElement>) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    activeGuideRef.current = null;
+  }
+
+  return (
+    <section className="font-guide-overlay" aria-label="Drawing line setup">
+      <div className="font-guide-card">
+        <div className="font-guide-heading">
+          <div>
+            <p className="eyebrow">Advanced settings</p>
+            <h2>Drawing lines</h2>
+          </div>
+          <button className="secondary-button compact-button" type="button" onClick={onClose}>
+            Done
+          </button>
+        </div>
+
+        <div className="font-guide-editor-layout">
+          <canvas
+            ref={canvasRef}
+            className="font-guide-canvas"
+            aria-label="Adjust drawing guide lines"
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+          />
+
+          <div className="font-guide-controls">
+            {guideRows.map((guide) => (
+              <label key={guide.key} className="font-guide-control">
+                <span>
+                  {guide.label}
+                  <output>{Math.round(settings[guide.key] * 100)}%</output>
+                </span>
+                <input
+                  type="range"
+                  min="0.04"
+                  max="0.98"
+                  step="0.01"
+                  value={settings[guide.key]}
+                  onChange={(event) => updateGuide(guide.key, Number(event.target.value))}
+                />
+              </label>
+            ))}
+            <button className="secondary-button compact-button" type="button" onClick={onReset}>
+              Reset lines
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function FontLibrary({
   fonts,
   activeFontId,
@@ -137,8 +352,9 @@ export default function FontLibrary({
   const [newFontCharacterSettings, setNewFontCharacterSettings] = useState<FontCharacterSettings>({
     ...defaultFontCharacterSettings,
   });
-  const [newFontShapeSettings, setNewFontShapeSettings] = useState<FontShapeSettings>({
-    ...defaultFontShapeSettings,
+  const [guideEditorOpen, setGuideEditorOpen] = useState(false);
+  const [newFontGuideSettings, setNewFontGuideSettings] = useState<FontGuideSettings>({
+    ...defaultFontGuideSettings,
   });
   const [newFontName, setNewFontName] = useState("");
   const [newFontProfile, setNewFontProfile] = useState<FontRenderProfile>("plain");
@@ -175,24 +391,18 @@ export default function FontLibrary({
 
   function handleCreateFont() {
     const name = newFontName.trim() || (newFontProfile === "quillParchment" ? "Quill on Parchment" : `Font ${fonts.length + 1}`);
-    onCreateFont(name, newFontProfile, newFontCharacterSettings, newFontShapeSettings);
+    onCreateFont(name, newFontProfile, newFontCharacterSettings, newFontGuideSettings);
     setNewFontName("");
     setNewFontProfile("plain");
     setAdvancedSettingsOpen(false);
     setNewFontCharacterSettings({ ...defaultFontCharacterSettings });
-    setNewFontShapeSettings({ ...defaultFontShapeSettings });
+    setNewFontGuideSettings({ ...defaultFontGuideSettings });
+    setGuideEditorOpen(false);
     setCreateFormOpen(false);
   }
 
   function updateNewFontCharacterSetting(key: keyof FontCharacterSettings, value: boolean) {
     setNewFontCharacterSettings((current) => ({
-      ...current,
-      [key]: value,
-    }));
-  }
-
-  function updateNewFontShapeSetting(key: keyof FontShapeSettings, value: number) {
-    setNewFontShapeSettings((current) => ({
       ...current,
       [key]: value,
     }));
@@ -358,34 +568,17 @@ export default function FontLibrary({
                   />
                   <span>Space Bar</span>
                 </label>
-                <label className="font-option-slider">
-                  <span>
-                    Width
-                    <output>{newFontShapeSettings.widthScale.toFixed(2)}x</output>
-                  </span>
-                  <input
-                    type="range"
-                    min="0.55"
-                    max="1.6"
-                    step="0.05"
-                    value={newFontShapeSettings.widthScale}
-                    onChange={(event) => updateNewFontShapeSetting("widthScale", Number(event.target.value))}
-                  />
-                </label>
-                <label className="font-option-slider">
-                  <span>
-                    Height
-                    <output>{newFontShapeSettings.heightScale.toFixed(2)}x</output>
-                  </span>
-                  <input
-                    type="range"
-                    min="0.55"
-                    max="1.6"
-                    step="0.05"
-                    value={newFontShapeSettings.heightScale}
-                    onChange={(event) => updateNewFontShapeSetting("heightScale", Number(event.target.value))}
-                  />
-                </label>
+                <button
+                  className="secondary-button compact-button font-guide-launch"
+                  type="button"
+                  onClick={() => setGuideEditorOpen(true)}
+                >
+                  Adjust drawing lines
+                </button>
+                <div className="font-guide-summary">
+                  <span>Height {Math.round(newFontGuideSettings.xHeight * 100)}%</span>
+                  <span>Baseline {Math.round(newFontGuideSettings.baseline * 100)}%</span>
+                </div>
               </div>
             )}
             <button className="primary-button" type="submit">
@@ -398,6 +591,15 @@ export default function FontLibrary({
           </button>
         )}
       </form>
+
+      {guideEditorOpen && (
+        <FontGuideEditor
+          settings={newFontGuideSettings}
+          onChange={setNewFontGuideSettings}
+          onClose={() => setGuideEditorOpen(false)}
+          onReset={() => setNewFontGuideSettings({ ...defaultFontGuideSettings })}
+        />
+      )}
 
     </section>
   );
