@@ -498,6 +498,7 @@ h3 {
   border: 0;
   background: #f4ead7;
   touch-action: none;
+  transform-origin: center;
 }
 
 .eraser-cursor {
@@ -506,6 +507,18 @@ h3 {
 
 .eyes-cursor {
   cursor: grab;
+}
+
+.select-cursor {
+  cursor: crosshair;
+}
+
+.pan-cursor {
+  cursor: grab;
+}
+
+.pan-cursor:active {
+  cursor: grabbing;
 }
 
 .editor-controls {
@@ -635,7 +648,8 @@ input[type="color"] {
 .center-row,
 .nudge-row,
 .tool-row,
-.quick-save-row {
+.quick-save-row,
+.engine-option-row {
   display: grid;
   gap: 10px;
 }
@@ -645,6 +659,14 @@ input[type="color"] {
 .tool-row,
 .quick-save-row {
   grid-template-columns: 1fr 1fr;
+}
+
+.engine-option-row {
+  grid-template-columns: repeat(auto-fit, minmax(74px, 1fr));
+}
+
+.canvas-view-row {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .quick-save-row {
@@ -688,6 +710,12 @@ input[type="color"] {
 .danger-button {
   border: 1px solid rgba(204, 102, 94, 0.42);
   background: #2b1d1e;
+  color: #ffc3bc;
+}
+
+.danger-action {
+  border-color: rgba(204, 102, 94, 0.52);
+  background: rgba(78, 31, 33, 0.9);
   color: #ffc3bc;
 }
 
@@ -1435,6 +1463,11 @@ h1 {
   grid-template-columns: repeat(5, 1fr);
 }
 
+.draw-only-toolbar .engine-option-row {
+  grid-template-columns: repeat(auto-fit, minmax(74px, 1fr));
+  gap: 6px;
+}
+
 .draw-save-row {
   grid-template-columns: 1fr 1.35fr;
 }
@@ -1478,7 +1511,7 @@ h1 {
 }
 
 .draw-save-status {
-  bottom: calc(max(8px, env(safe-area-inset-bottom)) + 228px);
+  bottom: calc(max(8px, env(safe-area-inset-bottom)) + 384px);
   min-height: 18px;
   color: #1b6f5c;
   font-size: 0.78rem;

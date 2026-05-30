@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import GlyphCanvas from "./GlyphCanvas";
+import type { CanvasViewOffset, DrawingTool, EraserMode, SmoothingMode } from "./GlyphCanvas";
 import SpacingControls from "./SpacingControls";
 import { drawGlyph, findPreviewGlyph, getGlyphAdvance } from "../render/glyphRenderer";
 import type { FontSet, Glyph, GlyphDecoration, GlyphStroke } from "../types/fontTypes";
@@ -19,6 +20,12 @@ type GlyphEditorProps = {
 };
 
 const glyphInkSwatches = ["#19140f", "#d93434", "#f0a934", "#16815f", "#2468c9", "#8b4bd9"];
+const DEFAULT_CANVAS_VIEW: CanvasViewOffset = { x: 0, y: 0 };
+const smoothingOptions: Array<{ id: SmoothingMode; label: string }> = [
+  { id: "raw", label: "Raw" },
+  { id: "gentle", label: "Gentle" },
+  { id: "strong", label: "Strong" },
+];
 const eyeExpressionOptions: Array<{
   id: NonNullable<GlyphDecoration["expression"]>;
   label: string;
@@ -358,9 +365,15 @@ export default function GlyphEditor({
   const pastRef = useRef<Glyph[]>([]);
   const futureRef = useRef<Glyph[]>([]);
   const [brushSize, setBrushSize] = useState(9);
+  const [eraserMode, setEraserMode] = useState<EraserMode>("stroke");
   const [eyeExpression, setEyeExpression] = useState<NonNullable<GlyphDecoration["expression"]>>("googly");
   const [inkColor, setInkColor] = useState("#19140f");
-  const [tool, setTool] = useState<"pen" | "eraser" | "eyes">("pen");
+  const [selectedStrokeId, setSelectedStrokeId] = useState<string | null>(null);
+  const [showGuides, setShowGuides] = useState(true);
+  const [smoothingMode, setSmoothingMode] = useState<SmoothingMode>("gentle");
+  const [tool, setTool] = useState<DrawingTool>("pen");
+  const [viewOffset, setViewOffset] = useState<CanvasViewOffset>(DEFAULT_CANVAS_VIEW);
+  const [viewScale, setViewScale] = useState(1);
   const [savedMessage, setSavedMessage] = useState("");
   const [historyCounts, setHistoryCounts] = useState({ past: 0, future: 0 });
   const [fullScreenPage, setFullScreenPage] = useState<"draw" | "adjust">("draw");
@@ -373,6 +386,7 @@ export default function GlyphEditor({
     futureRef.current = [];
     setDraftGlyph(nextGlyph);
     setHistoryCounts({ past: 0, future: 0 });
+    setSelectedStrokeId(null);
     setSavedMessage("");
   }, [glyph.character]);
 
@@ -418,6 +432,34 @@ export default function GlyphEditor({
       ...draftGlyphRef.current,
       decorations,
     });
+  }
+
+  function chooseTool(nextTool: DrawingTool) {
+    setTool(nextTool);
+
+    if (nextTool !== "select") {
+      setSelectedStrokeId(null);
+    }
+  }
+
+  function handleDeleteSelectedStroke() {
+    if (!selectedStrokeId) {
+      return;
+    }
+
+    pushHistory();
+    updateDraftStrokes(draftGlyphRef.current.strokes.filter((stroke) => stroke.id !== selectedStrokeId));
+    setSelectedStrokeId(null);
+    setSavedMessage("Deleted stroke");
+  }
+
+  function handleZoom(delta: number) {
+    setViewScale((current) => Math.min(3, Math.max(0.65, Number((current + delta).toFixed(2)))));
+  }
+
+  function handleResetView() {
+    setViewScale(1);
+    setViewOffset(DEFAULT_CANVAS_VIEW);
   }
 
   function handleSave() {
@@ -501,11 +543,19 @@ export default function GlyphEditor({
           decorations={draftGlyph.decorations}
           brushSize={brushSize}
           eyeExpression={eyeExpression}
+          eraserMode={eraserMode}
           inkColor={inkColor}
+          selectedStrokeId={selectedStrokeId}
+          showGuides={showGuides}
+          smoothingMode={smoothingMode}
           tool={tool}
+          viewOffset={viewOffset}
+          viewScale={viewScale}
           onEditStart={pushHistory}
+          onChangeViewOffset={setViewOffset}
           onChangeDecorations={updateDraftDecorations}
           onChangeStrokes={updateDraftStrokes}
+          onSelectStroke={setSelectedStrokeId}
         />
 
         <div className="draw-only-topbar" aria-label="Drawing navigation">
@@ -534,23 +584,37 @@ export default function GlyphEditor({
             <button
               className={`draw-glass-button ${tool === "pen" ? "active-tool" : ""}`}
               type="button"
-              onClick={() => setTool("pen")}
+              onClick={() => chooseTool("pen")}
             >
               Pen
             </button>
             <button
               className={`draw-glass-button ${tool === "eyes" ? "active-tool" : ""}`}
               type="button"
-              onClick={() => setTool("eyes")}
+              onClick={() => chooseTool("eyes")}
             >
               Eyes
             </button>
             <button
               className={`draw-glass-button ${tool === "eraser" ? "active-tool" : ""}`}
               type="button"
-              onClick={() => setTool("eraser")}
+              onClick={() => chooseTool("eraser")}
             >
               Eraser
+            </button>
+            <button
+              className={`draw-glass-button ${tool === "select" ? "active-tool" : ""}`}
+              type="button"
+              onClick={() => chooseTool("select")}
+            >
+              Select
+            </button>
+            <button
+              className={`draw-glass-button ${tool === "pan" ? "active-tool" : ""}`}
+              type="button"
+              onClick={() => chooseTool("pan")}
+            >
+              Pan
             </button>
             <button
               className="draw-glass-button"
@@ -572,6 +636,63 @@ export default function GlyphEditor({
 
           {tool === "eyes" && (
             <EyeExpressionControl expression={eyeExpression} onExpressionChange={setEyeExpression} />
+          )}
+
+          {tool === "eraser" && (
+            <div className="engine-option-row" aria-label="Eraser mode">
+              <button
+                className={`draw-glass-button ${eraserMode === "stroke" ? "active-tool" : ""}`}
+                type="button"
+                onClick={() => setEraserMode("stroke")}
+              >
+                Stroke
+              </button>
+              <button
+                className={`draw-glass-button ${eraserMode === "point" ? "active-tool" : ""}`}
+                type="button"
+                onClick={() => setEraserMode("point")}
+              >
+                Point
+              </button>
+            </div>
+          )}
+
+          <div className="engine-option-row" aria-label="Stroke smoothing">
+            {smoothingOptions.map((option) => (
+              <button
+                key={option.id}
+                className={`draw-glass-button ${smoothingMode === option.id ? "active-tool" : ""}`}
+                type="button"
+                onClick={() => setSmoothingMode(option.id)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="engine-option-row" aria-label="Canvas view">
+            <button className="draw-glass-button" type="button" onClick={() => handleZoom(-0.15)}>
+              Zoom -
+            </button>
+            <button className="draw-glass-button" type="button" onClick={handleResetView}>
+              {Math.round(viewScale * 100)}%
+            </button>
+            <button className="draw-glass-button" type="button" onClick={() => handleZoom(0.15)}>
+              Zoom +
+            </button>
+            <button
+              className={`draw-glass-button ${showGuides ? "active-tool" : ""}`}
+              type="button"
+              onClick={() => setShowGuides((current) => !current)}
+            >
+              Guides
+            </button>
+          </div>
+
+          {selectedStrokeId && (
+            <button className="draw-glass-button danger-action" type="button" onClick={handleDeleteSelectedStroke}>
+              Delete stroke
+            </button>
           )}
 
           <label className="draw-brush-control">
@@ -730,11 +851,19 @@ export default function GlyphEditor({
         decorations={draftGlyph.decorations}
         brushSize={brushSize}
         eyeExpression={eyeExpression}
+        eraserMode={eraserMode}
         inkColor={inkColor}
+        selectedStrokeId={selectedStrokeId}
+        showGuides={showGuides}
+        smoothingMode={smoothingMode}
         tool={tool}
+        viewOffset={viewOffset}
+        viewScale={viewScale}
         onEditStart={pushHistory}
+        onChangeViewOffset={setViewOffset}
         onChangeDecorations={updateDraftDecorations}
         onChangeStrokes={updateDraftStrokes}
+        onSelectStroke={setSelectedStrokeId}
       />
 
       <EditorLivePreview
@@ -758,23 +887,37 @@ export default function GlyphEditor({
           <button
             className={`secondary-button ${tool === "pen" ? "active-tool" : ""}`}
             type="button"
-            onClick={() => setTool("pen")}
+            onClick={() => chooseTool("pen")}
           >
             Pen
           </button>
           <button
             className={`secondary-button ${tool === "eyes" ? "active-tool" : ""}`}
             type="button"
-            onClick={() => setTool("eyes")}
+            onClick={() => chooseTool("eyes")}
           >
             Eyes
           </button>
           <button
             className={`secondary-button ${tool === "eraser" ? "active-tool" : ""}`}
             type="button"
-            onClick={() => setTool("eraser")}
+            onClick={() => chooseTool("eraser")}
           >
             Eraser
+          </button>
+          <button
+            className={`secondary-button ${tool === "select" ? "active-tool" : ""}`}
+            type="button"
+            onClick={() => chooseTool("select")}
+          >
+            Select
+          </button>
+          <button
+            className={`secondary-button ${tool === "pan" ? "active-tool" : ""}`}
+            type="button"
+            onClick={() => chooseTool("pan")}
+          >
+            Pan
           </button>
           <button
             className="secondary-button"
@@ -796,6 +939,63 @@ export default function GlyphEditor({
 
         {tool === "eyes" && (
           <EyeExpressionControl expression={eyeExpression} onExpressionChange={setEyeExpression} />
+        )}
+
+        {tool === "eraser" && (
+          <div className="engine-option-row" aria-label="Eraser mode">
+            <button
+              className={`secondary-button ${eraserMode === "stroke" ? "active-tool" : ""}`}
+              type="button"
+              onClick={() => setEraserMode("stroke")}
+            >
+              Stroke
+            </button>
+            <button
+              className={`secondary-button ${eraserMode === "point" ? "active-tool" : ""}`}
+              type="button"
+              onClick={() => setEraserMode("point")}
+            >
+              Point
+            </button>
+          </div>
+        )}
+
+        <div className="engine-option-row" aria-label="Stroke smoothing">
+          {smoothingOptions.map((option) => (
+            <button
+              key={option.id}
+              className={`secondary-button ${smoothingMode === option.id ? "active-tool" : ""}`}
+              type="button"
+              onClick={() => setSmoothingMode(option.id)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="engine-option-row canvas-view-row" aria-label="Canvas view">
+          <button className="secondary-button" type="button" onClick={() => handleZoom(-0.15)}>
+            Zoom -
+          </button>
+          <button className="secondary-button" type="button" onClick={handleResetView}>
+            {Math.round(viewScale * 100)}%
+          </button>
+          <button className="secondary-button" type="button" onClick={() => handleZoom(0.15)}>
+            Zoom +
+          </button>
+          <button
+            className={`secondary-button ${showGuides ? "active-tool" : ""}`}
+            type="button"
+            onClick={() => setShowGuides((current) => !current)}
+          >
+            Guides
+          </button>
+        </div>
+
+        {selectedStrokeId && (
+          <button className="danger-button" type="button" onClick={handleDeleteSelectedStroke}>
+            Delete stroke
+          </button>
         )}
 
         <label className="range-control">
