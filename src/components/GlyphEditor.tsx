@@ -156,30 +156,41 @@ function InkColorControl({
   inkColor: string;
   onInkColorChange: (color: string) => void;
 }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  function selectColor(color: string) {
+    onInkColorChange(color);
+    setIsOpen(false);
+  }
+
   return (
     <div className="glyph-ink-control">
-      <label>
-        <span>Ink</span>
-        <input
-          type="color"
-          value={inkColor}
-          onChange={(event) => onInkColorChange(event.target.value)}
-          aria-label="Pen ink color"
-        />
-      </label>
-      <div className="glyph-ink-swatches" aria-label="Ink color swatches">
-        {glyphInkSwatches.map((color) => (
-          <button
-            key={color}
-            className={`glyph-ink-swatch ${inkColor === color ? "selected" : ""}`}
-            type="button"
-            onClick={() => onInkColorChange(color)}
-            aria-label={`Use ink color ${color}`}
-          >
-            <span style={{ backgroundColor: color }} />
-          </button>
-        ))}
-      </div>
+      <button
+        className={`glyph-ink-toggle ${isOpen ? "open" : ""}`}
+        type="button"
+        aria-expanded={isOpen}
+        aria-label="Choose ink color"
+        onClick={() => setIsOpen((current) => !current)}
+      >
+        <span className="glyph-ink-current" style={{ backgroundColor: inkColor }} />
+        Ink
+      </button>
+
+      {isOpen && (
+        <div className="glyph-ink-menu" aria-label="Ink color menu">
+          {glyphInkSwatches.map((color) => (
+            <button
+              key={color}
+              className={`glyph-ink-swatch ${inkColor === color ? "selected" : ""}`}
+              type="button"
+              onClick={() => selectColor(color)}
+              aria-label={`Use ink color ${color}`}
+            >
+              <span style={{ backgroundColor: color }} />
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -681,7 +692,7 @@ export default function GlyphEditor({
             </div>
           )}
 
-          <div className="engine-option-row" aria-label="Stroke smoothing">
+          <div className="draw-compact-row smoothing-row" aria-label="Stroke smoothing">
             {smoothingOptions.map((option) => (
               <button
                 key={option.id}
@@ -694,7 +705,7 @@ export default function GlyphEditor({
             ))}
           </div>
 
-          <div className="engine-option-row" aria-label="Canvas view">
+          <div className="draw-compact-row view-row" aria-label="Canvas view">
             <button className="draw-glass-button" type="button" onClick={() => handleZoom(-0.15)}>
               Zoom -
             </button>
@@ -713,27 +724,27 @@ export default function GlyphEditor({
             </button>
           </div>
 
-          {renderReferenceGlyphControl()}
-
           {selectedStrokeId && (
             <button className="draw-glass-button danger-action" type="button" onClick={handleDeleteSelectedStroke}>
               Delete stroke
             </button>
           )}
 
-          <label className="draw-brush-control">
-            <span>Brush</span>
-            <input
-              type="range"
-              min="3"
-              max="28"
-              value={brushSize}
-              onChange={(event) => setBrushSize(Number(event.target.value))}
-            />
-            <output>{brushSize}px</output>
-          </label>
+          <div className="draw-brush-ink-row">
+            <label className="draw-brush-control">
+              <span>Brush</span>
+              <input
+                type="range"
+                min="3"
+                max="28"
+                value={brushSize}
+                onChange={(event) => setBrushSize(Number(event.target.value))}
+              />
+              <output>{brushSize}px</output>
+            </label>
 
-          <InkColorControl inkColor={inkColor} onInkColorChange={setInkColor} />
+            <InkColorControl inkColor={inkColor} onInkColorChange={setInkColor} />
+          </div>
 
           <div className="draw-save-row">
             <button className="draw-glass-button" type="button" onClick={handleSave}>

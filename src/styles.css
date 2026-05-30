@@ -680,39 +680,70 @@ h3 {
 }
 
 .glyph-ink-control {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 10px;
-  align-items: end;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 38px;
 }
 
-.glyph-ink-control label {
-  display: grid;
+.glyph-ink-toggle {
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  align-items: center;
   gap: 7px;
-  color: #dacbb7;
-  font-size: 0.82rem;
-  font-weight: 800;
+  width: 100%;
+  min-height: 32px;
+  border: 1px solid rgba(248, 230, 194, 0.17);
+  border-radius: 8px;
+  background: #242124;
+  color: #f3dfb6;
+  padding: 0 8px;
+  font-size: 0.72rem;
+  font-weight: 900;
 }
 
-.glyph-ink-control input[type="color"] {
-  width: 54px;
-  min-height: 42px;
+.glyph-ink-toggle.open {
+  border-color: #82d0bc;
+  background: #1b2c2b;
+  color: #f8f0df;
 }
 
-.glyph-ink-swatches {
+.glyph-ink-current {
+  width: 18px;
+  height: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.18),
+    0 0 0 2px rgba(0, 0, 0, 0.16);
+}
+
+.glyph-ink-menu {
+  position: absolute;
+  z-index: 8;
+  right: 0;
+  bottom: calc(100% + 6px);
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 6px;
+  grid-template-columns: 1fr;
+  gap: 5px;
+  border: 1px solid rgba(248, 230, 194, 0.16);
+  border-radius: 8px;
+  background: rgba(20, 19, 21, 0.95);
+  padding: 6px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(14px);
 }
 
 .glyph-ink-swatch {
   display: grid;
   place-items: center;
-  min-height: 42px;
+  width: 40px;
+  height: 34px;
   border: 1px solid rgba(248, 230, 194, 0.14);
   border-radius: 8px;
   background: #141315;
-  padding: 5px;
+  padding: 4px;
 }
 
 .glyph-ink-swatch.selected {
@@ -1893,19 +1924,21 @@ h1 {
 .draw-only-toolbar {
   bottom: max(8px, env(safe-area-inset-bottom));
   display: grid;
-  gap: 6px;
+  gap: 4px;
   border: 1px solid rgba(248, 230, 194, 0.16);
   border-radius: 8px;
   background: rgba(21, 19, 20, 0.86);
-  padding: 8px;
+  padding: 6px;
   backdrop-filter: blur(16px);
   box-shadow: 0 18px 55px rgba(0, 0, 0, 0.24);
 }
 
 .draw-tool-grid,
+.draw-compact-row,
+.draw-brush-ink-row,
 .draw-save-row {
   display: grid;
-  gap: 6px;
+  gap: 4px;
 }
 
 .draw-tool-grid {
@@ -1914,7 +1947,20 @@ h1 {
 
 .draw-only-toolbar .engine-option-row {
   grid-template-columns: repeat(auto-fit, minmax(74px, 1fr));
-  gap: 6px;
+  gap: 4px;
+}
+
+.draw-compact-row {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.smoothing-row {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.draw-brush-ink-row {
+  grid-template-columns: minmax(0, 1fr) 74px;
+  align-items: center;
 }
 
 .draw-save-row {
@@ -1923,10 +1969,10 @@ h1 {
 
 .draw-glass-button,
 .draw-gold-button {
-  min-height: 38px;
+  min-height: 31px;
   border-radius: 8px;
-  padding: 0 8px;
-  font-size: 0.78rem;
+  padding: 0 6px;
+  font-size: 0.68rem;
   font-weight: 900;
 }
 
@@ -1951,16 +1997,20 @@ h1 {
 
 .draw-brush-control {
   display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 6px;
   align-items: center;
   color: #f4ead7;
-  font-size: 0.76rem;
+  font-size: 0.68rem;
   font-weight: 900;
 }
 
+.draw-brush-control input[type="range"] {
+  min-width: 0;
+}
+
 .draw-save-status {
-  bottom: calc(max(8px, env(safe-area-inset-bottom)) + 384px);
+  bottom: calc(max(8px, env(safe-area-inset-bottom)) + 190px);
   min-height: 18px;
   color: #1b6f5c;
   font-size: 0.78rem;
