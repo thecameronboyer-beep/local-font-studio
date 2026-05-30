@@ -4,7 +4,7 @@ import type { CanvasViewOffset, DrawingTool, EraserMode, SmoothingMode } from ".
 import SpacingControls from "./SpacingControls";
 import { getCharacterLabel, supportedCharacters } from "../data/characterSets";
 import { drawGlyph, findPreviewGlyph, getGlyphAdvance } from "../render/glyphRenderer";
-import type { FontSet, Glyph, GlyphDecoration, GlyphStroke } from "../types/fontTypes";
+import type { FontSet, Glyph, GlyphDecoration, GlyphInkEffect, GlyphStroke } from "../types/fontTypes";
 
 type GlyphEditorProps = {
   font: FontSet;
@@ -27,6 +27,14 @@ const smoothingOptions: Array<{ id: SmoothingMode; label: string }> = [
   { id: "gentle", label: "Gentle" },
   { id: "strong", label: "Strong" },
 ];
+
+function getDefaultDrawingTool(font: FontSet): DrawingTool {
+  return font.renderProfile === "quillParchment" ? "quill" : "pen";
+}
+
+function getDefaultInkEffect(font: FontSet): GlyphInkEffect {
+  return font.renderProfile === "quillParchment" ? "dramaticPooling" : "none";
+}
 const eyeExpressionOptions: Array<{
   id: NonNullable<GlyphDecoration["expression"]>;
   label: string;
@@ -382,12 +390,13 @@ export default function GlyphEditor({
   const [brushSize, setBrushSize] = useState(9);
   const [eraserMode, setEraserMode] = useState<EraserMode>("stroke");
   const [eyeExpression, setEyeExpression] = useState<NonNullable<GlyphDecoration["expression"]>>("googly");
+  const [inkEffect, setInkEffect] = useState<GlyphInkEffect>(() => getDefaultInkEffect(font));
   const [inkColor, setInkColor] = useState(font.theme?.inkColor ?? "#19140f");
   const [referenceCharacter, setReferenceCharacter] = useState("");
   const [selectedStrokeId, setSelectedStrokeId] = useState<string | null>(null);
   const [showGuides, setShowGuides] = useState(true);
   const [smoothingMode, setSmoothingMode] = useState<SmoothingMode>("gentle");
-  const [tool, setTool] = useState<DrawingTool>("pen");
+  const [tool, setTool] = useState<DrawingTool>(() => getDefaultDrawingTool(font));
   const [viewOffset, setViewOffset] = useState<CanvasViewOffset>(DEFAULT_CANVAS_VIEW);
   const [viewScale, setViewScale] = useState(1);
   const [savedMessage, setSavedMessage] = useState("");
@@ -408,6 +417,12 @@ export default function GlyphEditor({
     setSelectedStrokeId(null);
     setSavedMessage("");
   }, [glyph.character]);
+
+  useEffect(() => {
+    setTool(getDefaultDrawingTool(font));
+    setInkEffect(getDefaultInkEffect(font));
+    setInkColor(font.theme?.inkColor ?? "#19140f");
+  }, [font.id, font.renderProfile, font.theme?.inkColor]);
 
   useEffect(() => {
     document.body.classList.toggle("editor-fullscreen-open", isFullScreen);
@@ -581,6 +596,7 @@ export default function GlyphEditor({
           brushSize={brushSize}
           eyeExpression={eyeExpression}
           eraserMode={eraserMode}
+          inkEffect={inkEffect}
           inkColor={inkColor}
           referenceGlyph={referenceGlyph}
           renderProfile={font.renderProfile}
@@ -626,6 +642,13 @@ export default function GlyphEditor({
               onClick={() => chooseTool("pen")}
             >
               Pen
+            </button>
+            <button
+              className={`draw-glass-button ${tool === "quill" ? "active-tool" : ""}`}
+              type="button"
+              onClick={() => chooseTool("quill")}
+            >
+              Quill
             </button>
             <button
               className={`draw-glass-button ${tool === "eyes" ? "active-tool" : ""}`}
@@ -707,6 +730,18 @@ export default function GlyphEditor({
                 {option.label}
               </button>
             ))}
+          </div>
+
+          <div className="draw-compact-row ink-effect-row" aria-label="Ink effect">
+            <button
+              className={`draw-glass-button ${inkEffect === "dramaticPooling" ? "active-tool" : ""}`}
+              type="button"
+              onClick={() =>
+                setInkEffect((current) => (current === "dramaticPooling" ? "none" : "dramaticPooling"))
+              }
+            >
+              Dramatic ink
+            </button>
           </div>
 
           <div className="draw-compact-row view-row" aria-label="Canvas view">
@@ -895,6 +930,7 @@ export default function GlyphEditor({
         brushSize={brushSize}
         eyeExpression={eyeExpression}
         eraserMode={eraserMode}
+        inkEffect={inkEffect}
         inkColor={inkColor}
         referenceGlyph={referenceGlyph}
         renderProfile={font.renderProfile}
@@ -935,6 +971,13 @@ export default function GlyphEditor({
             onClick={() => chooseTool("pen")}
           >
             Pen
+          </button>
+          <button
+            className={`secondary-button ${tool === "quill" ? "active-tool" : ""}`}
+            type="button"
+            onClick={() => chooseTool("quill")}
+          >
+            Quill
           </button>
           <button
             className={`secondary-button ${tool === "eyes" ? "active-tool" : ""}`}
@@ -1016,6 +1059,18 @@ export default function GlyphEditor({
               {option.label}
             </button>
           ))}
+        </div>
+
+        <div className="engine-option-row" aria-label="Ink effect">
+          <button
+            className={`secondary-button ${inkEffect === "dramaticPooling" ? "active-tool" : ""}`}
+            type="button"
+            onClick={() =>
+              setInkEffect((current) => (current === "dramaticPooling" ? "none" : "dramaticPooling"))
+            }
+          >
+            Dramatic ink
+          </button>
         </div>
 
         <div className="engine-option-row canvas-view-row" aria-label="Canvas view">

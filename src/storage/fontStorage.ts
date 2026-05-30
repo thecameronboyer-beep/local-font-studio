@@ -5,10 +5,12 @@ import type {
   FontSet,
   FontStudioData,
   FontTheme,
+  GlyphInkEffect,
   Glyph,
   GlyphDecoration,
   GlyphPoint,
   GlyphStroke,
+  GlyphStrokeTool,
   ProjectActivity,
   ProjectActivityDraft,
   ProjectBackup,
@@ -151,6 +153,14 @@ function normalizeRenderProfile(value: unknown): FontRenderProfile | undefined {
   return value === "quillParchment" ? "quillParchment" : undefined;
 }
 
+function normalizeStrokeTool(value: unknown): GlyphStrokeTool | undefined {
+  return value === "quill" ? "quill" : undefined;
+}
+
+function normalizeGlyphInkEffect(value: unknown): GlyphInkEffect | undefined {
+  return value === "dramaticPooling" ? "dramaticPooling" : undefined;
+}
+
 function normalizePoint(point: unknown): GlyphPoint | null {
   if (!isRecord(point) || typeof point.x !== "number" || typeof point.y !== "number") {
     return null;
@@ -189,9 +199,11 @@ function normalizeStroke(stroke: unknown): GlyphStroke | null {
 
   return {
     ...(typeof stroke.color === "string" ? { color: stroke.color } : {}),
+    ...(normalizeGlyphInkEffect(stroke.inkEffect) ? { inkEffect: "dramaticPooling" as const } : {}),
     id: safeString(stroke.id, createId("stroke")),
     points,
     size: normalizeStrokeSize(stroke.size),
+    ...(normalizeStrokeTool(stroke.strokeTool) ? { strokeTool: "quill" as const } : {}),
   };
 }
 

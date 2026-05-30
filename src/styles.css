@@ -1958,7 +1958,7 @@ h1 {
 }
 
 .draw-tool-grid {
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
 }
 
 .draw-only-toolbar .engine-option-row {
@@ -1972,6 +1972,10 @@ h1 {
 
 .smoothing-row {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.ink-effect-row {
+  grid-template-columns: 1fr;
 }
 
 .draw-brush-ink-row {

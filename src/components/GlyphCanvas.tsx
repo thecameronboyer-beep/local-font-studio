@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { PointerEvent } from "react";
-import type { FontRenderProfile, Glyph, GlyphDecoration, GlyphStroke } from "../types/fontTypes";
+import type { FontRenderProfile, Glyph, GlyphDecoration, GlyphInkEffect, GlyphStroke } from "../types/fontTypes";
 import { drawGlyphDecoration, drawStrokePath } from "../render/glyphRenderer";
 
 const CANVAS_SIZE = 720;
@@ -10,7 +10,7 @@ export type CanvasViewOffset = {
   y: number;
 };
 
-export type DrawingTool = "pen" | "eraser" | "eyes" | "select" | "pan";
+export type DrawingTool = "pen" | "quill" | "eraser" | "eyes" | "select" | "pan";
 export type EraserMode = "stroke" | "point";
 export type SmoothingMode = "raw" | "gentle" | "strong";
 
@@ -20,6 +20,7 @@ type GlyphCanvasProps = {
   brushSize: number;
   eyeExpression: NonNullable<GlyphDecoration["expression"]>;
   eraserMode: EraserMode;
+  inkEffect: GlyphInkEffect;
   inkColor: string;
   referenceGlyph?: Glyph | null;
   renderProfile?: FontRenderProfile;
@@ -175,6 +176,7 @@ export default function GlyphCanvas({
   brushSize,
   eyeExpression,
   eraserMode,
+  inkEffect,
   inkColor,
   referenceGlyph,
   renderProfile = "plain",
@@ -209,7 +211,7 @@ export default function GlyphCanvas({
     decorationsRef.current = decorations;
     selectedStrokeIdRef.current = selectedStrokeId;
     drawCanvas(strokes, decorations);
-  }, [brushSize, decorations, eyeExpression, referenceGlyph, renderProfile, selectedStrokeId, showGuides, strokes, tool]);
+  }, [brushSize, decorations, eyeExpression, inkEffect, referenceGlyph, renderProfile, selectedStrokeId, showGuides, strokes, tool]);
 
   useEffect(() => {
     viewOffsetRef.current = viewOffset;
@@ -246,7 +248,17 @@ export default function GlyphCanvas({
     }
 
     for (const stroke of nextStrokes) {
-      drawStrokePath(ctx, stroke, 0, 0, CANVAS_SIZE, CANVAS_SIZE, CANVAS_SIZE, "#19140f", { renderProfile });
+      drawStrokePath(
+        ctx,
+        stroke,
+        0,
+        0,
+        CANVAS_SIZE,
+        CANVAS_SIZE,
+        CANVAS_SIZE,
+        "#19140f",
+        { renderProfile, skipInkEffect: activeStrokeRef.current?.id === stroke.id },
+      );
     }
 
     const selectedStroke = nextStrokes.find((stroke) => stroke.id === selectedStrokeId);
@@ -529,6 +541,7 @@ export default function GlyphCanvas({
     const stroke: GlyphStroke = {
       color: inkColor,
       id: makeStrokeId(),
+      inkEffect,
       points: [
         {
           ...point,
@@ -537,6 +550,7 @@ export default function GlyphCanvas({
         },
       ],
       size: brushSize / CANVAS_SIZE,
+      strokeTool: tool === "quill" ? "quill" : "pen",
     };
 
     activeStrokeRef.current = stroke;
@@ -605,6 +619,7 @@ export default function GlyphCanvas({
     activeDecorationIdRef.current = null;
     erasingRef.current = false;
     panStartRef.current = null;
+    drawCanvas(strokesRef.current, decorationsRef.current);
   }
 
   function eraseAtPoint(x: number, y: number) {

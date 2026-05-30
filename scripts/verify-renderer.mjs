@@ -42,6 +42,10 @@ if (!/quillParchment/.test(rendererSource) || !/QUILL_NIB_ANGLE/.test(rendererSo
   failures.push("src/render/glyphRenderer.ts: quill profile renderer is missing");
 }
 
+if (!/dramaticPooling/.test(rendererSource) || !/skipInkEffect/.test(rendererSource)) {
+  failures.push("src/render/glyphRenderer.ts: cached dramatic ink effect is missing or unbounded");
+}
+
 if (!/renderProfile/.test(canvasSource)) {
   failures.push("src/components/GlyphCanvas.tsx: canvas must pass render profile into stroke rendering");
 }

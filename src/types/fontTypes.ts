@@ -8,9 +8,15 @@ export type GlyphPoint = {
 export type GlyphStroke = {
   color?: string;
   id: string;
+  inkEffect?: GlyphInkEffect;
   points: GlyphPoint[];
   size: number;
+  strokeTool?: GlyphStrokeTool;
 };
+
+export type GlyphStrokeTool = "pen" | "quill";
+
+export type GlyphInkEffect = "none" | "dramaticPooling";
 
 export type GlyphDecoration = {
   expression?: "googly" | "happy" | "angry" | "tired" | "stoned";

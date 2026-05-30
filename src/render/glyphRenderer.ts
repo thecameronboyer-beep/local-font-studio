@@ -1,4 +1,11 @@
-import type { FontRenderProfile, Glyph, GlyphDecoration, GlyphStroke } from "../types/fontTypes";
+import type {
+  FontRenderProfile,
+  Glyph,
+  GlyphDecoration,
+  GlyphInkEffect,
+  GlyphStroke,
+  GlyphStrokeTool,
+} from "../types/fontTypes";
 
 export type GlyphDrawOptions = {
   x: number;
@@ -12,6 +19,7 @@ export type GlyphDrawOptions = {
 
 type StrokeDrawOptions = {
   renderProfile?: FontRenderProfile;
+  skipInkEffect?: boolean;
 };
 
 export function hasDrawnGlyph(glyph: Glyph | undefined) {
@@ -59,6 +67,14 @@ function getLineWidth(baseWidth: number, point: GlyphStroke["points"][number]) {
   const pressure = getPointPressure(point);
 
   return baseWidth * (0.82 + pressure * 0.34);
+}
+
+function getEffectiveStrokeTool(stroke: GlyphStroke, renderProfile: FontRenderProfile = "plain"): GlyphStrokeTool {
+  return stroke.strokeTool ?? (renderProfile === "quillParchment" ? "quill" : "pen");
+}
+
+function getEffectiveInkEffect(stroke: GlyphStroke): GlyphInkEffect {
+  return stroke.inkEffect ?? "none";
 }
 
 const QUILL_NIB_ANGLE = (38 * Math.PI) / 180;
@@ -264,6 +280,110 @@ function drawQuillStrokePath(
   }
 }
 
+function getDarkerInkColor(color: string) {
+  const hex = color.trim();
+  const shortHex = /^#([0-9a-f]{3})$/i.exec(hex);
+  const longHex = /^#([0-9a-f]{6})$/i.exec(hex);
+
+  if (!shortHex && !longHex) {
+    return "rgba(24, 11, 4, 0.72)";
+  }
+
+  const value = shortHex
+    ? shortHex[1].split("").map((character) => `${character}${character}`).join("")
+    : longHex?.[1] ?? "180b04";
+  const red = Math.max(0, Math.round(Number.parseInt(value.slice(0, 2), 16) * 0.42));
+  const green = Math.max(0, Math.round(Number.parseInt(value.slice(2, 4), 16) * 0.36));
+  const blue = Math.max(0, Math.round(Number.parseInt(value.slice(4, 6), 16) * 0.3));
+
+  return `rgb(${red}, ${green}, ${blue})`;
+}
+
+function drawDramaticInkEffect(
+  ctx: CanvasRenderingContext2D,
+  stroke: GlyphStroke,
+  strokeColor: string,
+  x: number,
+  y: number,
+  size: number,
+  sizeX = size,
+  sizeY = size,
+) {
+  const points = stroke.points;
+
+  if (points.length === 0) {
+    return;
+  }
+
+  const baseWidth = Math.max(1.2, stroke.size * size);
+  const darkColor = getDarkerInkColor(strokeColor);
+  const markCount = Math.min(28, points.length);
+  const step = Math.max(1, Math.floor(points.length / markCount));
+
+  ctx.save();
+  ctx.fillStyle = darkColor;
+  ctx.strokeStyle = darkColor;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  for (const pointIndex of [0, points.length - 1]) {
+    const point = points[pointIndex];
+    const canvasPoint = getCanvasPoint(point, x, y, sizeX, sizeY);
+    const seed = getSeed(stroke.id, pointIndex + 1201);
+    const radius = baseWidth * (0.46 + seed * 0.36);
+
+    ctx.globalAlpha = 0.2;
+    ctx.beginPath();
+    ctx.ellipse(canvasPoint.x, canvasPoint.y, radius * 0.92, radius * 0.42, QUILL_NIB_ANGLE, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  for (let index = step; index < points.length - step; index += step) {
+    const previousPoint = points[index - step];
+    const point = points[index];
+    const nextPoint = points[Math.min(points.length - 1, index + step)];
+    const turn = Math.abs(
+      Math.atan2(nextPoint.y - point.y, nextPoint.x - point.x) -
+        Math.atan2(point.y - previousPoint.y, point.x - previousPoint.x),
+    );
+    const seed = getSeed(stroke.id, index + 1409);
+    const pressure = getPointPressure(point);
+    const radius = baseWidth * (0.24 + Math.min(Math.PI, turn) * 0.1 + seed * 0.22) * pressure;
+    const canvasPoint = getCanvasPoint(point, x, y, sizeX, sizeY);
+
+    if (radius < 0.8) {
+      continue;
+    }
+
+    ctx.globalAlpha = 0.08 + Math.min(0.2, turn * 0.08);
+    ctx.beginPath();
+    ctx.ellipse(
+      canvasPoint.x,
+      canvasPoint.y,
+      radius * (0.82 + seed * 0.56),
+      radius * (0.28 + seed * 0.18),
+      QUILL_NIB_ANGLE + seed * 0.5,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+
+    if (seed > 0.5) {
+      const featherLength = radius * (1.8 + seed * 1.2);
+      const angle = QUILL_NIB_ANGLE + (seed - 0.5) * 1.1;
+
+      ctx.globalAlpha = 0.12;
+      ctx.lineWidth = Math.max(0.55, radius * 0.16);
+      ctx.beginPath();
+      ctx.moveTo(canvasPoint.x, canvasPoint.y);
+      ctx.lineTo(canvasPoint.x + Math.cos(angle) * featherLength, canvasPoint.y + Math.sin(angle) * featherLength);
+      ctx.stroke();
+    }
+  }
+
+  ctx.restore();
+}
+
 export function drawStrokePath(
   ctx: CanvasRenderingContext2D,
   stroke: GlyphStroke,
@@ -280,13 +400,19 @@ export function drawStrokePath(
   }
 
   ctx.save();
-  ctx.strokeStyle = stroke.color ?? fallbackColor ?? ctx.strokeStyle;
+  const strokeColor = String(stroke.color ?? fallbackColor ?? ctx.strokeStyle);
+  const strokeTool = getEffectiveStrokeTool(stroke, options.renderProfile);
+  const inkEffect = getEffectiveInkEffect(stroke);
+  ctx.strokeStyle = strokeColor;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   const baseWidth = Math.max(1.5, stroke.size * size);
 
-  if (options.renderProfile === "quillParchment") {
+  if (strokeTool === "quill") {
     drawQuillStrokePath(ctx, stroke, x, y, size, sizeX, sizeY);
+    if (!options.skipInkEffect && inkEffect === "dramaticPooling") {
+      drawDramaticInkEffect(ctx, stroke, strokeColor, x, y, size, sizeX, sizeY);
+    }
     ctx.restore();
     return;
   }
@@ -295,6 +421,9 @@ export function drawStrokePath(
 
   if (rest.length === 0) {
     drawPointDot(ctx, firstPoint, x, y, baseWidth, sizeX, sizeY);
+    if (!options.skipInkEffect && inkEffect === "dramaticPooling") {
+      drawDramaticInkEffect(ctx, stroke, strokeColor, x, y, size, sizeX, sizeY);
+    }
     ctx.restore();
     return;
   }
@@ -308,6 +437,10 @@ export function drawStrokePath(
     ctx.lineTo(x + point.x * sizeX, y + point.y * sizeY);
     ctx.stroke();
     previousPoint = point;
+  }
+
+  if (!options.skipInkEffect && inkEffect === "dramaticPooling") {
+    drawDramaticInkEffect(ctx, stroke, strokeColor, x, y, size, sizeX, sizeY);
   }
 
   ctx.restore();
