@@ -315,14 +315,6 @@ function savePreviewDocuments(documents: PreviewDocument[]) {
   window.localStorage.setItem(PREVIEW_DOCUMENTS_KEY, JSON.stringify(documents));
 }
 
-function isMissingGlyph(font: FontSet, character: string) {
-  return character !== "\n" && character !== " " && !findPreviewGlyph(font.glyphs, character);
-}
-
-function formatPairGap(value: number) {
-  return value.toFixed(2);
-}
-
 export default function TextPreview({
   font,
   onRecordExport,
@@ -352,67 +344,6 @@ export default function TextPreview({
     () => Object.values(font.glyphs).filter((glyph) => hasDrawnGlyph(glyph)).length,
     [font.glyphs],
   );
-
-  const diagnostics = useMemo(() => {
-    if (typeof document === "undefined") {
-      return {
-        missingCharacters: [] as string[],
-        pairWarnings: [] as Array<{ detail: string; pair: string; status: "tight" | "loose" | "missing" }>,
-        oversizedWords: [] as string[],
-      };
-    }
-
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-
-    if (!ctx) {
-      return {
-        missingCharacters: [] as string[],
-        pairWarnings: [] as Array<{ detail: string; pair: string; status: "tight" | "loose" | "missing" }>,
-        oversizedWords: [] as string[],
-      };
-    }
-
-    ctx.font = getFallbackFont(imageSettings.fontSize);
-    const maxLineWidth = imageSettings.canvasWidth - imageSettings.pagePadding * 2;
-    const missingCharacters = [...new Set([...previewText].filter((character) => isMissingGlyph(font, character)))];
-    const oversizedWords = previewText
-      .split(/\s+/)
-      .filter(Boolean)
-      .filter((word) => measureTextRun(ctx, word, imageSettings.fontSize) > maxLineWidth)
-      .slice(0, 8);
-    const pairWarnings: Array<{ detail: string; pair: string; status: "tight" | "loose" | "missing" }> = [];
-    const characters = [...previewText.replace(/\s+/g, "")];
-
-    for (let index = 0; index < characters.length - 1; index += 1) {
-      const left = characters[index];
-      const right = characters[index + 1];
-      const leftGlyph = findPreviewGlyph(font.glyphs, left);
-      const rightGlyph = findPreviewGlyph(font.glyphs, right);
-      const pair = `${left}${right}`;
-
-      if (!leftGlyph || !rightGlyph) {
-        if (pairWarnings.length < 10) {
-          pairWarnings.push({ pair, status: "missing", detail: "Missing glyph" });
-        }
-        continue;
-      }
-
-      const gap = leftGlyph.rightBearing + rightGlyph.leftBearing;
-
-      if (gap < -0.02 && pairWarnings.length < 10) {
-        pairWarnings.push({ pair, status: "tight", detail: `${formatPairGap(gap)} gap` });
-      } else if (gap > 0.28 && pairWarnings.length < 10) {
-        pairWarnings.push({ pair, status: "loose", detail: `${formatPairGap(gap)} gap` });
-      }
-    }
-
-    return {
-      missingCharacters: missingCharacters.slice(0, 18),
-      oversizedWords,
-      pairWarnings,
-    };
-  }, [font, imageSettings.canvasWidth, imageSettings.fontSize, imageSettings.pagePadding, previewText]);
 
   useEffect(() => {
     renderPhoneImage();
@@ -1449,21 +1380,6 @@ export default function TextPreview({
           ))}
         </div>
       )}
-
-      <div className="preview-diagnostics" aria-label="Preview diagnostics">
-        <div className={`diagnostic-card ${diagnostics.missingCharacters.length > 0 || diagnostics.pairWarnings.length > 0 ? "warn" : "ok"}`}>
-          <strong>Missing</strong>
-          <span>{diagnostics.missingCharacters.length > 0 ? "Highlighted in image" : "None"}</span>
-          <div className="diagnostic-card-section">
-            <strong>Pairs</strong>
-            <span>
-              {diagnostics.pairWarnings.length > 0
-                ? diagnostics.pairWarnings.slice(0, 3).map((pair) => `${pair.pair} ${pair.status}`).join(", ")
-                : "No obvious pair issues"}
-            </span>
-          </div>
-        </div>
-      </div>
 
       <div className="export-preset-grid" aria-label="Export presets">
         {exportPresets.map((preset) => (

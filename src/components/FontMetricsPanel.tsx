@@ -1,12 +1,13 @@
 import { useMemo } from "react";
 import { forgotten, getCharacterLabel, lowercase, numbers, punctuation, uppercase } from "../data/characterSets";
-import { hasDrawnGlyph } from "../render/glyphRenderer";
+import { findPreviewGlyph, hasDrawnGlyph } from "../render/glyphRenderer";
 import type { FontSet } from "../types/fontTypes";
 
 type MetricGroupId = "uppercase" | "lowercase" | "numbers" | "punctuation" | "forgotten";
 
 type FontMetricsPanelProps = {
   font: FontSet;
+  previewText: string;
   selectedCharacter: string;
   onSelectCharacter: (character: string) => void;
 };
@@ -25,6 +26,7 @@ const groupDefinitions: Array<{
 
 export default function FontMetricsPanel({
   font,
+  previewText,
   selectedCharacter,
   onSelectCharacter,
 }: FontMetricsPanelProps) {
@@ -41,6 +43,26 @@ export default function FontMetricsPanel({
       }),
     [font],
   );
+
+  const missingPairs = useMemo(() => {
+    const pairs: Array<{ missingCharacters: string[]; pair: string }> = [];
+    const seenPairs = new Set<string>();
+    const characters = [...previewText.replace(/\s+/g, "")];
+
+    for (let index = 0; index < characters.length - 1; index += 1) {
+      const pair = `${characters[index]}${characters[index + 1]}`;
+      const missingCharacters = [...new Set([...pair].filter((character) => !findPreviewGlyph(font.glyphs, character)))];
+
+      if (missingCharacters.length === 0 || seenPairs.has(pair)) {
+        continue;
+      }
+
+      seenPairs.add(pair);
+      pairs.push({ missingCharacters, pair });
+    }
+
+    return pairs.slice(0, 18);
+  }, [font, previewText]);
 
   const totalMissing = missingGroups.reduce((sum, group) => sum + group.missingCharacters.length, 0);
 
@@ -80,6 +102,27 @@ export default function FontMetricsPanel({
             )}
           </div>
         ))}
+        <div className="missing-group-card">
+          <div className="missing-group-heading">
+            <strong>Missing pairs</strong>
+            <em>{missingPairs.length}</em>
+          </div>
+          {missingPairs.length > 0 ? (
+            <div className="missing-pair-grid" aria-label="Missing pairs">
+              {missingPairs.map((pair) => (
+                <span
+                  key={pair.pair}
+                  className="missing-pair-pill"
+                  title={`Missing ${pair.missingCharacters.map(getCharacterLabel).join(", ")}`}
+                >
+                  {pair.pair}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <span className="missing-complete">None</span>
+          )}
+        </div>
       </div>
     </section>
   );

@@ -914,6 +914,24 @@ input[type="color"] {
   color: #f8f0df;
 }
 
+.missing-pair-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(54px, 1fr));
+  gap: 7px;
+}
+
+.missing-pair-pill {
+  display: grid;
+  place-items: center;
+  min-height: 36px;
+  border: 1px solid rgba(248, 230, 194, 0.12);
+  border-radius: 8px;
+  background: #141315;
+  color: #f3dfb6;
+  padding: 0 8px;
+  font-weight: 900;
+}
+
 .metric-readout-grid,
 .metric-group-grid,
 .consistency-grid,
@@ -1151,7 +1169,6 @@ input[type="color"] {
 .export-preset-grid,
 .preview-document-tools,
 .preview-document-list,
-.preview-diagnostics,
 .alignment-row {
   display: grid;
   gap: 8px;
@@ -1234,51 +1251,6 @@ input[type="color"] {
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.preview-diagnostics {
-  grid-template-columns: 1fr;
-}
-
-.diagnostic-card {
-  display: grid;
-  min-width: 0;
-  gap: 5px;
-  border: 1px solid rgba(248, 230, 194, 0.12);
-  border-radius: 8px;
-  background: #1c1a1d;
-  padding: 10px;
-}
-
-.diagnostic-card.ok {
-  border-color: rgba(130, 208, 188, 0.24);
-}
-
-.diagnostic-card.warn {
-  border-color: rgba(200, 164, 93, 0.54);
-  background: #2a2419;
-}
-
-.diagnostic-card strong {
-  color: #fff7e6;
-  font-size: 0.74rem;
-  font-weight: 900;
-  text-transform: uppercase;
-}
-
-.diagnostic-card span {
-  overflow-wrap: anywhere;
-  color: #cbbfae;
-  font-size: 0.72rem;
-  font-weight: 750;
-  line-height: 1.35;
-}
-
-.diagnostic-card-section {
-  display: grid;
-  gap: 4px;
-  padding-top: 8px;
-  border-top: 1px solid rgba(248, 230, 194, 0.12);
 }
 
 .preview-layout-tools {
@@ -1550,7 +1522,6 @@ input[type="color"] {
   }
 
   .export-preset-grid,
-  .preview-diagnostics,
   .alignment-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

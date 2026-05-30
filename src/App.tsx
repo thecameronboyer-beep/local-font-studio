@@ -322,6 +322,7 @@ export default function App() {
           </div>
           <FontMetricsPanel
             font={activeFont}
+            previewText={previewText}
             selectedCharacter={selectedCharacter}
             onSelectCharacter={handleSelectCharacter}
           />
