@@ -1,9 +1,9 @@
 import { useMemo } from "react";
-import { forgotten, getCharacterLabel, lowercase, numbers, punctuation, uppercase } from "../data/characterSets";
+import { forgotten, getCharacterLabel, lowercase, numbers, punctuation, spacebar, uppercase } from "../data/characterSets";
 import { findPreviewGlyph, hasDrawnGlyph } from "../render/glyphRenderer";
 import type { FontSet } from "../types/fontTypes";
 
-type MetricGroupId = "uppercase" | "lowercase" | "numbers" | "punctuation" | "forgotten";
+type MetricGroupId = "uppercase" | "lowercase" | "numbers" | "punctuation" | "forgotten" | "spacebar";
 
 type FontMetricsPanelProps = {
   font: FontSet;
@@ -12,7 +12,7 @@ type FontMetricsPanelProps = {
   onSelectCharacter: (character: string) => void;
 };
 
-const groupDefinitions: Array<{
+const baseGroupDefinitions: Array<{
   characters: string[];
   id: MetricGroupId;
   label: string;
@@ -21,7 +21,6 @@ const groupDefinitions: Array<{
   { id: "lowercase", label: "Lowercase", characters: lowercase },
   { id: "numbers", label: "Numbers", characters: numbers },
   { id: "punctuation", label: "Punctuation", characters: punctuation },
-  { id: "forgotten", label: "Forgotten", characters: forgotten },
 ];
 
 export default function FontMetricsPanel({
@@ -30,6 +29,19 @@ export default function FontMetricsPanel({
   selectedCharacter,
   onSelectCharacter,
 }: FontMetricsPanelProps) {
+  const groupDefinitions = useMemo(
+    () => [
+      ...baseGroupDefinitions,
+      ...(font.characterSettings.showForgotten
+        ? [{ id: "forgotten" as const, label: "Forgotten", characters: forgotten }]
+        : []),
+      ...(font.characterSettings.showSpacebar
+        ? [{ id: "spacebar" as const, label: "Space Bar", characters: [spacebar] }]
+        : []),
+    ],
+    [font.characterSettings.showForgotten, font.characterSettings.showSpacebar],
+  );
+
   const missingGroups = useMemo(
     () =>
       groupDefinitions.map((group) => {
@@ -41,7 +53,7 @@ export default function FontMetricsPanel({
           missingCharacters,
         };
       }),
-    [font],
+    [font, groupDefinitions],
   );
 
   const missingPairs = useMemo(() => {

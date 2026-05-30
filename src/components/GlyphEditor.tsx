@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import GlyphCanvas from "./GlyphCanvas";
 import type { CanvasViewOffset, DrawingTool, EraserMode, SmoothingMode } from "./GlyphCanvas";
 import SpacingControls from "./SpacingControls";
-import { getCharacterLabel, spacebar, supportedCharacters } from "../data/characterSets";
+import { getCharacterLabel, getVisibleCharacters, spacebar } from "../data/characterSets";
 import { drawGlyph, findPreviewGlyph, getGlyphAdvance, getSpacebarAdvance } from "../render/glyphRenderer";
 import type { FontSet, Glyph, GlyphDecoration, GlyphInkEffect, GlyphStroke } from "../types/fontTypes";
 
@@ -497,12 +497,14 @@ export default function GlyphEditor({
   }
 
   function renderReferenceGlyphControl() {
+    const visibleCharacters = getVisibleCharacters(font);
+
     return (
       <label className="reference-control">
         <span>Reference</span>
         <select value={activeReferenceCharacter} onChange={(event) => setReferenceCharacter(event.target.value)}>
           <option value="">None</option>
-          {supportedCharacters
+          {visibleCharacters
             .filter((character) => character !== glyph.character)
             .map((character) => (
               <option key={character} value={character}>

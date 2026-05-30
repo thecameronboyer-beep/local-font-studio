@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { drawGlyph, findPreviewGlyph, getGlyphAdvance } from "../render/glyphRenderer";
-import { exportFontSet } from "../storage/fontStorage";
-import type { FontRenderProfile, FontSet } from "../types/fontTypes";
+import { defaultFontCharacterSettings, exportFontSet } from "../storage/fontStorage";
+import type { FontCharacterSettings, FontRenderProfile, FontSet } from "../types/fontTypes";
 
 type FontLibraryProps = {
   fonts: FontSet[];
   activeFontId: string;
   onSelectFont: (fontId: string) => void;
-  onCreateFont: (name: string, renderProfile: FontRenderProfile) => void;
+  onCreateFont: (name: string, renderProfile: FontRenderProfile, characterSettings: FontCharacterSettings) => void;
   onRenameFont: (fontId: string, name: string) => void;
   onDuplicateFont: (fontId: string) => void;
   onDeleteFont: (fontId: string) => void;
@@ -115,6 +115,10 @@ export default function FontLibrary({
 }: FontLibraryProps) {
   const activeFont = fonts.find((font) => font.id === activeFontId) ?? fonts[0];
   const [createFormOpen, setCreateFormOpen] = useState(false);
+  const [advancedSettingsOpen, setAdvancedSettingsOpen] = useState(false);
+  const [newFontCharacterSettings, setNewFontCharacterSettings] = useState<FontCharacterSettings>({
+    ...defaultFontCharacterSettings,
+  });
   const [newFontName, setNewFontName] = useState("");
   const [newFontProfile, setNewFontProfile] = useState<FontRenderProfile>("plain");
   const [renameValue, setRenameValue] = useState(activeFont.name);
@@ -150,10 +154,19 @@ export default function FontLibrary({
 
   function handleCreateFont() {
     const name = newFontName.trim() || (newFontProfile === "quillParchment" ? "Quill on Parchment" : `Font ${fonts.length + 1}`);
-    onCreateFont(name, newFontProfile);
+    onCreateFont(name, newFontProfile, newFontCharacterSettings);
     setNewFontName("");
     setNewFontProfile("plain");
+    setAdvancedSettingsOpen(false);
+    setNewFontCharacterSettings({ ...defaultFontCharacterSettings });
     setCreateFormOpen(false);
+  }
+
+  function updateNewFontCharacterSetting(key: keyof FontCharacterSettings, value: boolean) {
+    setNewFontCharacterSettings((current) => ({
+      ...current,
+      [key]: value,
+    }));
   }
 
   function handleRenameFont() {
@@ -290,6 +303,34 @@ export default function FontLibrary({
                 </button>
               ))}
             </div>
+            <button
+              className="secondary-button compact-button advanced-font-toggle"
+              type="button"
+              aria-expanded={advancedSettingsOpen}
+              onClick={() => setAdvancedSettingsOpen((current) => !current)}
+            >
+              Advanced settings
+            </button>
+            {advancedSettingsOpen && (
+              <div className="advanced-font-options">
+                <label className="font-option-check">
+                  <input
+                    type="checkbox"
+                    checked={newFontCharacterSettings.showForgotten}
+                    onChange={(event) => updateNewFontCharacterSetting("showForgotten", event.target.checked)}
+                  />
+                  <span>Forgotten</span>
+                </label>
+                <label className="font-option-check">
+                  <input
+                    type="checkbox"
+                    checked={newFontCharacterSettings.showSpacebar}
+                    onChange={(event) => updateNewFontCharacterSetting("showSpacebar", event.target.checked)}
+                  />
+                  <span>Space Bar</span>
+                </label>
+              </div>
+            )}
             <button className="primary-button" type="submit">
               Create
             </button>

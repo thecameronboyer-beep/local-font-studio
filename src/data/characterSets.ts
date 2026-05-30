@@ -18,6 +18,24 @@ export const fontCharacters = [
   spacebar,
 ];
 
+type FontCharacterVisibility = {
+  characterSettings?: {
+    showForgotten?: boolean;
+    showSpacebar?: boolean;
+  };
+};
+
+export function getVisibleCharacters(font: FontCharacterVisibility) {
+  return [
+    ...uppercase,
+    ...lowercase,
+    ...numbers,
+    ...punctuation,
+    ...(font.characterSettings?.showForgotten ? forgotten : []),
+    ...(font.characterSettings?.showSpacebar ? [spacebar] : []),
+  ];
+}
+
 export function getCharacterLabel(character: string) {
   return character === spacebar ? "spacebar" : character;
 }

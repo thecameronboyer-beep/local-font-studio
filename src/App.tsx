@@ -5,7 +5,7 @@ import FontMetricsPanel from "./components/FontMetricsPanel";
 import GlyphEditor from "./components/GlyphEditor";
 import GlyphGrid from "./components/GlyphGrid";
 import TextPreview from "./components/TextPreview";
-import { spacebar, supportedCharacters } from "./data/characterSets";
+import { getVisibleCharacters, spacebar } from "./data/characterSets";
 import { hasDrawnGlyph } from "./render/glyphRenderer";
 import {
   cloneFontSet,
@@ -15,7 +15,7 @@ import {
   recordProjectActivity,
   saveFontStudioData,
 } from "./storage/fontStorage";
-import type { FontRenderProfile, FontSet, FontStudioData, Glyph, ProjectActivityDraft } from "./types/fontTypes";
+import type { FontCharacterSettings, FontRenderProfile, FontSet, FontStudioData, Glyph, ProjectActivityDraft } from "./types/fontTypes";
 
 export default function App() {
   const libraryRef = useRef<HTMLDivElement | null>(null);
@@ -44,7 +44,8 @@ export default function App() {
 
   const selectedGlyph = activeFont.glyphs[selectedCharacter] ?? createEmptyGlyph(selectedCharacter);
   const spacebarGlyph = activeFont.glyphs[spacebar] ?? createEmptyGlyph(spacebar);
-  const selectedCharacterIndex = supportedCharacters.indexOf(selectedCharacter);
+  const activeCharacters = useMemo(() => getVisibleCharacters(activeFont), [activeFont]);
+  const selectedCharacterIndex = activeCharacters.indexOf(selectedCharacter);
 
   function getSavedGlyphCount(font: FontSet) {
     return Object.values(font.glyphs).filter((glyph) => hasDrawnGlyph(glyph)).length;
@@ -59,6 +60,12 @@ export default function App() {
       document.body.classList.remove("editor-fullscreen-open");
     };
   }, [editorFullScreen, gridFullScreen]);
+
+  useEffect(() => {
+    if (!activeCharacters.includes(selectedCharacter)) {
+      setSelectedCharacter(activeCharacters[0] ?? "A");
+    }
+  }, [activeCharacters, selectedCharacter]);
 
   function persist(nextData: FontStudioData, activity?: ProjectActivityDraft) {
     const dataWithActivity = activity ? recordProjectActivity(nextData, activity) : nextData;
@@ -75,8 +82,8 @@ export default function App() {
 
   function selectCharacterByOffset(offset: number) {
     const currentIndex = Math.max(0, selectedCharacterIndex);
-    const nextIndex = (currentIndex + offset + supportedCharacters.length) % supportedCharacters.length;
-    setSelectedCharacter(supportedCharacters[nextIndex]);
+    const nextIndex = (currentIndex + offset + activeCharacters.length) % activeCharacters.length;
+    setSelectedCharacter(activeCharacters[nextIndex]);
   }
 
   function jumpToSection(ref: RefObject<HTMLDivElement | null>) {
@@ -94,8 +101,12 @@ export default function App() {
     });
   }
 
-  function handleCreateFont(name: string, renderProfile: FontRenderProfile = "plain") {
-    const font = createFontSet(name, renderProfile);
+  function handleCreateFont(
+    name: string,
+    renderProfile: FontRenderProfile = "plain",
+    characterSettings?: FontCharacterSettings,
+  ) {
+    const font = createFontSet(name, renderProfile, characterSettings);
 
     persist({
       ...studioData,
@@ -246,7 +257,7 @@ export default function App() {
         <div className="sidebar-status">
           <span>{activeFont.name}</span>
           <strong>
-            {savedGlyphCount}/{supportedCharacters.length} glyphs
+            {savedGlyphCount}/{activeCharacters.length} glyphs
           </strong>
         </div>
 
@@ -292,7 +303,7 @@ export default function App() {
         <div className="font-badge" aria-label="Current font set">
           <span>{activeFont.name}</span>
           <strong>
-            {savedGlyphCount}/{supportedCharacters.length}
+            {savedGlyphCount}/{activeCharacters.length}
           </strong>
         </div>
       </header>
@@ -350,7 +361,7 @@ export default function App() {
           previewText={previewText}
           onPreviewTextChange={setPreviewText}
           characterIndex={Math.max(0, selectedCharacterIndex)}
-          characterTotal={supportedCharacters.length}
+          characterTotal={activeCharacters.length}
           onPreviousCharacter={() => selectCharacterByOffset(-1)}
           onNextCharacter={() => selectCharacterByOffset(1)}
           isFullScreen

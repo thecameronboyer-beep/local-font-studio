@@ -62,9 +62,15 @@ export type FontTheme = {
   inkColor: string;
 };
 
+export type FontCharacterSettings = {
+  showForgotten: boolean;
+  showSpacebar: boolean;
+};
+
 export type FontSet = {
   id: string;
   name: string;
+  characterSettings: FontCharacterSettings;
   glyphs: Record<string, Glyph>;
   createdAt: string;
   renderProfile?: FontRenderProfile;

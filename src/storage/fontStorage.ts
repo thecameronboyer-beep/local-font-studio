@@ -1,6 +1,7 @@
 import { fontCharacters, spacebar } from "../data/characterSets";
 import type {
   BackgroundStyle,
+  FontCharacterSettings,
   FontRenderProfile,
   FontSet,
   FontStudioData,
@@ -65,6 +66,16 @@ export const quillParchmentTheme: FontTheme = {
   inkColor: "#2a160d",
 };
 
+export const defaultFontCharacterSettings: FontCharacterSettings = {
+  showForgotten: false,
+  showSpacebar: false,
+};
+
+const legacyFontCharacterSettings: FontCharacterSettings = {
+  showForgotten: true,
+  showSpacebar: false,
+};
+
 export function createId(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -79,7 +90,11 @@ export function createEmptyGlyph(character: string): Glyph {
   };
 }
 
-export function createFontSet(name: string, renderProfile: FontRenderProfile = "plain"): FontSet {
+export function createFontSet(
+  name: string,
+  renderProfile: FontRenderProfile = "plain",
+  characterSettings: FontCharacterSettings = defaultFontCharacterSettings,
+): FontSet {
   const glyphs = fontCharacters.reduce<Record<string, Glyph>>((map, character) => {
     map[character] = createEmptyGlyph(character);
     return map;
@@ -90,6 +105,7 @@ export function createFontSet(name: string, renderProfile: FontRenderProfile = "
   return {
     id: createId("font"),
     name,
+    characterSettings: { ...characterSettings },
     glyphs,
     createdAt: now,
     ...(renderProfile === "quillParchment" ? { renderProfile, theme: quillParchmentTheme } : {}),
@@ -168,6 +184,17 @@ function normalizeStrokeTool(value: unknown): GlyphStrokeTool | undefined {
 
 function normalizeGlyphInkEffect(value: unknown): GlyphInkEffect | undefined {
   return value === "dramaticPooling" ? "dramaticPooling" : undefined;
+}
+
+function normalizeCharacterSettings(value: unknown, fallback: FontCharacterSettings): FontCharacterSettings {
+  if (!isRecord(value)) {
+    return fallback;
+  }
+
+  return {
+    showForgotten: typeof value.showForgotten === "boolean" ? value.showForgotten : fallback.showForgotten,
+    showSpacebar: typeof value.showSpacebar === "boolean" ? value.showSpacebar : fallback.showSpacebar,
+  };
 }
 
 function normalizePoint(point: unknown): GlyphPoint | null {
@@ -303,6 +330,7 @@ function normalizeFont(font: unknown, usedFontIds: Set<string>, fallbackName: st
   return {
     id,
     name: safeString(font.name, fallbackName),
+    characterSettings: normalizeCharacterSettings(font.characterSettings, legacyFontCharacterSettings),
     glyphs,
     createdAt: safeString(font.createdAt, now),
     ...(normalizeRenderProfile(font.renderProfile) ? { renderProfile: "quillParchment" as const } : {}),

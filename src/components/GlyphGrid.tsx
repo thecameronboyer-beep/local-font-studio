@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { getCharacterLabel, supportedCharacters } from "../data/characterSets";
+import { getCharacterLabel, getVisibleCharacters } from "../data/characterSets";
 import { drawGlyph, hasDrawnGlyph } from "../render/glyphRenderer";
 import type { FontRenderProfile, FontSet, Glyph } from "../types/fontTypes";
 
@@ -52,6 +52,8 @@ export default function GlyphGrid({
   selectedCharacter,
   onSelectCharacter,
 }: GlyphGridProps) {
+  const visibleCharacters = getVisibleCharacters(font);
+
   return (
     <section
       className={`studio-panel grid-panel ${isFullScreen ? "fullscreen-grid-page" : ""}`}
@@ -67,12 +69,12 @@ export default function GlyphGrid({
             Close
           </button>
         ) : (
-          <div className="glyph-pill">{supportedCharacters.length} glyphs</div>
+          <div className="glyph-pill">{visibleCharacters.length} glyphs</div>
         )}
       </div>
 
       <div className="glyph-grid">
-        {supportedCharacters.map((character) => {
+        {visibleCharacters.map((character) => {
           const glyph = font.glyphs[character];
           const selected = selectedCharacter === character;
           const drawn = hasDrawnGlyph(glyph);
