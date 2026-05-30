@@ -1103,6 +1103,54 @@ export default function TextPreview({ font, onRecordExport, onSaveImage, preview
     );
   }
 
+  function renderImageLayoutControls(className = "phone-image-tools preview-layout-tools") {
+    return (
+      <div className={className}>
+        {renderImageMetricControl({
+          label: "Size",
+          max: 220,
+          metric: "fontSize",
+          min: 24,
+          step: 4,
+          value: imageSettings.fontSize,
+        })}
+        {renderImageMetricControl({
+          label: "Width",
+          max: 3300,
+          metric: "canvasWidth",
+          min: 640,
+          step: 80,
+          value: imageSettings.canvasWidth,
+        })}
+        {renderImageMetricControl({
+          label: "Height",
+          max: 3600,
+          metric: "canvasHeight",
+          min: 480,
+          step: 80,
+          value: imageSettings.canvasHeight,
+        })}
+        {renderImageMetricControl({
+          label: "Spacing",
+          max: 2,
+          metric: "lineSpacing",
+          min: 0.85,
+          precision: 2,
+          step: 0.05,
+          value: imageSettings.lineSpacing,
+        })}
+        {renderImageMetricControl({
+          label: "Padding",
+          max: 260,
+          metric: "pagePadding",
+          min: 0,
+          step: 8,
+          value: imageSettings.pagePadding,
+        })}
+      </div>
+    );
+  }
+
   return (
     <section className="studio-panel preview-panel phone-generator-panel" aria-label="Preview test bench">
       <div className="panel-heading phone-image-heading">
@@ -1218,49 +1266,7 @@ export default function TextPreview({ font, onRecordExport, onSaveImage, preview
         />
       </button>
 
-      <div className="phone-image-tools preview-layout-tools">
-        {renderImageMetricControl({
-          label: "Size",
-          max: 220,
-          metric: "fontSize",
-          min: 24,
-          step: 4,
-          value: imageSettings.fontSize,
-        })}
-        {renderImageMetricControl({
-          label: "Width",
-          max: 3300,
-          metric: "canvasWidth",
-          min: 640,
-          step: 80,
-          value: imageSettings.canvasWidth,
-        })}
-        {renderImageMetricControl({
-          label: "Height",
-          max: 3600,
-          metric: "canvasHeight",
-          min: 480,
-          step: 80,
-          value: imageSettings.canvasHeight,
-        })}
-        {renderImageMetricControl({
-          label: "Line",
-          max: 2,
-          metric: "lineSpacing",
-          min: 0.85,
-          precision: 2,
-          step: 0.05,
-          value: imageSettings.lineSpacing,
-        })}
-        {renderImageMetricControl({
-          label: "Pad",
-          max: 260,
-          metric: "pagePadding",
-          min: 0,
-          step: 8,
-          value: imageSettings.pagePadding,
-        })}
-      </div>
+      {renderImageLayoutControls()}
 
       <div className="alignment-row" aria-label="Text alignment">
         {(["left", "center", "right"] as const).map((alignment) => (
@@ -1342,6 +1348,8 @@ export default function TextPreview({ font, onRecordExport, onSaveImage, preview
               aria-label="Full screen generated preview image"
             />
           </div>
+
+          {renderImageLayoutControls("phone-image-fullscreen-tools preview-layout-tools")}
 
           <div className="phone-image-fullscreen-actions">
             <button className="primary-button compact-button" type="button" onClick={sharePhoneImage}>

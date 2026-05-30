@@ -2196,3 +2196,94 @@ h1 {
   padding-right: 0;
   padding-left: 0;
 }
+
+.phone-image-fullscreen {
+  position: fixed;
+  z-index: 32;
+  inset: 0 auto 0 50%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  width: min(var(--phone-shell-width), 100vw);
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: #111012;
+  transform: translateX(-50%);
+}
+
+.phone-image-fullscreen-heading {
+  position: static;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: max(10px, env(safe-area-inset-top)) 10px 10px;
+}
+
+.phone-image-fullscreen-surface {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 10px;
+  background:
+    linear-gradient(rgba(248, 230, 194, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(248, 230, 194, 0.035) 1px, transparent 1px),
+    #0d0c0e;
+  background-size: 18px 18px;
+}
+
+.phone-image-fullscreen-canvas {
+  max-width: min(100%, 1080px);
+  max-height: none;
+}
+
+.phone-image-fullscreen-tools {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  max-height: 34dvh;
+  overflow: auto;
+  padding: 8px 10px;
+  border-top: 1px solid rgba(248, 230, 194, 0.09);
+  background: #151314;
+}
+
+.phone-image-fullscreen-tools .phone-metric-stepper {
+  grid-template-columns: 1fr;
+  gap: 6px;
+  padding: 7px;
+}
+
+.phone-image-fullscreen-tools .phone-metric-readout {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+}
+
+.phone-image-fullscreen-tools .phone-metric-readout span {
+  font-size: 0.62rem;
+}
+
+.phone-image-fullscreen-tools .phone-metric-readout strong {
+  font-size: 0.92rem;
+}
+
+.phone-image-fullscreen-tools .phone-metric-buttons {
+  gap: 5px;
+}
+
+.phone-image-fullscreen-tools .phone-metric-buttons .secondary-button {
+  min-height: 32px;
+  font-size: 0.68rem;
+}
+
+.phone-image-fullscreen-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 10px 10px max(10px, env(safe-area-inset-bottom));
+  border-top: 1px solid rgba(248, 230, 194, 0.09);
+  background: #151314;
+}
