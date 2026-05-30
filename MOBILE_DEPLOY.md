@@ -3,6 +3,8 @@
 This app is built as a mobile-friendly static PWA. There is no backend, login, or server database.
 Each person who opens it saves their own fonts locally in that phone browser.
 
+For a real Android APK, use the GitHub Actions workflow described in `docs/android-app.md`.
+
 ## Build
 
 ```bash
