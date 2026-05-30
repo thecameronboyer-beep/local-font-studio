@@ -59,6 +59,10 @@ export function getGlyphAdvance(glyph: Glyph, fontSize: number) {
   return Math.max(fontSize * 0.18, fontSize * glyph.xAdvance, fontSize * bearingAdvance);
 }
 
+export function getSpacebarAdvance(glyph: Glyph | undefined, fontSize: number) {
+  return Math.max(fontSize * 0.18, fontSize * (glyph?.xAdvance ?? 0.36));
+}
+
 function getPointPressure(point: GlyphStroke["points"][number]) {
   return Math.min(1.25, Math.max(0.45, point.pressure ?? 0.64));
 }

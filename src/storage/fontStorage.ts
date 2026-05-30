@@ -1,4 +1,4 @@
-import { supportedCharacters } from "../data/characterSets";
+import { fontCharacters, spacebar } from "../data/characterSets";
 import type {
   BackgroundStyle,
   FontRenderProfile,
@@ -49,6 +49,14 @@ export const defaultGlyphMetrics = {
   rightBearing: 0.08,
 };
 
+export const defaultSpacebarMetrics = {
+  ...defaultGlyphMetrics,
+  leftBearing: 0,
+  rightBearing: 0,
+  width: 0.36,
+  xAdvance: 0.36,
+};
+
 export const quillParchmentTheme: FontTheme = {
   accentColor: "#9b6f3b",
   backgroundColor: "#efe0bd",
@@ -65,13 +73,13 @@ export function createEmptyGlyph(character: string): Glyph {
     character,
     decorations: [],
     strokes: [],
-    ...defaultGlyphMetrics,
+    ...(character === spacebar ? defaultSpacebarMetrics : defaultGlyphMetrics),
     updatedAt: new Date().toISOString(),
   };
 }
 
 export function createFontSet(name: string, renderProfile: FontRenderProfile = "plain"): FontSet {
-  const glyphs = supportedCharacters.reduce<Record<string, Glyph>>((map, character) => {
+  const glyphs = fontCharacters.reduce<Record<string, Glyph>>((map, character) => {
     map[character] = createEmptyGlyph(character);
     return map;
   }, {});
@@ -233,7 +241,7 @@ function normalizeGlyph(rawGlyph: unknown, character: string): Glyph {
     return emptyGlyph;
   }
 
-  return {
+  const normalizedGlyph = {
     ...emptyGlyph,
     width: safeNumber(rawGlyph.width, emptyGlyph.width, 0.1, 3),
     height: safeNumber(rawGlyph.height, emptyGlyph.height, 0.1, 3),
@@ -252,6 +260,23 @@ function normalizeGlyph(rawGlyph: unknown, character: string): Glyph {
       : [],
     updatedAt: safeString(rawGlyph.updatedAt, emptyGlyph.updatedAt),
   };
+
+  if (
+    character === spacebar &&
+    normalizedGlyph.strokes.length === 0 &&
+    normalizedGlyph.decorations.length === 0 &&
+    normalizedGlyph.xAdvance === defaultGlyphMetrics.xAdvance
+  ) {
+    return {
+      ...normalizedGlyph,
+      leftBearing: defaultSpacebarMetrics.leftBearing,
+      rightBearing: defaultSpacebarMetrics.rightBearing,
+      width: defaultSpacebarMetrics.width,
+      xAdvance: defaultSpacebarMetrics.xAdvance,
+    };
+  }
+
+  return normalizedGlyph;
 }
 
 function normalizeFont(font: unknown, usedFontIds: Set<string>, fallbackName: string): FontSet | null {
@@ -269,7 +294,7 @@ function normalizeFont(font: unknown, usedFontIds: Set<string>, fallbackName: st
   usedFontIds.add(id);
 
   const rawGlyphs = isRecord(font.glyphs) ? font.glyphs : {};
-  const glyphs = supportedCharacters.reduce<Record<string, Glyph>>((map, character) => {
+  const glyphs = fontCharacters.reduce<Record<string, Glyph>>((map, character) => {
     map[character] = normalizeGlyph(rawGlyphs[character], character);
     return map;
   }, {});

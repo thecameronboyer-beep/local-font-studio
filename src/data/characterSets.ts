@@ -1,7 +1,8 @@
 export const uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 export const lowercase = "abcdefghijklmnopqrstuvwxyz".split("");
 export const numbers = "0123456789".split("");
-export const punctuation = [".", ",", "?", "!", ":", ";", "'", "\"", "-", "(", ")", " "];
+export const punctuation = [".", ",", "?", "!", ":", ";", "'", "\"", "-", "(", ")"];
+export const spacebar = " ";
 
 export const supportedCharacters = [
   ...uppercase,
@@ -10,6 +11,11 @@ export const supportedCharacters = [
   ...punctuation,
 ];
 
+export const fontCharacters = [
+  ...supportedCharacters,
+  spacebar,
+];
+
 export function getCharacterLabel(character: string) {
-  return character === " " ? "space" : character;
+  return character === spacebar ? "spacebar" : character;
 }

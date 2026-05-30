@@ -6,7 +6,7 @@ import GlyphEditor from "./components/GlyphEditor";
 import GlyphGrid from "./components/GlyphGrid";
 import ProjectSafetyPanel from "./components/ProjectSafetyPanel";
 import TextPreview from "./components/TextPreview";
-import { supportedCharacters } from "./data/characterSets";
+import { spacebar, supportedCharacters } from "./data/characterSets";
 import { hasDrawnGlyph } from "./render/glyphRenderer";
 import {
   cloneFontSet,
@@ -51,6 +51,7 @@ export default function App() {
   );
 
   const selectedGlyph = activeFont.glyphs[selectedCharacter] ?? createEmptyGlyph(selectedCharacter);
+  const spacebarGlyph = activeFont.glyphs[spacebar] ?? createEmptyGlyph(spacebar);
   const selectedCharacterIndex = supportedCharacters.indexOf(selectedCharacter);
 
   function getSavedGlyphCount(font: FontSet) {
@@ -456,6 +457,7 @@ export default function App() {
               previewText={previewText}
               onPreviewTextChange={setPreviewText}
               selectedGlyph={selectedGlyph}
+              spacebarGlyph={spacebarGlyph}
             />
           </div>
         </div>

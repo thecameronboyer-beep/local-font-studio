@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { spacebar } from "../data/characterSets";
 import type { BackgroundStyle, FontSet, Glyph, PreviewSettings } from "../types/fontTypes";
-import { drawGlyph, findPreviewGlyph, getGlyphAdvance, hasDrawnGlyph } from "../render/glyphRenderer";
+import { drawGlyph, findPreviewGlyph, getGlyphAdvance, getSpacebarAdvance, hasDrawnGlyph } from "../render/glyphRenderer";
 
 type SavedPreviewImage = {
   fontName: string;
@@ -18,6 +19,7 @@ type TextPreviewProps = {
   previewText: string;
   onPreviewTextChange: (text: string) => void;
   selectedGlyph: Glyph;
+  spacebarGlyph: Glyph;
 };
 
 type ExportPresetId = "phone" | "social" | "print" | "transparent";
@@ -329,6 +331,7 @@ export default function TextPreview({
   previewText,
   onPreviewTextChange,
   selectedGlyph,
+  spacebarGlyph,
 }: TextPreviewProps) {
   const imageCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const styleCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -438,14 +441,14 @@ export default function TextPreview({
   }, [font.id]);
 
   function measureCharacter(ctx: CanvasRenderingContext2D, character: string, fontSize: number) {
+    if (character === spacebar) {
+      return getSpacebarAdvance(font.glyphs[spacebar], fontSize);
+    }
+
     const glyph = findPreviewGlyph(font.glyphs, character);
 
     if (glyph) {
       return getGlyphAdvance(glyph, fontSize);
-    }
-
-    if (character === " ") {
-      return fontSize * 0.36;
     }
 
     return ctx.measureText(character).width;
@@ -554,8 +557,8 @@ export default function TextPreview({
           continue;
         }
 
-        if (character === " ") {
-          x += renderSettings.fontSize * 0.36;
+        if (character === spacebar) {
+          x += measureCharacter(ctx, character, renderSettings.fontSize);
           continue;
         }
 
@@ -1084,6 +1087,15 @@ export default function TextPreview({
     });
   }
 
+  function updateSpacebarAdvance(delta: number) {
+    onUpdateSelectedGlyph({
+      ...spacebarGlyph,
+      character: spacebar,
+      xAdvance: getSteppedValue(spacebarGlyph.xAdvance, delta, 0.18, 1.2, 2),
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
   function openStyleEditor() {
     setStyleEditorOpen(true);
     setFullscreenSettingsMenuOpen(false);
@@ -1355,6 +1367,30 @@ export default function TextPreview({
           step: 0.02,
           value: selectedGlyph.rightBearing,
         })}
+        <div className="phone-metric-stepper">
+          <div className="phone-metric-readout">
+            <span>Spacebar</span>
+            <strong>{spacebarGlyph.xAdvance.toFixed(2)}</strong>
+          </div>
+          <div className="phone-metric-buttons">
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => updateSpacebarAdvance(-0.02)}
+              aria-label="Decrease spacebar"
+            >
+              Down
+            </button>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => updateSpacebarAdvance(0.02)}
+              aria-label="Increase spacebar"
+            >
+              Up
+            </button>
+          </div>
+        </div>
       </div>
     );
   }

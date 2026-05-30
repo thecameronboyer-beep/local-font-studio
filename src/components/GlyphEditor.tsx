@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import GlyphCanvas from "./GlyphCanvas";
 import type { CanvasViewOffset, DrawingTool, EraserMode, SmoothingMode } from "./GlyphCanvas";
 import SpacingControls from "./SpacingControls";
-import { getCharacterLabel, supportedCharacters } from "../data/characterSets";
-import { drawGlyph, findPreviewGlyph, getGlyphAdvance } from "../render/glyphRenderer";
+import { getCharacterLabel, spacebar, supportedCharacters } from "../data/characterSets";
+import { drawGlyph, findPreviewGlyph, getGlyphAdvance, getSpacebarAdvance } from "../render/glyphRenderer";
 import type { FontSet, Glyph, GlyphDecoration, GlyphInkEffect, GlyphStroke } from "../types/fontTypes";
 
 type GlyphEditorProps = {
@@ -297,8 +297,8 @@ function EditorLivePreview({
       const glyph = findPreviewGlyph(glyphs, character);
       const characterWidth = glyph
         ? getGlyphAdvance(glyph, fontSize)
-        : character === " "
-          ? fontSize * 0.36
+        : character === spacebar
+          ? getSpacebarAdvance(font.glyphs[spacebar], fontSize)
           : ctx.measureText(character).width;
 
       if (line.length > 0 && lineWidth + characterWidth > maxLineWidth) {
@@ -344,8 +344,8 @@ function EditorLivePreview({
           continue;
         }
 
-        if (character === " ") {
-          x += fontSize * 0.36;
+        if (character === spacebar) {
+          x += getSpacebarAdvance(font.glyphs[spacebar], fontSize);
           continue;
         }
 
@@ -525,7 +525,7 @@ export default function GlyphEditor({
       character: glyph.character,
     });
 
-    setSavedMessage(`Saved ${glyph.character === " " ? "space" : glyph.character}`);
+    setSavedMessage(`Saved ${getCharacterLabel(glyph.character)}`);
   }
 
   function handleSaveAndNext() {
@@ -899,7 +899,7 @@ export default function GlyphEditor({
       <div className="panel-heading">
         <div>
           <p className="eyebrow">Glyph editor</p>
-          <h2>{glyph.character === " " ? "Space" : glyph.character}</h2>
+          <h2>{characterLabel}</h2>
         </div>
         <div className="editor-heading-actions">
           <div className="glyph-pill">{draftGlyph.strokes.length} strokes</div>
@@ -914,7 +914,7 @@ export default function GlyphEditor({
           Previous
         </button>
         <div className="glyph-progress">
-          <strong>{glyph.character === " " ? "space" : glyph.character}</strong>
+          <strong>{characterLabel}</strong>
           <span>
             {characterIndex + 1} / {characterTotal}
           </span>
