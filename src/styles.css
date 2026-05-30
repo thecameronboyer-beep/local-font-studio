@@ -1147,6 +1147,18 @@ input[type="color"] {
   padding: 0 18px 14px;
 }
 
+.settings-toggle-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 0 18px 12px;
+}
+
+.settings-toggle-row .compact-button {
+  min-height: 42px;
+  white-space: normal;
+}
+
 .phone-image-tools label,
 .check-control {
   display: grid;
@@ -1179,6 +1191,10 @@ input[type="color"] {
 .export-preset-grid,
 .alignment-row {
   grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.image-option-row {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .preview-document-tools {
@@ -2153,7 +2169,7 @@ h1 {
 
 .phone-style-fullscreen {
   position: fixed;
-  z-index: 30;
+  z-index: 36;
   inset: 0 auto 0 50%;
   display: grid;
   grid-template-rows: auto minmax(170px, 38dvh) minmax(0, 1fr);
@@ -2249,6 +2265,33 @@ h1 {
   padding: 8px 10px;
   border-top: 1px solid rgba(248, 230, 194, 0.09);
   background: #151314;
+}
+
+.phone-image-fullscreen-settings {
+  display: grid;
+  gap: 8px;
+  max-height: 42dvh;
+  overflow: auto;
+  padding: 8px 10px;
+  border-top: 1px solid rgba(248, 230, 194, 0.09);
+  background: #151314;
+}
+
+.phone-image-fullscreen-settings .settings-toggle-row,
+.phone-image-fullscreen-settings .phone-image-fullscreen-tools,
+.phone-image-fullscreen-settings .phone-image-fullscreen-options {
+  padding: 0;
+}
+
+.phone-image-fullscreen-settings .phone-image-fullscreen-tools {
+  max-height: none;
+  overflow: visible;
+  border-top: 0;
+  background: transparent;
+}
+
+.phone-image-fullscreen-options {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .phone-image-fullscreen-tools .phone-metric-stepper {

@@ -491,8 +491,10 @@ export default function App() {
             <TextPreview
               font={activeFont}
               onRecordExport={handleRecordPreviewExport}
+              onUpdateSelectedGlyph={handleSaveGlyph}
               previewText={previewText}
               onPreviewTextChange={setPreviewText}
+              selectedGlyph={selectedGlyph}
             />
           </div>
         </div>

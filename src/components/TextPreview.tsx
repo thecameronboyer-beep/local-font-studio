@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { BackgroundStyle, FontSet, PreviewSettings } from "../types/fontTypes";
+import type { BackgroundStyle, FontSet, Glyph, PreviewSettings } from "../types/fontTypes";
 import { drawGlyph, findPreviewGlyph, getGlyphAdvance, hasDrawnGlyph } from "../render/glyphRenderer";
 
 type SavedPreviewImage = {
@@ -14,12 +14,16 @@ type TextPreviewProps = {
   font: FontSet;
   onRecordExport?: (message: string) => void;
   onSaveImage?: (image: SavedPreviewImage) => boolean;
+  onUpdateSelectedGlyph: (glyph: Glyph) => void;
   previewText: string;
   onPreviewTextChange: (text: string) => void;
+  selectedGlyph: Glyph;
 };
 
 type ExportPresetId = "phone" | "social" | "print" | "transparent";
+type FontMetricKey = "baselineOffset" | "leftBearing" | "rightBearing" | "width" | "xAdvance";
 type ImageMetricKey = "canvasHeight" | "canvasWidth" | "fontSize" | "lineSpacing" | "pagePadding";
+type SettingsPanel = "font" | "image";
 type TextAlignment = "left" | "center" | "right";
 
 type PreviewImageSettings = PreviewSettings & {
@@ -317,11 +321,20 @@ function formatPairGap(value: number) {
   return value.toFixed(2);
 }
 
-export default function TextPreview({ font, onRecordExport, onSaveImage, previewText, onPreviewTextChange }: TextPreviewProps) {
+export default function TextPreview({
+  font,
+  onRecordExport,
+  onSaveImage,
+  onUpdateSelectedGlyph,
+  previewText,
+  onPreviewTextChange,
+  selectedGlyph,
+}: TextPreviewProps) {
   const imageCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const styleCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const viewerCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [activeDocumentId, setActiveDocumentId] = useState<string | null>(null);
+  const [activeSettingsPanel, setActiveSettingsPanel] = useState<SettingsPanel>("image");
   const [documentName, setDocumentName] = useState("Untitled preview");
   const [imageViewerOpen, setImageViewerOpen] = useState(false);
   const [savedDocuments, setSavedDocuments] = useState<PreviewDocument[]>(() => loadPreviewDocuments());
@@ -1056,6 +1069,24 @@ export default function TextPreview({ font, onRecordExport, onSaveImage, preview
     }));
   }
 
+  function updateFontMetric(
+    metric: FontMetricKey,
+    delta: number,
+    min: number,
+    max: number,
+    precision = 2,
+  ) {
+    onUpdateSelectedGlyph({
+      ...selectedGlyph,
+      [metric]: getSteppedValue(selectedGlyph[metric], delta, min, max, precision),
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  function openStyleEditor() {
+    setStyleEditorOpen(true);
+  }
+
   function renderImageMetricControl({
     label,
     max,
@@ -1103,6 +1134,73 @@ export default function TextPreview({ font, onRecordExport, onSaveImage, preview
     );
   }
 
+  function renderFontMetricControl({
+    label,
+    max,
+    metric,
+    min,
+    precision = 2,
+    step,
+    value,
+  }: {
+    label: string;
+    max: number;
+    metric: FontMetricKey;
+    min: number;
+    precision?: number;
+    step: number;
+    value: number;
+  }) {
+    const displayValue = precision > 0 ? value.toFixed(precision) : value.toString();
+
+    return (
+      <div className="phone-metric-stepper">
+        <div className="phone-metric-readout">
+          <span>{label}</span>
+          <strong>{displayValue}</strong>
+        </div>
+        <div className="phone-metric-buttons">
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => updateFontMetric(metric, -step, min, max, precision)}
+            aria-label={`Decrease ${label}`}
+          >
+            Down
+          </button>
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => updateFontMetric(metric, step, min, max, precision)}
+            aria-label={`Increase ${label}`}
+          >
+            Up
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  function renderSettingsToggle(className = "settings-toggle-row") {
+    return (
+      <div className={className} aria-label="Settings mode">
+        {([
+          ["font", "Font settings"],
+          ["image", "Image settings"],
+        ] as const).map(([panel, label]) => (
+          <button
+            key={panel}
+            className={`secondary-button compact-button ${activeSettingsPanel === panel ? "active-tool" : ""}`}
+            type="button"
+            onClick={() => setActiveSettingsPanel(panel)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    );
+  }
+
   function renderImageLayoutControls(className = "phone-image-tools preview-layout-tools") {
     return (
       <div className={className}>
@@ -1146,6 +1244,83 @@ export default function TextPreview({ font, onRecordExport, onSaveImage, preview
           min: 0,
           step: 8,
           value: imageSettings.pagePadding,
+        })}
+      </div>
+    );
+  }
+
+  function renderImageOptionControls(className = "alignment-row image-option-row") {
+    return (
+      <div className={className} aria-label="Image options">
+        {(["left", "center", "right"] as const).map((alignment) => (
+          <button
+            key={alignment}
+            className={`secondary-button compact-button ${imageSettings.alignment === alignment ? "active-tool" : ""}`}
+            type="button"
+            onClick={() => setImageSettings((current) => ({ ...current, alignment }))}
+          >
+            {alignment}
+          </button>
+        ))}
+        <label className="check-control">
+          <input
+            type="checkbox"
+            checked={imageSettings.autoFit}
+            onChange={(event) =>
+              setImageSettings((current) => ({ ...current, autoFit: event.target.checked }))
+            }
+          />
+          Fit
+        </label>
+        <button className="secondary-button compact-button" type="button" onClick={openStyleEditor}>
+          Style
+        </button>
+      </div>
+    );
+  }
+
+  function renderFontSettingsControls(className = "phone-image-tools preview-layout-tools font-settings-tools") {
+    return (
+      <div className={className}>
+        {renderFontMetricControl({
+          label: "Baseline",
+          max: 1.2,
+          metric: "baselineOffset",
+          min: 0,
+          step: 0.02,
+          value: selectedGlyph.baselineOffset,
+        })}
+        {renderFontMetricControl({
+          label: "Width",
+          max: 1.8,
+          metric: "width",
+          min: 0.25,
+          step: 0.05,
+          value: selectedGlyph.width,
+        })}
+        {renderFontMetricControl({
+          label: "Advance",
+          max: 2,
+          metric: "xAdvance",
+          min: 0.18,
+          step: 0.05,
+          value: selectedGlyph.xAdvance,
+        })}
+        {renderFontMetricControl({
+          label: "Left",
+          max: 0.6,
+          metric: "leftBearing",
+          min: -0.4,
+          step: 0.02,
+          value: selectedGlyph.leftBearing,
+        })}
+        {renderFontMetricControl({
+          label: "Right",
+          max: 0.6,
+          metric: "rightBearing",
+          min: -0.4,
+          step: 0.02,
+          value: selectedGlyph.rightBearing,
         })}
       </div>
     );
@@ -1238,15 +1413,12 @@ export default function TextPreview({ font, onRecordExport, onSaveImage, preview
         ))}
       </div>
 
-      <div className="phone-image-actions primary-share-actions">
+      <div className="phone-image-actions">
         <button className="primary-button compact-button" type="button" onClick={sharePhoneImage}>
           Share
         </button>
         <button className="secondary-button compact-button" type="button" onClick={downloadPhoneImage}>
           Export PNG
-        </button>
-        <button className="secondary-button compact-button" type="button" onClick={() => setStyleEditorOpen(true)}>
-          Style
         </button>
       </div>
       <div className="share-status" aria-live="polite">
@@ -1266,30 +1438,16 @@ export default function TextPreview({ font, onRecordExport, onSaveImage, preview
         />
       </button>
 
-      {renderImageLayoutControls()}
+      {renderSettingsToggle()}
 
-      <div className="alignment-row" aria-label="Text alignment">
-        {(["left", "center", "right"] as const).map((alignment) => (
-          <button
-            key={alignment}
-            className={`secondary-button compact-button ${imageSettings.alignment === alignment ? "active-tool" : ""}`}
-            type="button"
-            onClick={() => setImageSettings((current) => ({ ...current, alignment }))}
-          >
-            {alignment}
-          </button>
-        ))}
-        <label className="check-control">
-          <input
-            type="checkbox"
-            checked={imageSettings.autoFit}
-            onChange={(event) =>
-              setImageSettings((current) => ({ ...current, autoFit: event.target.checked }))
-            }
-          />
-          Fit
-        </label>
-      </div>
+      {activeSettingsPanel === "font" ? (
+        renderFontSettingsControls()
+      ) : (
+        <>
+          {renderImageLayoutControls()}
+          {renderImageOptionControls()}
+        </>
+      )}
 
       {styleEditorOpen && (
         <section className="studio-panel phone-style-fullscreen" aria-label="Preview style editor">
@@ -1349,7 +1507,17 @@ export default function TextPreview({ font, onRecordExport, onSaveImage, preview
             />
           </div>
 
-          {renderImageLayoutControls("phone-image-fullscreen-tools preview-layout-tools")}
+          <div className="phone-image-fullscreen-settings">
+            {renderSettingsToggle("settings-toggle-row phone-image-fullscreen-settings-toggle")}
+            {activeSettingsPanel === "font" ? (
+              renderFontSettingsControls("phone-image-fullscreen-tools preview-layout-tools font-settings-tools")
+            ) : (
+              <>
+                {renderImageLayoutControls("phone-image-fullscreen-tools preview-layout-tools")}
+                {renderImageOptionControls("alignment-row image-option-row phone-image-fullscreen-options")}
+              </>
+            )}
+          </div>
 
           <div className="phone-image-fullscreen-actions">
             <button className="primary-button compact-button" type="button" onClick={sharePhoneImage}>
