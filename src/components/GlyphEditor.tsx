@@ -424,7 +424,7 @@ export default function GlyphEditor({
   const draftGlyphRef = useRef<Glyph>(draftGlyph);
   const pastRef = useRef<Glyph[]>([]);
   const futureRef = useRef<Glyph[]>([]);
-  const [brushSize, setBrushSize] = useState(9);
+  const [brushSize, setBrushSize] = useState(12);
   const [eraserMode, setEraserMode] = useState<EraserMode>("stroke");
   const [eyeExpression, setEyeExpression] = useState<NonNullable<GlyphDecoration["expression"]>>("googly");
   const [inkEffect, setInkEffect] = useState<GlyphInkEffect>(() => getDefaultInkEffect(font));
