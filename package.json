@@ -4,12 +4,20 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "check:workspace": "node scripts/ensure-d-drive-workspace.mjs",
+    "predev": "npm run check:workspace",
     "dev": "vite --host 127.0.0.1",
+    "prebuild": "npm run check:workspace",
     "build": "tsc && vite build",
+    "preandroid:sync": "npm run check:workspace",
     "android:sync": "npm run build && npx cap sync android",
+    "preandroid:build:debug": "npm run check:workspace",
     "android:build:debug": "npm run android:sync && node scripts/build-android-debug.mjs",
+    "prepreview": "npm run check:workspace",
     "preview": "vite preview --host 127.0.0.1",
+    "preserve:dist": "npm run check:workspace",
     "serve:dist": "node scripts/serve-dist.mjs",
+    "preverify:renderer": "npm run check:workspace",
     "verify:renderer": "node scripts/verify-renderer.mjs"
   },
   "dependencies": {
@@ -18,6 +26,7 @@
     "@capacitor/filesystem": "^8.1.2",
     "@capacitor/share": "^8.0.1",
     "lucide-react": "^1.17.0",
+    "pixi.js": "^7.4.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

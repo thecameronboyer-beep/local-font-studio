@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { PointerEvent } from "react";
+import { Application } from "pixi.js";
 import type {
   BackgroundStyle,
   BackgroundTexture,
@@ -10,6 +11,7 @@ import type {
   GlyphInkEffect,
   GlyphStroke,
 } from "../types/fontTypes";
+import { hasPixiInkEffect, renderPixiInkLayer } from "../render/pixiInkRenderer";
 import { drawGlyphDecoration, drawStrokePath } from "../render/glyphRenderer";
 import { defaultFontGuideSettings } from "../storage/fontStorage";
 import { clampFontGuideSettings, fontGuideRows } from "../utils/fontGuides";
@@ -21,6 +23,8 @@ const DEFAULT_RENDER_SIZE = {
   scale: CANVAS_SIZE,
   width: CANVAS_SIZE,
 };
+const INK_POOL_FAST_SPEED = 0.22;
+const INK_POOL_DWELL_MS = 135;
 
 export type CanvasViewOffset = {
   x: number;
@@ -297,6 +301,9 @@ export default function GlyphCanvas({
   onStickerDropHandled,
 }: GlyphCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const pixiHostRef = useRef<HTMLDivElement | null>(null);
+  const pixiAppRef = useRef<Application | null>(null);
+  const pixiReadyRef = useRef(false);
   const strokesRef = useRef(strokes);
   const decorationsRef = useRef(decorations);
   const selectedDecorationIdRef = useRef(selectedDecorationId);
@@ -314,6 +321,7 @@ export default function GlyphCanvas({
     pointIndex: number;
     strokeId: string;
   } | null>(null);
+  const activeStrokeTimeRef = useRef(0);
   const circleToolPointRef = useRef<GlyphStroke["points"][number] | null>(null);
   const circleToolActiveRef = useRef(false);
   const erasingRef = useRef(false);
@@ -335,6 +343,42 @@ export default function GlyphCanvas({
   useEffect(() => {
     viewOffsetRef.current = viewOffset;
   }, [viewOffset]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const host = pixiHostRef.current;
+
+    if (!canvas || !host) {
+      return undefined;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    const app = new Application({
+      antialias: true,
+      autoDensity: true,
+      backgroundAlpha: 0,
+      height: Math.max(1, Math.round(rect.height || CANVAS_SIZE)),
+      resolution: Math.min(window.devicePixelRatio || 1, 2),
+      width: Math.max(1, Math.round(rect.width || CANVAS_SIZE)),
+    });
+    const view = app.view as HTMLCanvasElement;
+
+    view.className = "glyph-pixi-canvas";
+    view.setAttribute("aria-hidden", "true");
+    view.style.width = "100%";
+    view.style.height = "100%";
+    app.stop();
+    host.append(view);
+    pixiAppRef.current = app;
+    pixiReadyRef.current = true;
+    drawCanvas(strokesRef.current, decorationsRef.current);
+
+    return () => {
+      pixiReadyRef.current = false;
+      pixiAppRef.current = null;
+      app.destroy(true);
+    };
+  }, []);
 
   useEffect(() => {
     if (tool !== "select" || (selectMode !== "smoothCircle" && selectMode !== "spreadCircle")) {
@@ -364,6 +408,24 @@ export default function GlyphCanvas({
 
   function getCanvasScaleBasis() {
     return renderSizeRef.current.scale || CANVAS_SIZE;
+  }
+
+  function renderPixiInk(nextStrokes: GlyphStroke[], renderSize: CanvasRenderSize) {
+    const app = pixiAppRef.current;
+
+    if (!app) {
+      return;
+    }
+
+    app.renderer.resize(renderSize.width, renderSize.height);
+    renderPixiInkLayer(app.stage, nextStrokes, {
+      backgroundTexture,
+      fallbackColor: inkColor,
+      renderProfile,
+      renderSize,
+      selectedStrokeId,
+    });
+    app.renderer.render(app.stage);
   }
 
   function drawCanvas(nextStrokes: GlyphStroke[], nextDecorations: GlyphDecoration[]) {
@@ -399,7 +461,14 @@ export default function GlyphCanvas({
       drawReferenceGlyph(ctx, referenceGlyph, renderSize);
     }
 
+    const pixiInkReady = pixiReadyRef.current;
+    renderPixiInk(nextStrokes, renderSize);
+
     for (const stroke of nextStrokes) {
+      if (pixiInkReady && hasPixiInkEffect(stroke)) {
+        continue;
+      }
+
       drawStrokePath(
         ctx,
         stroke,
@@ -927,6 +996,46 @@ export default function GlyphCanvas({
     return Math.min(1, Math.max(0.48, eventPressure ?? (event.pointerType === "mouse" ? 0.58 : 0.66)));
   }
 
+  function getPooledInkPoint(
+    previousPoint: GlyphStroke["points"][number] | null,
+    point: GlyphStroke["points"][number],
+    eventTime: number,
+  ) {
+    if (inkEffect !== "subtleSpread" || !previousPoint) {
+      return {
+        ...point,
+        ink: 0,
+        spread: point.spread,
+      };
+    }
+
+    const elapsed = Math.max(1, eventTime - activeStrokeTimeRef.current);
+    const distance = previousPoint
+      ? Math.hypot(point.x - previousPoint.x, point.y - previousPoint.y) * getCanvasScaleBasis()
+      : 0;
+    const speed = distance / elapsed;
+    const slowInk = Math.max(0, Math.min(1, (INK_POOL_FAST_SPEED - speed) / INK_POOL_FAST_SPEED));
+    const dwellInk = Math.max(0, Math.min(1, (elapsed - 22) / INK_POOL_DWELL_MS));
+    const pressure = point.pressure ?? 0.66;
+    const pool = Math.max(slowInk * slowInk, dwellInk * 0.72) * pressure;
+
+    if (pool < 0.14) {
+      return {
+        ...point,
+        ink: 0,
+        spread: point.spread,
+      };
+    }
+
+    const spread = Math.min(1, 0.14 + pool * 0.74);
+
+    return {
+      ...point,
+      ink: Math.max(point.ink ?? 0, pool),
+      spread: Math.max(point.spread ?? 0, spread),
+    };
+  }
+
   function getSmoothingCircleRadius() {
     return Math.max(0.045, (brushSize / getCanvasScaleBasis()) * 4);
   }
@@ -1295,9 +1404,11 @@ export default function GlyphCanvas({
     onSelectDecoration(null);
 
     const startPoint = {
-      ...point,
+      ...getPooledInkPoint(null, {
+        ...point,
+        pressure,
+      }, event.timeStamp),
       pressure,
-      ink: 0,
     };
     const stroke: GlyphStroke = {
       color: inkColor,
@@ -1309,6 +1420,7 @@ export default function GlyphCanvas({
     };
 
     activeStrokeRef.current = stroke;
+    activeStrokeTimeRef.current = event.timeStamp;
 
     const nextStrokes = [...strokesRef.current, stroke];
     strokesRef.current = nextStrokes;
@@ -1402,12 +1514,14 @@ export default function GlyphCanvas({
       smoothingMode,
     );
     const distance = Math.hypot(point.x - lastPoint.x, point.y - lastPoint.y);
+    const pooledPoint = getPooledInkPoint(lastPoint, point, event.timeStamp);
 
-    if (distance < 0.0015) {
+    if (distance < 0.0015 && (pooledPoint.spread ?? 0) <= 0) {
       return;
     }
 
-    pushInkPoint(point);
+    activeStrokeTimeRef.current = event.timeStamp;
+    pushInkPoint(pooledPoint);
   }
 
   function finishStroke(event: PointerEvent<HTMLCanvasElement>) {
@@ -1461,18 +1575,23 @@ export default function GlyphCanvas({
   }
 
   return (
-    <canvas
-      ref={canvasRef}
-      className={`glyph-canvas ${tool === "eraser" ? "eraser-cursor" : ""} ${tool === "eyes" ? "eyes-cursor" : ""} ${tool === "select" ? "select-cursor" : ""} ${tool === "pan" ? "pan-cursor" : ""} ${guideEditMode ? "guide-cursor" : ""}`}
+    <div
+      className="glyph-canvas-frame"
       style={{
         transform: `translate(${viewOffset.x}px, ${viewOffset.y}px) scale(${viewScale})`,
       }}
-      aria-label="Glyph drawing canvas"
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={finishStroke}
-      onPointerCancel={finishStroke}
-      onPointerLeave={finishStroke}
-    />
+    >
+      <canvas
+        ref={canvasRef}
+        className={`glyph-canvas ${tool === "eraser" ? "eraser-cursor" : ""} ${tool === "eyes" ? "eyes-cursor" : ""} ${tool === "select" ? "select-cursor" : ""} ${tool === "pan" ? "pan-cursor" : ""} ${guideEditMode ? "guide-cursor" : ""}`}
+        aria-label="Glyph drawing canvas"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={finishStroke}
+        onPointerCancel={finishStroke}
+        onPointerLeave={finishStroke}
+      />
+      <div ref={pixiHostRef} className="glyph-pixi-layer" />
+    </div>
   );
 }

@@ -366,25 +366,6 @@ function drawQuillStrokePath(
   }
 }
 
-function getDarkerInkColor(color: string) {
-  const hex = color.trim();
-  const shortHex = /^#([0-9a-f]{3})$/i.exec(hex);
-  const longHex = /^#([0-9a-f]{6})$/i.exec(hex);
-
-  if (!shortHex && !longHex) {
-    return "rgba(24, 11, 4, 0.72)";
-  }
-
-  const value = shortHex
-    ? shortHex[1].split("").map((character) => `${character}${character}`).join("")
-    : longHex?.[1] ?? "180b04";
-  const red = Math.max(0, Math.round(Number.parseInt(value.slice(0, 2), 16) * 0.42));
-  const green = Math.max(0, Math.round(Number.parseInt(value.slice(2, 4), 16) * 0.36));
-  const blue = Math.max(0, Math.round(Number.parseInt(value.slice(4, 6), 16) * 0.3));
-
-  return `rgb(${red}, ${green}, ${blue})`;
-}
-
 function drawDramaticInkEffect(
   ctx: CanvasRenderingContext2D,
   stroke: GlyphStroke,
@@ -402,13 +383,12 @@ function drawDramaticInkEffect(
   }
 
   const baseWidth = Math.max(1.2, stroke.size * size);
-  const darkColor = getDarkerInkColor(strokeColor);
   const markCount = Math.min(28, points.length);
   const step = Math.max(1, Math.floor(points.length / markCount));
 
   ctx.save();
-  ctx.fillStyle = darkColor;
-  ctx.strokeStyle = darkColor;
+  ctx.fillStyle = strokeColor;
+  ctx.strokeStyle = strokeColor;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
 
@@ -512,21 +492,24 @@ function drawSubtleInkSpreadEffect(
     return;
   }
 
-  const wholeStroke = getEffectiveInkEffect(stroke) === "subtleSpread";
+  const dramatic = getEffectiveInkEffect(stroke) === "dramaticPooling";
   const baseWidth = Math.max(1.2, stroke.size * size);
   const textureMultiplier = getTextureSpreadMultiplier(backgroundTexture);
-  const darkColor = getDarkerInkColor(strokeColor);
-  const markLimit = wholeStroke ? 42 : 56;
+  const markLimit = dramatic ? 68 : 64;
   const step = Math.max(1, Math.floor(points.length / Math.min(markLimit, points.length)));
 
   ctx.save();
-  ctx.fillStyle = darkColor;
-  ctx.strokeStyle = darkColor;
+  ctx.fillStyle = strokeColor;
+  ctx.strokeStyle = strokeColor;
   ctx.lineCap = "round";
 
   for (let index = 0; index < points.length; index += step) {
     const point = points[index];
-    const localSpread = Math.max(point.spread ?? 0, wholeStroke ? 0.34 : 0);
+    const localSpread = Math.max(
+      point.spread ?? 0,
+      (point.ink ?? 0) * 0.84,
+      dramatic ? getDramaticPointSpread(stroke, index) : 0,
+    );
 
     if (localSpread <= 0) {
       continue;
@@ -535,40 +518,131 @@ function drawSubtleInkSpreadEffect(
     const pressure = getPointPressure(point);
     const seed = getSeed(stroke.id, index + 1801);
     const canvasPoint = getCanvasPoint(point, x, y, sizeX, sizeY);
-    const radius = baseWidth * textureMultiplier * localSpread * (0.46 + pressure * 0.34 + seed * 0.18);
-    const textureSkip = backgroundTexture === "clean" ? 0.12 : backgroundTexture === "canvas" ? 0.34 : 0.24;
+    const vector = getStrokeVectorForCanvas(stroke, index, x, y, sizeX, sizeY, seed);
+    const side = seed > 0.5 ? 1 : -1;
+    const strokeWidth = getLineWidth(baseWidth, point);
+    const edgeDistance = strokeWidth * (0.48 + seed * 0.12);
+    const bleedLength = baseWidth * textureMultiplier * localSpread * (0.28 + pressure * 0.22 + seed * 0.2);
+    const edgeX = canvasPoint.x + vector.nx * side * edgeDistance;
+    const edgeY = canvasPoint.y + vector.ny * side * edgeDistance;
+    const spreadX = vector.nx * side;
+    const spreadY = vector.ny * side;
+    const textureSkip = backgroundTexture === "clean" ? 0.14 : backgroundTexture === "canvas" ? 0.28 : 0.2;
 
-    if (radius < 0.7 || seed < textureSkip) {
+    if (bleedLength < 0.7 || seed < textureSkip) {
       continue;
     }
 
-    ctx.globalAlpha = Math.min(0.16, 0.035 + localSpread * 0.075 * textureMultiplier);
+    const angle = Math.atan2(spreadY, spreadX) + (seed - 0.5) * 0.36;
+    const alpha = Math.min(dramatic ? 0.76 : 0.62, 0.38 + localSpread * (dramatic ? 0.28 : 0.22));
+
+    ctx.globalAlpha = Math.min(0.56, alpha * 0.78);
+    ctx.lineWidth = Math.max(0.55, strokeWidth * 0.07);
+    ctx.beginPath();
+    ctx.moveTo(edgeX - vector.tx * bleedLength * 0.1, edgeY - vector.ty * bleedLength * 0.1);
+    ctx.lineTo(edgeX + spreadX * bleedLength * 0.64, edgeY + spreadY * bleedLength * 0.64);
+    ctx.stroke();
+
+    ctx.globalAlpha = alpha;
     ctx.beginPath();
     ctx.ellipse(
-      canvasPoint.x,
-      canvasPoint.y,
-      radius * (1.05 + seed * 0.5),
-      radius * (0.42 + seed * 0.26),
-      QUILL_NIB_ANGLE + seed * 0.58,
+      edgeX + spreadX * bleedLength * (0.32 + seed * 0.18),
+      edgeY + spreadY * bleedLength * (0.32 + seed * 0.18),
+      bleedLength * (0.38 + seed * (dramatic ? 0.3 : 0.18)),
+      Math.max(0.36, strokeWidth * 0.045 + bleedLength * 0.035),
+      angle,
       0,
       Math.PI * 2,
     );
     ctx.fill();
 
-    if (textureMultiplier > 1 && seed > 0.62) {
-      const scratchLength = radius * (1.4 + seed * 1.2);
-      const angle = QUILL_NIB_ANGLE + (seed - 0.5) * 1.3;
+    if (seed > 0.36) {
+      const secondarySeed = getSeed(stroke.id, index + 1927);
+      const offset = bleedLength * (secondarySeed - 0.5) * 0.34;
 
-      ctx.globalAlpha = Math.min(0.1, 0.035 + localSpread * 0.045);
-      ctx.lineWidth = Math.max(0.45, radius * 0.08);
+      ctx.globalAlpha = Math.min(0.48, alpha * 0.7);
       ctx.beginPath();
-      ctx.moveTo(canvasPoint.x, canvasPoint.y);
-      ctx.lineTo(canvasPoint.x + Math.cos(angle) * scratchLength, canvasPoint.y + Math.sin(angle) * scratchLength);
-      ctx.stroke();
+      ctx.ellipse(
+        edgeX + spreadX * bleedLength * (0.52 + secondarySeed * 0.2) + vector.tx * offset,
+        edgeY + spreadY * bleedLength * (0.52 + secondarySeed * 0.2) + vector.ty * offset,
+        bleedLength * (0.16 + secondarySeed * 0.14),
+        Math.max(0.28, strokeWidth * 0.028 + bleedLength * 0.025),
+        angle + (secondarySeed - 0.5) * 0.64,
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+    }
+
+    if (seed > 0.56) {
+      const hairCount = dramatic ? 3 : 2;
+
+      for (let hair = 0; hair < hairCount; hair += 1) {
+        const hairSeed = getSeed(stroke.id, index + 2179 + hair * 37);
+        const hairAngle = Math.atan2(spreadY, spreadX) + (hairSeed - 0.5) * 0.9;
+        const hairLength = bleedLength * (0.68 + hairSeed * (dramatic ? 1.15 : 0.72));
+        const tangentOffset = (hairSeed - 0.5) * strokeWidth * 0.34;
+        const startX = edgeX + vector.tx * tangentOffset;
+        const startY = edgeY + vector.ty * tangentOffset;
+
+        ctx.globalAlpha = Math.min(0.58, alpha * 0.82);
+        ctx.lineWidth = Math.max(0.34, strokeWidth * 0.035);
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(startX + Math.cos(hairAngle) * hairLength, startY + Math.sin(hairAngle) * hairLength);
+        ctx.stroke();
+      }
     }
   }
 
   ctx.restore();
+}
+
+function getStrokeVectorForCanvas(
+  stroke: GlyphStroke,
+  pointIndex: number,
+  x: number,
+  y: number,
+  sizeX: number,
+  sizeY: number,
+  seed: number,
+) {
+  const previousPoint = stroke.points[Math.max(0, pointIndex - 1)];
+  const nextPoint = stroke.points[Math.min(stroke.points.length - 1, pointIndex + 1)];
+  const previousCanvasPoint = getCanvasPoint(previousPoint, x, y, sizeX, sizeY);
+  const nextCanvasPoint = getCanvasPoint(nextPoint, x, y, sizeX, sizeY);
+  const dx = nextCanvasPoint.x - previousCanvasPoint.x;
+  const dy = nextCanvasPoint.y - previousCanvasPoint.y;
+  const length = Math.hypot(dx, dy);
+
+  if (length < 0.01) {
+    const angle = seed * Math.PI * 2;
+    const tx = Math.cos(angle);
+    const ty = Math.sin(angle);
+
+    return { nx: -ty, ny: tx, tx, ty };
+  }
+
+  const tx = dx / length;
+  const ty = dy / length;
+
+  return { nx: -ty, ny: tx, tx, ty };
+}
+
+function getDramaticPointSpread(stroke: GlyphStroke, index: number) {
+  if (index === 0 || index === stroke.points.length - 1) {
+    return 0.62;
+  }
+
+  const previousPoint = stroke.points[Math.max(0, index - 2)];
+  const point = stroke.points[index];
+  const nextPoint = stroke.points[Math.min(stroke.points.length - 1, index + 2)];
+  const turn = Math.abs(
+    Math.atan2(nextPoint.y - point.y, nextPoint.x - point.x) -
+      Math.atan2(point.y - previousPoint.y, point.x - previousPoint.x),
+  );
+
+  return Math.min(0.8, Math.max(0, Math.min(Math.PI, turn) / Math.PI) * 0.58);
 }
 
 export function drawStrokePath(

@@ -921,6 +921,10 @@ export default function GlyphEditor({
     updateActiveInkPreset({ inkEffect: value });
   }
 
+  function toggleSpreadInk() {
+    updateInkEffect(inkEffect === "subtleSpread" ? "none" : "subtleSpread");
+  }
+
   function toggleDramaticInk() {
     updateInkEffect(inkEffect === "dramaticPooling" ? "none" : "dramaticPooling");
   }
@@ -1465,6 +1469,15 @@ export default function GlyphEditor({
                   </button>
                 ))}
               </div>
+
+              <button
+                className={`draw-drawer-button full ${inkEffect === "subtleSpread" ? "active-tool" : ""}`}
+                type="button"
+                onClick={toggleSpreadInk}
+              >
+                <Droplets aria-hidden="true" />
+                <span>Ink spread</span>
+              </button>
 
               <button
                 className={`draw-drawer-button full ${inkEffect === "dramaticPooling" ? "active-tool" : ""}`}
@@ -2163,6 +2176,13 @@ export default function GlyphEditor({
         </div>
 
         <div className="engine-option-row ink-effect-row" aria-label="Ink effect">
+          <button
+            className={`secondary-button ${inkEffect === "subtleSpread" ? "active-tool" : ""}`}
+            type="button"
+            onClick={toggleSpreadInk}
+          >
+            Ink spread
+          </button>
           <button
             className={`secondary-button ${inkEffect === "dramaticPooling" ? "active-tool" : ""}`}
             type="button"
