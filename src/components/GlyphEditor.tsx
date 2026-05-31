@@ -83,6 +83,15 @@ type GlyphEditorProps = {
 
 type FullscreenDrawer = "ink" | "background" | "guides" | "more" | null;
 type InkTool = Extract<DrawingTool, "pen" | "quill" | "line">;
+const inkPresetIds = ["primary", "secondary", "tertiary"] as const;
+type InkPresetId = (typeof inkPresetIds)[number];
+type InkPreset = {
+  brushSize: number;
+  inkColor: string;
+  inkEffect: GlyphInkEffect;
+  smoothingMode: SmoothingMode;
+  tool: InkTool;
+};
 
 const glyphInkSwatches = [
   { color: "#19140f", label: "Lamp Black" },
@@ -229,6 +238,35 @@ function getDefaultDrawingTool(_font: FontSet): InkTool {
 
 function getDefaultInkEffect(_font: FontSet): GlyphInkEffect {
   return "none";
+}
+
+function getDefaultInkPresets(font: FontSet): Record<InkPresetId, InkPreset> {
+  const defaultTool = getDefaultDrawingTool(font);
+  const primaryColor = font.theme?.inkColor ?? "#19140f";
+
+  return {
+    primary: {
+      brushSize: DEFAULT_BRUSH_SIZE,
+      inkColor: primaryColor,
+      inkEffect: getDefaultInkEffect(font),
+      smoothingMode: "strong",
+      tool: defaultTool,
+    },
+    secondary: {
+      brushSize: DEFAULT_BRUSH_SIZE,
+      inkColor: primaryColor.toLowerCase() === "#e34234" ? "#19140f" : "#e34234",
+      inkEffect: "none",
+      smoothingMode: "strong",
+      tool: defaultTool,
+    },
+    tertiary: {
+      brushSize: DEFAULT_BRUSH_SIZE,
+      inkColor: primaryColor.toLowerCase() === "#3d6f8f" ? "#493424" : "#3d6f8f",
+      inkEffect: "none",
+      smoothingMode: "strong",
+      tool: defaultTool,
+    },
+  };
 }
 
 function getInkToolLabel(tool: InkTool) {
@@ -702,6 +740,8 @@ export default function GlyphEditor({
   const [eyeExpression, setEyeExpression] = useState<NonNullable<GlyphDecoration["expression"]>>("googly");
   const [inkEffect, setInkEffect] = useState<GlyphInkEffect>(() => getDefaultInkEffect(font));
   const [inkColor, setInkColor] = useState(font.theme?.inkColor ?? "#19140f");
+  const [inkPresets, setInkPresets] = useState<Record<InkPresetId, InkPreset>>(() => getDefaultInkPresets(font));
+  const [activeInkPresetId, setActiveInkPresetId] = useState<InkPresetId>("primary");
   const [referenceCharacter, setReferenceCharacter] = useState("");
   const [selectMode, setSelectMode] = useState<SelectMode>("moveStroke");
   const [selectedDecorationId, setSelectedDecorationId] = useState<string | null>(null);
@@ -758,12 +798,18 @@ export default function GlyphEditor({
   }, [glyph.character]);
 
   useEffect(() => {
-    const defaultInkTool = getDefaultDrawingTool(font);
-    setLastInkTool(defaultInkTool);
-    setTool(defaultInkTool);
-    setInkEffect(getDefaultInkEffect(font));
-    setInkColor(font.theme?.inkColor ?? "#19140f");
-  }, [font.id, font.renderProfile, font.theme?.inkColor]);
+    const nextPresets = getDefaultInkPresets(font);
+    const primaryPreset = nextPresets.primary;
+
+    setInkPresets(nextPresets);
+    setActiveInkPresetId("primary");
+    setLastInkTool(primaryPreset.tool);
+    setTool(primaryPreset.tool);
+    setBrushSize(primaryPreset.brushSize);
+    setInkEffect(primaryPreset.inkEffect);
+    setInkColor(primaryPreset.inkColor);
+    setSmoothingMode(primaryPreset.smoothingMode);
+  }, [font.id, font.renderProfile]);
 
   useEffect(() => {
     document.body.classList.toggle("editor-fullscreen-open", isFullScreen);
@@ -843,9 +889,69 @@ export default function GlyphEditor({
     });
   }
 
+  function updateActiveInkPreset(patch: Partial<InkPreset>) {
+    setInkPresets((current) => ({
+      ...current,
+      [activeInkPresetId]: {
+        ...current[activeInkPresetId],
+        ...patch,
+      },
+    }));
+  }
+
+  function updateBrushSize(value: number) {
+    setBrushSize(value);
+    updateActiveInkPreset({ brushSize: value });
+  }
+
+  function updateInkColor(value: string) {
+    setInkColor(value);
+    updateActiveInkPreset({ inkColor: value });
+  }
+
+  function updateInkEffect(value: GlyphInkEffect) {
+    setInkEffect(value);
+    updateActiveInkPreset({ inkEffect: value });
+  }
+
+  function toggleDramaticInk() {
+    updateInkEffect(inkEffect === "dramaticPooling" ? "none" : "dramaticPooling");
+  }
+
+  function updateSmoothingMode(value: SmoothingMode) {
+    setSmoothingMode(value);
+    updateActiveInkPreset({ smoothingMode: value });
+  }
+
+  function applyInkPreset(presetId: InkPresetId) {
+    const preset = inkPresets[presetId];
+
+    setActiveInkPresetId(presetId);
+    setBrushSize(preset.brushSize);
+    setInkColor(preset.inkColor);
+    setInkEffect(preset.inkEffect);
+    setSmoothingMode(preset.smoothingMode);
+    setLastInkTool(preset.tool);
+    setTool(preset.tool);
+    setSelectedStrokeId(null);
+    setSelectedDecorationId(null);
+    setStickerEyesOpen(false);
+  }
+
+  function handleInkPresetButton(presetId: InkPresetId) {
+    if (presetId === activeInkPresetId) {
+      toggleFullscreenDrawer("ink");
+      return;
+    }
+
+    applyInkPreset(presetId);
+    setActiveFullscreenDrawer(null);
+  }
+
   function chooseTool(nextTool: DrawingTool) {
     if (nextTool === "pen" || nextTool === "quill" || nextTool === "line") {
       setLastInkTool(nextTool);
+      updateActiveInkPreset({ tool: nextTool });
     }
 
     setTool(nextTool);
@@ -895,7 +1001,7 @@ export default function GlyphEditor({
     };
 
     onUpdateFontTheme(nextTheme);
-    setInkColor(preset.inkColor);
+    updateInkColor(preset.inkColor);
   }
 
   function handleSelectBackgroundTexture(texture: BackgroundTexture) {
@@ -1088,7 +1194,9 @@ export default function GlyphEditor({
   }
 
   function handleSaveAndNext() {
-    handleSave();
+    flushSync(() => {
+      handleSave();
+    });
     onNextCharacter();
   }
 
@@ -1243,6 +1351,26 @@ export default function GlyphEditor({
 
           {activeFullscreenDrawer === "ink" && (
             <div id="draw-ink-drawer" className="draw-control-drawer" aria-label="Ink drawer">
+              <div className="draw-ink-preset-selector" aria-label="Ink quick slots">
+                {inkPresetIds.map((presetId, index) => {
+                  const preset = inkPresets[presetId];
+
+                  return (
+                    <button
+                      key={presetId}
+                      className={`draw-ink-preset-option ${activeInkPresetId === presetId ? "active-tool" : ""}`}
+                      type="button"
+                      onClick={() => applyInkPreset(presetId)}
+                      aria-label={`Use ink slot ${index + 1}`}
+                    >
+                      <span className="draw-ink-preset-dot" style={{ backgroundColor: preset.inkColor }} />
+                      <strong>{index + 1}</strong>
+                      <span>{getInkToolLabel(preset.tool)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
               <div className="draw-drawer-grid three" aria-label="Ink tool">
                 <button
                   className={`draw-drawer-button ${lastInkTool === "pen" ? "active-tool" : ""}`}
@@ -1277,7 +1405,7 @@ export default function GlyphEditor({
                   min="3"
                   max="28"
                   value={brushSize}
-                  onChange={(event) => setBrushSize(Number(event.target.value))}
+                  onChange={(event) => updateBrushSize(Number(event.target.value))}
                 />
                 <output>{brushSize}px</output>
               </label>
@@ -1288,7 +1416,7 @@ export default function GlyphEditor({
                     key={swatch.label}
                     className={`draw-ink-swatch ${inkColor === swatch.color ? "selected" : ""}`}
                     type="button"
-                    onClick={() => setInkColor(swatch.color)}
+                    onClick={() => updateInkColor(swatch.color)}
                     aria-label={`Use ${swatch.label} ink`}
                     title={swatch.label}
                   >
@@ -1300,7 +1428,7 @@ export default function GlyphEditor({
               <button
                 className={`draw-drawer-button full ${inkEffect === "dramaticPooling" ? "active-tool" : ""}`}
                 type="button"
-                onClick={() => setInkEffect((current) => (current === "dramaticPooling" ? "none" : "dramaticPooling"))}
+                onClick={toggleDramaticInk}
               >
                 <Droplets aria-hidden="true" />
                 <span>Dramatic ink</span>
@@ -1312,7 +1440,7 @@ export default function GlyphEditor({
                     key={option.id}
                     className={`draw-drawer-button ${smoothingMode === option.id ? "active-tool" : ""}`}
                     type="button"
-                    onClick={() => setSmoothingMode(option.id)}
+                    onClick={() => updateSmoothingMode(option.id)}
                   >
                     <SlidersHorizontal aria-hidden="true" />
                     <span>{option.label}</span>
@@ -1661,20 +1789,30 @@ export default function GlyphEditor({
             >
               <SkipForward aria-hidden="true" />
             </button>
-            <button
-              className={`draw-glass-button draw-icon-button draw-ink-color-button ${
-                activeFullscreenDrawer === "ink" ? "active-tool" : ""
-              }`}
-              type="button"
-              aria-label={`Open ink settings, using ${getInkToolLabel(lastInkTool).toLowerCase()}`}
-              aria-expanded={activeFullscreenDrawer === "ink"}
-              aria-controls="draw-ink-drawer"
-              title="Ink settings"
-              style={{ backgroundColor: inkColor, color: getReadableInkButtonColor(inkColor) }}
-              onClick={() => toggleFullscreenDrawer("ink")}
-            >
-              <Droplets aria-hidden="true" />
-            </button>
+            <div className="draw-ink-preset-group" aria-label="Ink quick slots">
+              {inkPresetIds.map((presetId, index) => {
+                const preset = inkPresets[presetId];
+                const isActivePreset = presetId === activeInkPresetId;
+
+                return (
+                  <button
+                    key={presetId}
+                    className={`draw-glass-button draw-icon-button draw-ink-color-button ${
+                      isActivePreset ? "selected-preset" : ""
+                    } ${isActivePreset && activeFullscreenDrawer === "ink" ? "active-tool" : ""}`}
+                    type="button"
+                    aria-label={`${isActivePreset ? "Open" : "Use"} ink slot ${index + 1}, ${getInkToolLabel(preset.tool).toLowerCase()}`}
+                    aria-expanded={isActivePreset ? activeFullscreenDrawer === "ink" : undefined}
+                    aria-controls="draw-ink-drawer"
+                    title={`Ink ${index + 1}: ${getInkToolLabel(preset.tool)}`}
+                    style={{ backgroundColor: preset.inkColor, color: getReadableInkButtonColor(preset.inkColor) }}
+                    onClick={() => handleInkPresetButton(presetId)}
+                  >
+                    <span>{index + 1}</span>
+                  </button>
+                );
+              })}
+            </div>
             <button
               className={`draw-glass-button draw-icon-button ${activeFullscreenDrawer === "background" ? "active-tool" : ""}`}
               type="button"
@@ -1975,7 +2113,7 @@ export default function GlyphEditor({
               key={option.id}
               className={`secondary-button ${smoothingMode === option.id ? "active-tool" : ""}`}
               type="button"
-              onClick={() => setSmoothingMode(option.id)}
+              onClick={() => updateSmoothingMode(option.id)}
             >
               {option.label}
             </button>
@@ -1986,7 +2124,7 @@ export default function GlyphEditor({
           <button
             className={`secondary-button ${inkEffect === "dramaticPooling" ? "active-tool" : ""}`}
             type="button"
-            onClick={() => setInkEffect((current) => (current === "dramaticPooling" ? "none" : "dramaticPooling"))}
+            onClick={toggleDramaticInk}
           >
             Dramatic ink
           </button>
@@ -2026,20 +2164,20 @@ export default function GlyphEditor({
             min="3"
             max="28"
             value={brushSize}
-            onChange={(event) => setBrushSize(Number(event.target.value))}
+            onChange={(event) => updateBrushSize(Number(event.target.value))}
           />
           <output>{brushSize}px</output>
           <button
             className="metric-default-button"
             type="button"
             disabled={brushSize === DEFAULT_BRUSH_SIZE}
-            onClick={() => setBrushSize(DEFAULT_BRUSH_SIZE)}
+            onClick={() => updateBrushSize(DEFAULT_BRUSH_SIZE)}
           >
             Default
           </button>
         </label>
 
-        <InkColorControl inkColor={inkColor} onInkColorChange={setInkColor} />
+        <InkColorControl inkColor={inkColor} onInkColorChange={updateInkColor} />
 
         <div className="center-row" aria-label="Center glyph">
           <button className="secondary-button" type="button" onClick={() => handleCenter("x")}>
