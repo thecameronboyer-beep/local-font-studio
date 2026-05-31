@@ -10,8 +10,19 @@ import {
   getGlyphRenderScales,
   getGlyphTopForBaseline,
 } from "../render/glyphRenderer";
-import { defaultFontCharacterSettings, defaultFontGuideSettings, exportFontSet } from "../storage/fontStorage";
-import type { FontCharacterSettings, FontGuideSettings, FontRenderProfile, FontSet } from "../types/fontTypes";
+import {
+  defaultFontCharacterSettings,
+  defaultFontGuideSettings,
+  defaultFontShapeSettings,
+  exportFontSet,
+} from "../storage/fontStorage";
+import type {
+  FontCharacterSettings,
+  FontGuideSettings,
+  FontRenderProfile,
+  FontSet,
+  FontShapeSettings,
+} from "../types/fontTypes";
 
 type FontLibraryProps = {
   fonts: FontSet[];
@@ -22,9 +33,18 @@ type FontLibraryProps = {
     renderProfile: FontRenderProfile,
     characterSettings: FontCharacterSettings,
     guideSettings: FontGuideSettings,
+    shapeSettings: FontShapeSettings,
   ) => void;
   onStartDrawing: () => void;
   onRenameFont: (fontId: string, name: string) => void;
+  onUpdateFontSettings: (
+    fontId: string,
+    settings: {
+      characterSettings?: FontCharacterSettings;
+      guideSettings?: FontGuideSettings;
+      shapeSettings?: FontShapeSettings;
+    },
+  ) => void;
   onDuplicateFont: (fontId: string) => void;
   onDeleteFont: (fontId: string) => void;
   getSavedGlyphCount: (font: FontSet) => number;
@@ -344,6 +364,7 @@ export default function FontLibrary({
   onCreateFont,
   onStartDrawing,
   onRenameFont,
+  onUpdateFontSettings,
   onDuplicateFont,
   onDeleteFont,
   getSavedGlyphCount,
@@ -351,12 +372,17 @@ export default function FontLibrary({
   const activeFont = fonts.find((font) => font.id === activeFontId) ?? fonts[0];
   const [createFormOpen, setCreateFormOpen] = useState(false);
   const [advancedSettingsOpen, setAdvancedSettingsOpen] = useState(false);
+  const [activeAdvancedSettingsOpen, setActiveAdvancedSettingsOpen] = useState(false);
   const [newFontCharacterSettings, setNewFontCharacterSettings] = useState<FontCharacterSettings>({
     ...defaultFontCharacterSettings,
   });
   const [guideEditorOpen, setGuideEditorOpen] = useState(false);
+  const [activeGuideEditorOpen, setActiveGuideEditorOpen] = useState(false);
   const [newFontGuideSettings, setNewFontGuideSettings] = useState<FontGuideSettings>({
     ...defaultFontGuideSettings,
+  });
+  const [newFontShapeSettings, setNewFontShapeSettings] = useState<FontShapeSettings>({
+    ...defaultFontShapeSettings,
   });
   const [newFontName, setNewFontName] = useState("");
   const [newFontProfile, setNewFontProfile] = useState<FontRenderProfile>("plain");
@@ -367,6 +393,8 @@ export default function FontLibrary({
   useEffect(() => {
     setRenameValue(activeFont.name);
     setSettingsOpen(false);
+    setActiveAdvancedSettingsOpen(false);
+    setActiveGuideEditorOpen(false);
   }, [activeFont.id, activeFont.name]);
 
   useEffect(() => {
@@ -393,12 +421,13 @@ export default function FontLibrary({
 
   function handleCreateFont() {
     const name = newFontName.trim() || (newFontProfile === "quillParchment" ? "Quill on Parchment" : `Font ${fonts.length + 1}`);
-    onCreateFont(name, newFontProfile, newFontCharacterSettings, newFontGuideSettings);
+    onCreateFont(name, newFontProfile, newFontCharacterSettings, newFontGuideSettings, newFontShapeSettings);
     setNewFontName("");
     setNewFontProfile("plain");
     setAdvancedSettingsOpen(false);
     setNewFontCharacterSettings({ ...defaultFontCharacterSettings });
     setNewFontGuideSettings({ ...defaultFontGuideSettings });
+    setNewFontShapeSettings({ ...defaultFontShapeSettings });
     setGuideEditorOpen(false);
     setCreateFormOpen(false);
   }
@@ -408,6 +437,31 @@ export default function FontLibrary({
       ...current,
       [key]: value,
     }));
+  }
+
+  function updateNewFontShapeSetting(key: keyof FontShapeSettings, value: number) {
+    setNewFontShapeSettings((current) => ({
+      ...current,
+      [key]: Number(value.toFixed(2)),
+    }));
+  }
+
+  function updateActiveFontCharacterSetting(key: keyof FontCharacterSettings, value: boolean) {
+    onUpdateFontSettings(activeFont.id, {
+      characterSettings: {
+        ...(activeFont.characterSettings ?? defaultFontCharacterSettings),
+        [key]: value,
+      },
+    });
+  }
+
+  function updateActiveFontShapeSetting(key: keyof FontShapeSettings, value: number) {
+    onUpdateFontSettings(activeFont.id, {
+      shapeSettings: {
+        ...(activeFont.shapeSettings ?? defaultFontShapeSettings),
+        [key]: Number(value.toFixed(2)),
+      },
+    });
   }
 
   function handleRenameFont() {
@@ -492,6 +546,73 @@ export default function FontLibrary({
                     >
                       Export JSON
                     </button>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      aria-expanded={activeAdvancedSettingsOpen}
+                      onClick={() => setActiveAdvancedSettingsOpen((current) => !current)}
+                    >
+                      Advanced settings
+                    </button>
+                    {activeAdvancedSettingsOpen && (
+                      <div className="advanced-font-options active-font-options">
+                        <label className="font-option-check">
+                          <input
+                            type="checkbox"
+                            checked={(activeFont.characterSettings ?? defaultFontCharacterSettings).showForgotten}
+                            onChange={(event) => updateActiveFontCharacterSetting("showForgotten", event.target.checked)}
+                          />
+                          <span>Forgotten</span>
+                        </label>
+                        <label className="font-option-check">
+                          <input
+                            type="checkbox"
+                            checked={(activeFont.characterSettings ?? defaultFontCharacterSettings).showSpacebar}
+                            onChange={(event) => updateActiveFontCharacterSetting("showSpacebar", event.target.checked)}
+                          />
+                          <span>Space Bar</span>
+                        </label>
+                        <label className="font-option-slider">
+                          <span>
+                            Height
+                            <output>{(activeFont.shapeSettings ?? defaultFontShapeSettings).heightScale.toFixed(2)}x</output>
+                          </span>
+                          <input
+                            type="range"
+                            min="0.55"
+                            max="1.6"
+                            step="0.01"
+                            value={(activeFont.shapeSettings ?? defaultFontShapeSettings).heightScale}
+                            onChange={(event) => updateActiveFontShapeSetting("heightScale", Number(event.target.value))}
+                          />
+                        </label>
+                        <label className="font-option-slider">
+                          <span>
+                            Width
+                            <output>{(activeFont.shapeSettings ?? defaultFontShapeSettings).widthScale.toFixed(2)}x</output>
+                          </span>
+                          <input
+                            type="range"
+                            min="0.55"
+                            max="1.6"
+                            step="0.01"
+                            value={(activeFont.shapeSettings ?? defaultFontShapeSettings).widthScale}
+                            onChange={(event) => updateActiveFontShapeSetting("widthScale", Number(event.target.value))}
+                          />
+                        </label>
+                        <button
+                          className="secondary-button compact-button font-guide-launch"
+                          type="button"
+                          onClick={() => setActiveGuideEditorOpen(true)}
+                        >
+                          Adjust drawing lines
+                        </button>
+                        <div className="font-guide-summary">
+                          <span>Height {Math.round(activeFont.guideSettings.xHeight * 100)}%</span>
+                          <span>Baseline {Math.round(activeFont.guideSettings.baseline * 100)}%</span>
+                        </div>
+                      </div>
+                    )}
                     <button
                       className="danger-button"
                       type="button"
@@ -583,6 +704,34 @@ export default function FontLibrary({
                 >
                   Adjust drawing lines
                 </button>
+                <label className="font-option-slider">
+                  <span>
+                    Height
+                    <output>{newFontShapeSettings.heightScale.toFixed(2)}x</output>
+                  </span>
+                  <input
+                    type="range"
+                    min="0.55"
+                    max="1.6"
+                    step="0.01"
+                    value={newFontShapeSettings.heightScale}
+                    onChange={(event) => updateNewFontShapeSetting("heightScale", Number(event.target.value))}
+                  />
+                </label>
+                <label className="font-option-slider">
+                  <span>
+                    Width
+                    <output>{newFontShapeSettings.widthScale.toFixed(2)}x</output>
+                  </span>
+                  <input
+                    type="range"
+                    min="0.55"
+                    max="1.6"
+                    step="0.01"
+                    value={newFontShapeSettings.widthScale}
+                    onChange={(event) => updateNewFontShapeSetting("widthScale", Number(event.target.value))}
+                  />
+                </label>
                 <div className="font-guide-summary">
                   <span>Height {Math.round(newFontGuideSettings.xHeight * 100)}%</span>
                   <span>Baseline {Math.round(newFontGuideSettings.baseline * 100)}%</span>
@@ -606,6 +755,15 @@ export default function FontLibrary({
           onChange={setNewFontGuideSettings}
           onClose={() => setGuideEditorOpen(false)}
           onReset={() => setNewFontGuideSettings({ ...defaultFontGuideSettings })}
+        />
+      )}
+
+      {activeGuideEditorOpen && (
+        <FontGuideEditor
+          settings={activeFont.guideSettings}
+          onChange={(guideSettings) => onUpdateFontSettings(activeFont.id, { guideSettings })}
+          onClose={() => setActiveGuideEditorOpen(false)}
+          onReset={() => onUpdateFontSettings(activeFont.id, { guideSettings: { ...defaultFontGuideSettings } })}
         />
       )}
 

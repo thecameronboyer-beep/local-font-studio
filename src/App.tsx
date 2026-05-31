@@ -19,6 +19,7 @@ import type {
   FontCharacterSettings,
   FontGuideSettings,
   FontRenderProfile,
+  FontShapeSettings,
   FontSet,
   FontStudioData,
   Glyph,
@@ -126,8 +127,9 @@ export default function App() {
     renderProfile: FontRenderProfile = "plain",
     characterSettings?: FontCharacterSettings,
     guideSettings?: FontGuideSettings,
+    shapeSettings?: FontShapeSettings,
   ) {
-    const font = createFontSet(name, renderProfile, characterSettings, guideSettings);
+    const font = createFontSet(name, renderProfile, characterSettings, guideSettings, shapeSettings);
 
     persist({
       ...studioData,
@@ -158,6 +160,33 @@ export default function App() {
       fontId,
       message: `Renamed font to "${name}".`,
       type: "font_rename",
+    });
+  }
+
+  function handleUpdateFontSettings(
+    fontId: string,
+    settings: {
+      characterSettings?: FontCharacterSettings;
+      guideSettings?: FontGuideSettings;
+      shapeSettings?: FontShapeSettings;
+    },
+  ) {
+    const now = new Date().toISOString();
+
+    persist({
+      ...studioData,
+      fonts: studioData.fonts.map((font) =>
+        font.id === fontId
+          ? {
+              ...font,
+              ...settings,
+              characterSettings: settings.characterSettings ?? font.characterSettings,
+              guideSettings: settings.guideSettings ?? font.guideSettings,
+              shapeSettings: settings.shapeSettings ?? font.shapeSettings,
+              updatedAt: now,
+            }
+          : font,
+      ),
     });
   }
 
@@ -339,6 +368,7 @@ export default function App() {
               onStartDrawing={handleStartDrawing}
               onCreateFont={handleCreateFont}
               onRenameFont={handleRenameFont}
+              onUpdateFontSettings={handleUpdateFontSettings}
               onDuplicateFont={handleDuplicateFont}
               onDeleteFont={handleDeleteFont}
               getSavedGlyphCount={getSavedGlyphCount}
