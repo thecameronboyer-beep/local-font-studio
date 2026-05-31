@@ -12,6 +12,8 @@ import type {
 } from "../types/fontTypes";
 import { drawGlyphDecoration, drawStrokePath } from "../render/glyphRenderer";
 import { defaultFontGuideSettings } from "../storage/fontStorage";
+import { clampFontGuideSettings, fontGuideRows } from "../utils/fontGuides";
+import type { FontGuideKey } from "../utils/fontGuides";
 
 const CANVAS_SIZE = 720;
 const DEFAULT_RENDER_SIZE = {
@@ -48,6 +50,7 @@ type GlyphCanvasProps = {
   brushSize: number;
   eyeExpression: NonNullable<GlyphDecoration["expression"]>;
   eraserMode: EraserMode;
+  guideEditMode?: boolean;
   guideSettings?: FontGuideSettings;
   inkEffect: GlyphInkEffect;
   inkColor: string;
@@ -63,6 +66,7 @@ type GlyphCanvasProps = {
   viewOffset: CanvasViewOffset;
   viewScale: number;
   onEditStart: () => void;
+  onChangeGuideSettings?: (settings: FontGuideSettings) => void;
   onChangeViewOffset: (offset: CanvasViewOffset) => void;
   onChangeDecorations: (decorations: GlyphDecoration[]) => void;
   onChangeStrokes: (strokes: GlyphStroke[]) => void;
@@ -268,6 +272,7 @@ export default function GlyphCanvas({
   brushSize,
   eyeExpression,
   eraserMode,
+  guideEditMode = false,
   guideSettings = defaultFontGuideSettings,
   inkEffect,
   inkColor,
@@ -283,6 +288,7 @@ export default function GlyphCanvas({
   viewOffset,
   viewScale,
   onEditStart,
+  onChangeGuideSettings,
   onChangeViewOffset,
   onChangeDecorations,
   onChangeStrokes,
@@ -311,6 +317,7 @@ export default function GlyphCanvas({
   const circleToolPointRef = useRef<GlyphStroke["points"][number] | null>(null);
   const circleToolActiveRef = useRef(false);
   const erasingRef = useRef(false);
+  const activeGuideRef = useRef<FontGuideKey | null>(null);
   const panStartRef = useRef<{
     clientX: number;
     clientY: number;
@@ -323,7 +330,7 @@ export default function GlyphCanvas({
     selectedDecorationIdRef.current = selectedDecorationId;
     selectedStrokeIdRef.current = selectedStrokeId;
     drawCanvas(strokes, decorations);
-  }, [backgroundAccentColor, backgroundColor, backgroundStyle, backgroundTexture, brushSize, decorations, eyeExpression, guideSettings, inkEffect, referenceGlyph, renderProfile, selectMode, selectedDecorationId, selectedStrokeId, showGuides, strokes, tool]);
+  }, [backgroundAccentColor, backgroundColor, backgroundStyle, backgroundTexture, brushSize, decorations, eyeExpression, guideEditMode, guideSettings, inkEffect, referenceGlyph, renderProfile, selectMode, selectedDecorationId, selectedStrokeId, showGuides, strokes, tool]);
 
   useEffect(() => {
     viewOffsetRef.current = viewOffset;
@@ -353,7 +360,7 @@ export default function GlyphCanvas({
     const observer = new ResizeObserver(handleResize);
     observer.observe(canvas);
     return () => observer.disconnect();
-  }, [backgroundAccentColor, backgroundColor, backgroundStyle, backgroundTexture, brushSize, decorations, eyeExpression, guideSettings, inkEffect, referenceGlyph, renderProfile, selectMode, selectedDecorationId, selectedStrokeId, showGuides, strokes, tool]);
+  }, [backgroundAccentColor, backgroundColor, backgroundStyle, backgroundTexture, brushSize, decorations, eyeExpression, guideEditMode, guideSettings, inkEffect, referenceGlyph, renderProfile, selectMode, selectedDecorationId, selectedStrokeId, showGuides, strokes, tool]);
 
   function getCanvasScaleBasis() {
     return renderSizeRef.current.scale || CANVAS_SIZE;
@@ -656,37 +663,61 @@ export default function GlyphCanvas({
   }
 
   function drawGuides(ctx: CanvasRenderingContext2D, renderSize: CanvasRenderSize) {
-    const horizontalGuides = [
-      { y: guideSettings.ascender, color: "rgba(41, 128, 145, 0.55)", label: "ascender" },
-      { y: guideSettings.xHeight, color: "rgba(181, 132, 42, 0.58)", label: "height" },
-      { y: guideSettings.baseline, color: "rgba(35, 112, 76, 0.7)", label: "baseline" },
-      { y: guideSettings.descender, color: "rgba(133, 58, 57, 0.58)", label: "descender" },
-    ];
+    const left = guideSettings.leftBound * renderSize.width;
+    const right = guideSettings.rightBound * renderSize.width;
+    const center = (left + right) / 2;
+    const fullTop = guideSettings.ascender * renderSize.height;
+    const fullBottom = guideSettings.descender * renderSize.height;
+    const bodyTop = guideSettings.xHeight * renderSize.height;
+    const bodyBottom = guideSettings.baseline * renderSize.height;
 
     ctx.save();
+    ctx.fillStyle = "rgba(68, 85, 118, 0.07)";
+    ctx.fillRect(left, fullTop, Math.max(1, right - left), Math.max(1, fullBottom - fullTop));
+    ctx.fillStyle = "rgba(181, 132, 42, 0.12)";
+    ctx.fillRect(left, bodyTop, Math.max(1, right - left), Math.max(1, bodyBottom - bodyTop));
+
+    ctx.strokeStyle = "rgba(68, 85, 118, 0.18)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([8, 8]);
+    ctx.beginPath();
+    ctx.moveTo(center, 0);
+    ctx.lineTo(center, renderSize.height);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
     ctx.lineWidth = 2;
     ctx.font = "14px Inter, ui-sans-serif, system-ui";
     ctx.textBaseline = "middle";
 
-    for (const guide of horizontalGuides) {
-      const y = guide.y * renderSize.height;
+    for (const guide of fontGuideRows) {
+      const offset = guideSettings[guide.key] * (guide.axis === "x" ? renderSize.width : renderSize.height);
       ctx.strokeStyle = guide.color;
       ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(renderSize.width, y);
+      if (guide.axis === "x") {
+        ctx.moveTo(offset, 0);
+        ctx.lineTo(offset, renderSize.height);
+      } else {
+        ctx.moveTo(0, offset);
+        ctx.lineTo(renderSize.width, offset);
+      }
       ctx.stroke();
       ctx.fillStyle = guide.color;
-      ctx.fillText(guide.label, 18, y - 12);
-    }
-
-    ctx.strokeStyle = "rgba(25, 20, 15, 0.14)";
-    ctx.lineWidth = 1;
-    for (const x of [0.1, 0.9]) {
-      const px = x * renderSize.width;
-      ctx.beginPath();
-      ctx.moveTo(px, 0);
-      ctx.lineTo(px, renderSize.height);
-      ctx.stroke();
+      if (guide.axis === "x") {
+        ctx.fillText(guide.label.toLowerCase(), Math.max(12, Math.min(renderSize.width - 64, offset - 20)), renderSize.height - 36);
+        if (guideEditMode) {
+          ctx.beginPath();
+          ctx.arc(offset, renderSize.height - 18, 9, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else {
+        ctx.fillText(guide.label.toLowerCase(), 18, offset - 12);
+        if (guideEditMode) {
+          ctx.beginPath();
+          ctx.arc(renderSize.width - 18, offset, 9, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
     }
 
     ctx.restore();
@@ -869,6 +900,25 @@ export default function GlyphCanvas({
       x: clamp((clientX - rect.left) / rect.width),
       y: clamp((clientY - rect.top) / rect.height),
     };
+  }
+
+  function findNearestGuide(point: { x: number; y: number }) {
+    const hitThreshold = Math.max(0.025, 18 / Math.max(1, renderSizeRef.current.scale));
+    const nearest = fontGuideRows.reduce((currentNearest, guide) => {
+      const distance = Math.abs(guideSettings[guide.key] - (guide.axis === "x" ? point.x : point.y));
+      return distance < currentNearest.distance ? { distance, key: guide.key } : currentNearest;
+    }, {
+      distance: Number.POSITIVE_INFINITY,
+      key: null as FontGuideKey | null,
+    });
+
+    return nearest.distance <= hitThreshold ? nearest.key : null;
+  }
+
+  function updateGuideFromPoint(key: FontGuideKey, point: { x: number; y: number }) {
+    const guide = fontGuideRows.find((item) => item.key === key);
+    const value = guide?.axis === "x" ? point.x : point.y;
+    onChangeGuideSettings?.(clampFontGuideSettings(guideSettings, key, value));
   }
 
   function getEventPressure(event: PointerEvent<HTMLCanvasElement>) {
@@ -1151,6 +1201,18 @@ export default function GlyphCanvas({
     event.currentTarget.setPointerCapture(event.pointerId);
 
     const point = getCanvasPoint(event);
+
+    if (guideEditMode && showGuides && onChangeGuideSettings) {
+      const guideKey = findNearestGuide(point);
+
+      if (guideKey) {
+        activeGuideRef.current = guideKey;
+        updateGuideFromPoint(guideKey, point);
+      }
+
+      return;
+    }
+
     const pressure = getEventPressure(event);
 
     if (tool === "pan") {
@@ -1254,6 +1316,11 @@ export default function GlyphCanvas({
   }
 
   function handlePointerMove(event: PointerEvent<HTMLCanvasElement>) {
+    if (activeGuideRef.current) {
+      updateGuideFromPoint(activeGuideRef.current, getCanvasPoint(event));
+      return;
+    }
+
     if (tool === "pan" && panStartRef.current) {
       const dx = event.clientX - panStartRef.current.clientX;
       const dy = event.clientY - panStartRef.current.clientY;
@@ -1354,6 +1421,7 @@ export default function GlyphCanvas({
     movingPointRef.current = null;
     circleToolActiveRef.current = false;
     erasingRef.current = false;
+    activeGuideRef.current = null;
     panStartRef.current = null;
     drawCanvas(strokesRef.current, decorationsRef.current);
   }
@@ -1395,7 +1463,7 @@ export default function GlyphCanvas({
   return (
     <canvas
       ref={canvasRef}
-      className={`glyph-canvas ${tool === "eraser" ? "eraser-cursor" : ""} ${tool === "eyes" ? "eyes-cursor" : ""} ${tool === "select" ? "select-cursor" : ""} ${tool === "pan" ? "pan-cursor" : ""}`}
+      className={`glyph-canvas ${tool === "eraser" ? "eraser-cursor" : ""} ${tool === "eyes" ? "eyes-cursor" : ""} ${tool === "select" ? "select-cursor" : ""} ${tool === "pan" ? "pan-cursor" : ""} ${guideEditMode ? "guide-cursor" : ""}`}
       style={{
         transform: `translate(${viewOffset.x}px, ${viewOffset.y}px) scale(${viewScale})`,
       }}

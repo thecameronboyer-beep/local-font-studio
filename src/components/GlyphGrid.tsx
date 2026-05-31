@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { getCharacterLabel, getVisibleCharacters } from "../data/characterSets";
-import { drawGlyph, getGlyphRenderScales, hasDrawnGlyph } from "../render/glyphRenderer";
+import { drawGlyph, findPreviewGlyph, getGlyphRenderScales, hasDrawnGlyph } from "../render/glyphRenderer";
 import type { FontSet, Glyph } from "../types/fontTypes";
 
 type GlyphGridProps = {
@@ -13,12 +13,13 @@ type GlyphGridProps = {
 
 function GlyphMiniPreview({ font, glyph }: { font: FontSet; glyph: Glyph }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const isDrawn = hasDrawnGlyph(glyph);
+  const previewGlyph = findPreviewGlyph(font.glyphs, glyph.character);
+  const isDrawn = Boolean(previewGlyph);
 
   useEffect(() => {
     const canvas = canvasRef.current;
 
-    if (!canvas || !isDrawn) {
+    if (!canvas || !previewGlyph) {
       return;
     }
 
@@ -35,16 +36,16 @@ function GlyphMiniPreview({ font, glyph }: { font: FontSet; glyph: Glyph }) {
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, size, size);
-    drawGlyph(ctx, glyph, {
+    drawGlyph(ctx, previewGlyph, {
       x: 8,
       y: 8,
       size: 56,
       color: "#f4ead7",
       renderProfile: font.renderProfile,
       backgroundTexture: font.theme?.backgroundTexture,
-      ...getGlyphRenderScales(font, glyph),
+      ...getGlyphRenderScales(font, previewGlyph),
     });
-  }, [font, glyph, isDrawn]);
+  }, [font, previewGlyph]);
 
   if (!isDrawn) {
     return <span className="glyph-placeholder">Empty</span>;
@@ -86,6 +87,7 @@ export default function GlyphGrid({
           const glyph = font.glyphs[character];
           const selected = selectedCharacter === character;
           const drawn = hasDrawnGlyph(glyph);
+          const variantCount = glyph.variants?.length ?? 0;
 
           return (
             <button
@@ -95,7 +97,10 @@ export default function GlyphGrid({
               onClick={() => onSelectCharacter(character)}
               aria-pressed={selected}
             >
-              <span className="glyph-label">{getCharacterLabel(character)}</span>
+              <span className="glyph-label">
+                <span>{getCharacterLabel(character)}</span>
+                {variantCount > 0 && <strong>+{variantCount}</strong>}
+              </span>
               <GlyphMiniPreview font={font} glyph={glyph} />
             </button>
           );

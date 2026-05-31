@@ -26,6 +26,7 @@ import type {
   FontStudioData,
   FontTheme,
   Glyph,
+  GlyphVariant,
   ProjectActivityDraft,
   SavedImage,
   SavedImageDraft,
@@ -268,6 +269,91 @@ export default function App() {
     });
   }
 
+  function handleSaveGlyphVariant(glyph: Glyph) {
+    const now = new Date().toISOString();
+    const { variants: _discardedVariants, ...variantDraft } = glyph;
+    const variant: GlyphVariant = {
+      ...variantDraft,
+      character: glyph.character,
+      updatedAt: now,
+    };
+    const existingGlyph = activeFont.glyphs[glyph.character] ?? createEmptyGlyph(glyph.character);
+    const nextVariants = [...(existingGlyph.variants ?? []), variant];
+    const nextData: FontStudioData = {
+      ...studioData,
+      fonts: studioData.fonts.map((font) =>
+        font.id === activeFont.id
+          ? {
+              ...font,
+              glyphs: {
+                ...font.glyphs,
+                [glyph.character]: {
+                  ...existingGlyph,
+                  variants: nextVariants,
+                  updatedAt: now,
+                },
+              },
+              updatedAt: now,
+            }
+          : font,
+      ),
+    };
+
+    persist(nextData, {
+      character: glyph.character,
+      details: { variantCount: nextVariants.length },
+      fontId: activeFont.id,
+      message: `Saved variant ${nextVariants.length} for "${glyph.character}" in "${activeFont.name}".`,
+      type: "glyph_edit",
+    });
+  }
+
+  function handleUpdatePreviewFontMetrics(updates: {
+    glyphMetrics?: Partial<Pick<Glyph, "baselineOffset" | "leftBearing" | "rightBearing" | "xAdvance">>;
+    guideSettings?: FontGuideSettings;
+    shapeSettings?: FontShapeSettings;
+  }) {
+    const now = new Date().toISOString();
+    const nextData: FontStudioData = {
+      ...studioData,
+      fonts: studioData.fonts.map((font) => {
+        if (font.id !== activeFont.id) {
+          return font;
+        }
+
+        const nextGlyphs = updates.glyphMetrics
+          ? Object.fromEntries(
+              Object.entries(font.glyphs).map(([character, glyph]) => [
+                character,
+                character === spacebar
+                  ? glyph
+                  : {
+                      ...glyph,
+                      ...updates.glyphMetrics,
+                      variants: glyph.variants?.map((variant) => ({
+                        ...variant,
+                        ...updates.glyphMetrics,
+                        updatedAt: now,
+                      })),
+                      updatedAt: now,
+                    },
+              ]),
+            )
+          : font.glyphs;
+
+        return {
+          ...font,
+          glyphs: nextGlyphs,
+          guideSettings: updates.guideSettings ?? font.guideSettings,
+          shapeSettings: updates.shapeSettings ?? font.shapeSettings,
+          updatedAt: now,
+        };
+      }),
+    };
+
+    persist(nextData);
+  }
+
   function handleRecordPreviewExport(message: string) {
     persist(studioData, {
       fontId: activeFont.id,
@@ -374,6 +460,7 @@ export default function App() {
           />
           <TextPreview
             font={activeFont}
+            onUpdateFontMetrics={handleUpdatePreviewFontMetrics}
             onRecordExport={handleRecordPreviewExport}
             onSaveImage={handleSaveImage}
             onUpdateSelectedGlyph={handleSaveGlyph}
@@ -415,6 +502,8 @@ export default function App() {
           font={activeFont}
           glyph={selectedGlyph}
           onSaveGlyph={handleSaveGlyph}
+          onSaveGlyphVariant={handleSaveGlyphVariant}
+          onUpdateFontGuideSettings={(guideSettings) => handleUpdateFontSettings(activeFont.id, { guideSettings })}
           onUpdateFontTheme={(theme) => handleUpdateFontSettings(activeFont.id, { theme })}
           previewText={previewText}
           onPreviewTextChange={setPreviewText}

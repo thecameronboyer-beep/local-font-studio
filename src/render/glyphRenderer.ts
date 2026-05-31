@@ -4,6 +4,7 @@ import type {
   Glyph,
   GlyphDecoration,
   GlyphInkEffect,
+  GlyphVariant,
   GlyphStroke,
   GlyphStrokeTool,
   BackgroundTexture,
@@ -27,21 +28,37 @@ type StrokeDrawOptions = {
   skipInkEffect?: boolean;
 };
 
-export function hasDrawnGlyph(glyph: Glyph | undefined) {
+function hasGlyphMarks(glyph: Glyph | GlyphVariant | undefined) {
   return Boolean(
     glyph?.decorations?.length ||
       glyph?.strokes?.some((stroke) => stroke.points.length > 0),
   );
 }
 
+export function hasDrawnGlyph(glyph: Glyph | undefined) {
+  return Boolean(hasGlyphMarks(glyph) || glyph?.variants?.some(hasGlyphMarks));
+}
+
+export function getDrawableGlyphVariants(glyph: Glyph | undefined): Array<Glyph | GlyphVariant> {
+  if (!glyph) {
+    return [];
+  }
+
+  return [
+    ...(hasGlyphMarks(glyph) ? [glyph] : []),
+    ...(glyph.variants ?? []).filter(hasGlyphMarks),
+  ];
+}
+
 export function findPreviewGlyph(
   glyphs: Record<string, Glyph>,
   character: string,
-): Glyph | undefined {
+): Glyph | GlyphVariant | undefined {
   const exactGlyph = glyphs[character];
+  const exactVariants = getDrawableGlyphVariants(exactGlyph);
 
-  if (hasDrawnGlyph(exactGlyph)) {
-    return exactGlyph;
+  if (exactVariants.length > 0) {
+    return exactVariants[0];
   }
 
   const caseFallback = character === character.toLowerCase()
@@ -50,9 +67,47 @@ export function findPreviewGlyph(
 
   if (caseFallback !== character) {
     const fallbackGlyph = glyphs[caseFallback];
+    const fallbackVariants = getDrawableGlyphVariants(fallbackGlyph);
 
-    if (hasDrawnGlyph(fallbackGlyph)) {
-      return fallbackGlyph;
+    if (fallbackVariants.length > 0) {
+      return fallbackVariants[0];
+    }
+  }
+
+  return undefined;
+}
+
+function hashVariantSeed(value: string) {
+  let hash = 2166136261;
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return hash >>> 0;
+}
+
+export function selectPreviewGlyph(
+  glyphs: Record<string, Glyph>,
+  character: string,
+  seed: string,
+): Glyph | GlyphVariant | undefined {
+  const exactVariants = getDrawableGlyphVariants(glyphs[character]);
+
+  if (exactVariants.length > 0) {
+    return exactVariants[hashVariantSeed(seed) % exactVariants.length];
+  }
+
+  const caseFallback = character === character.toLowerCase()
+    ? character.toUpperCase()
+    : character.toLowerCase();
+
+  if (caseFallback !== character) {
+    const fallbackVariants = getDrawableGlyphVariants(glyphs[caseFallback]);
+
+    if (fallbackVariants.length > 0) {
+      return fallbackVariants[hashVariantSeed(seed) % fallbackVariants.length];
     }
   }
 
@@ -67,22 +122,22 @@ export function getFontWidthScale(font: Pick<FontSet, "shapeSettings">) {
   return font.shapeSettings?.widthScale ?? 1;
 }
 
-export function getGlyphRenderScales(font: Pick<FontSet, "shapeSettings">, glyph: Glyph) {
+export function getGlyphRenderScales(font: Pick<FontSet, "shapeSettings">, glyph: Glyph | GlyphVariant) {
   return {
     heightScale: glyph.height * getFontHeightScale(font),
     widthScale: glyph.width * getFontWidthScale(font),
   };
 }
 
-export function getGlyphLeftBearingOffset(font: Pick<FontSet, "shapeSettings">, glyph: Glyph, fontSize: number) {
+export function getGlyphLeftBearingOffset(font: Pick<FontSet, "shapeSettings">, glyph: Glyph | GlyphVariant, fontSize: number) {
   return glyph.leftBearing * fontSize * getFontWidthScale(font);
 }
 
-export function getGlyphTopForBaseline(glyph: Glyph, fontSize: number, baselineY: number, heightScale = glyph.height) {
+export function getGlyphTopForBaseline(glyph: Glyph | GlyphVariant, fontSize: number, baselineY: number, heightScale = glyph.height) {
   return baselineY - glyph.baselineOffset * fontSize * heightScale;
 }
 
-export function getGlyphAdvance(glyph: Glyph, fontSize: number, widthScale = 1) {
+export function getGlyphAdvance(glyph: Glyph | GlyphVariant, fontSize: number, widthScale = 1) {
   const bearingAdvance = glyph.leftBearing + glyph.width + glyph.rightBearing;
   return Math.max(fontSize * 0.18, fontSize * Math.max(glyph.xAdvance, bearingAdvance) * widthScale);
 }
@@ -777,7 +832,7 @@ export function drawGlyphDecoration(
 
 export function drawGlyph(
   ctx: CanvasRenderingContext2D,
-  glyph: Glyph,
+  glyph: Glyph | GlyphVariant,
   {
     x,
     y,

@@ -40,7 +40,6 @@ import { getCharacterLabel, getVisibleCharacters, spacebar } from "../data/chara
 import {
   drawGlyph,
   drawGlyphDecoration,
-  findPreviewGlyph,
   getFontHeightScale,
   getFontWidthScale,
   getGlyphAdvance,
@@ -48,22 +47,29 @@ import {
   getGlyphRenderScales,
   getGlyphTopForBaseline,
   getSpacebarAdvance,
+  selectPreviewGlyph,
 } from "../render/glyphRenderer";
+import { defaultFontGuideSettings } from "../storage/fontStorage";
 import type {
   BackgroundStyle,
   BackgroundTexture,
+  FontGuideSettings,
   FontSet,
   FontTheme,
   Glyph,
   GlyphDecoration,
   GlyphInkEffect,
+  GlyphVariant,
   GlyphStroke,
 } from "../types/fontTypes";
+import { clampFontGuideSettings, fontGuideRows } from "../utils/fontGuides";
 
 type GlyphEditorProps = {
   font: FontSet;
   glyph: Glyph;
   onSaveGlyph: (glyph: Glyph) => void;
+  onSaveGlyphVariant: (glyph: Glyph) => void;
+  onUpdateFontGuideSettings: (guideSettings: FontGuideSettings) => void;
   onUpdateFontTheme: (theme: FontTheme) => void;
   previewText: string;
   onPreviewTextChange: (text: string) => void;
@@ -75,7 +81,7 @@ type GlyphEditorProps = {
   onToggleFullScreen: () => void;
 };
 
-type FullscreenDrawer = "ink" | "background" | "more" | null;
+type FullscreenDrawer = "ink" | "background" | "guides" | "more" | null;
 type InkTool = Extract<DrawingTool, "pen" | "quill" | "line">;
 
 const glyphInkSwatches = [
@@ -198,7 +204,7 @@ const editorTexturePresets: Array<{
     preview: "repeating-linear-gradient(0deg, rgba(80, 54, 30, 0.36) 0 2px, transparent 2px 11px), repeating-linear-gradient(90deg, rgba(80, 54, 30, 0.32) 0 2px, transparent 2px 11px), repeating-linear-gradient(8deg, rgba(255, 247, 230, 0.18) 0 1px, transparent 1px 12px), #f1e4c8",
   },
 ];
-const DEFAULT_BRUSH_SIZE = 12;
+const DEFAULT_BRUSH_SIZE = 7;
 const DEFAULT_CANVAS_VIEW: CanvasViewOffset = { x: 0, y: 0 };
 const smoothingOptions: Array<{ id: SmoothingMode; label: string }> = [
   { id: "raw", label: "Raw" },
@@ -217,12 +223,12 @@ const eyeExpressionOptions: Array<{
   { id: "stoned", label: "Stoned" },
 ];
 
-function getDefaultDrawingTool(font: FontSet): InkTool {
-  return font.renderProfile === "quillParchment" ? "quill" : "pen";
+function getDefaultDrawingTool(_font: FontSet): InkTool {
+  return "quill";
 }
 
-function getDefaultInkEffect(font: FontSet): GlyphInkEffect {
-  return font.renderProfile === "quillParchment" ? "dramaticPooling" : "none";
+function getDefaultInkEffect(_font: FontSet): GlyphInkEffect {
+  return "none";
 }
 
 function getInkToolLabel(tool: InkTool) {
@@ -267,11 +273,20 @@ function cloneDecorations(decorations: GlyphDecoration[] = []) {
   return decorations.map((decoration) => ({ ...decoration }));
 }
 
+function cloneGlyphVariant(variant: GlyphVariant): GlyphVariant {
+  return {
+    ...variant,
+    decorations: cloneDecorations(variant.decorations),
+    strokes: cloneStrokes(variant.strokes),
+  };
+}
+
 function cloneGlyph(glyph: Glyph): Glyph {
   return {
     ...glyph,
     decorations: cloneDecorations(glyph.decorations),
     strokes: cloneStrokes(glyph.strokes),
+    variants: glyph.variants?.map(cloneGlyphVariant) ?? [],
   };
 }
 
@@ -578,8 +593,8 @@ function EditorLivePreview({
     let lineWidth = 0;
     const maxLineWidth = width - padding * 2;
 
-    for (const character of textToRender.replace(/\n/g, " ")) {
-      const glyph = findPreviewGlyph(glyphs, character);
+    for (const [characterIndex, character] of [...textToRender.replace(/\n/g, " ")].entries()) {
+      const glyph = selectPreviewGlyph(glyphs, character, `${textToRender}|measure|${characterIndex}|${character}`);
       const characterWidth = glyph
         ? getGlyphAdvance(glyph, fontSize, fontWidthScale)
         : character === spacebar
@@ -612,8 +627,12 @@ function EditorLivePreview({
       let x = padding;
       const y = padding + lineIndex * lineHeight;
 
-      for (const character of previewLine) {
-        const glyph = findPreviewGlyph(glyphs, character);
+      [...previewLine].forEach((character, characterIndex) => {
+        const glyph = selectPreviewGlyph(
+          glyphs,
+          character,
+          `${textToRender}|${lineIndex}|${characterIndex}|${character}`,
+        );
 
         if (glyph) {
           const scales = getGlyphRenderScales(font, glyph);
@@ -629,18 +648,18 @@ function EditorLivePreview({
             backgroundTexture: font.theme?.backgroundTexture,
           });
           x += getGlyphAdvance(glyph, fontSize, fontWidthScale);
-          continue;
+          return;
         }
 
         if (character === spacebar) {
           x += getSpacebarAdvance(font.glyphs[spacebar], fontSize);
-          continue;
+          return;
         }
 
         ctx.fillStyle = previewInkColor;
         ctx.fillText(character, x, y + fontSize * 0.04);
         x += ctx.measureText(character).width;
-      }
+      });
     });
   }, [draftGlyph, font, surfaceWidth, textToRender]);
 
@@ -662,6 +681,8 @@ export default function GlyphEditor({
   font,
   glyph,
   onSaveGlyph,
+  onSaveGlyphVariant,
+  onUpdateFontGuideSettings,
   onUpdateFontTheme,
   previewText,
   onPreviewTextChange,
@@ -689,7 +710,7 @@ export default function GlyphEditor({
   const [stickerDropRequest, setStickerDropRequest] = useState<StickerDropRequest | null>(null);
   const [stickerEyesOpen, setStickerEyesOpen] = useState(false);
   const [stickerMode, setStickerMode] = useState(false);
-  const [smoothingMode, setSmoothingMode] = useState<SmoothingMode>("gentle");
+  const [smoothingMode, setSmoothingMode] = useState<SmoothingMode>("strong");
   const [lastInkTool, setLastInkTool] = useState<InkTool>(() => getDefaultDrawingTool(font));
   const [tool, setTool] = useState<DrawingTool>(() => getDefaultDrawingTool(font));
   const [viewOffset, setViewOffset] = useState<CanvasViewOffset>(DEFAULT_CANVAS_VIEW);
@@ -708,6 +729,7 @@ export default function GlyphEditor({
   const activeReferenceCharacter = referenceCharacter === glyph.character ? "" : referenceCharacter;
   const referenceGlyph = activeReferenceCharacter ? font.glyphs[activeReferenceCharacter] : null;
   const selectedSticker = draftGlyph.decorations.find((decoration) => decoration.id === selectedDecorationId) ?? null;
+  const variantCount = glyph.variants?.length ?? 0;
   const activeFontTheme: FontTheme = font.theme ?? {
     accentColor: "#d3bf97",
     backgroundColor: "#f4ead7",
@@ -764,6 +786,14 @@ export default function GlyphEditor({
       const target = event.target;
 
       if (!(target instanceof Node) || fullscreenControlsRef.current?.contains(target)) {
+        return;
+      }
+
+      if (
+        activeFullscreenDrawer === "guides" &&
+        target instanceof Element &&
+        target.classList.contains("glyph-canvas")
+      ) {
         return;
       }
 
@@ -873,6 +903,10 @@ export default function GlyphEditor({
       ...activeFontTheme,
       backgroundTexture: texture,
     });
+  }
+
+  function handleGuideSettingChange(key: keyof FontGuideSettings, value: number) {
+    onUpdateFontGuideSettings(clampFontGuideSettings(font.guideSettings, key, value));
   }
 
   function handleDeleteSelectedStroke() {
@@ -1058,6 +1092,20 @@ export default function GlyphEditor({
     onNextCharacter();
   }
 
+  function handleSaveVariant() {
+    const savedGlyph = {
+      ...cloneGlyph(draftGlyphRef.current),
+      updatedAt: new Date().toISOString(),
+    };
+
+    onSaveGlyphVariant({
+      ...savedGlyph,
+      character: glyph.character,
+    });
+
+    setSavedMessage(`Saved variant ${variantCount + 1} for ${getCharacterLabel(glyph.character)}`);
+  }
+
   function handleClear() {
     pushHistory();
     updateDraftGlyph({
@@ -1123,6 +1171,7 @@ export default function GlyphEditor({
           brushSize={brushSize}
           eyeExpression={eyeExpression}
           eraserMode={eraserMode}
+          guideEditMode={activeFullscreenDrawer === "guides"}
           guideSettings={font.guideSettings}
           inkEffect={inkEffect}
           inkColor={inkColor}
@@ -1138,6 +1187,7 @@ export default function GlyphEditor({
           viewOffset={viewOffset}
           viewScale={viewScale}
           onEditStart={pushHistory}
+          onChangeGuideSettings={onUpdateFontGuideSettings}
           onChangeViewOffset={setViewOffset}
           onChangeDecorations={updateDraftDecorations}
           onChangeStrokes={updateDraftStrokes}
@@ -1308,7 +1358,7 @@ export default function GlyphEditor({
 
           {activeFullscreenDrawer === "more" && (
             <div id="draw-more-drawer" className="draw-control-drawer" aria-label="More drawing controls">
-              <div className="draw-drawer-grid two" aria-label="Save actions">
+              <div className="draw-drawer-grid three" aria-label="Save actions">
                 <button
                   className="draw-drawer-button"
                   type="button"
@@ -1319,6 +1369,17 @@ export default function GlyphEditor({
                 >
                   <Save aria-hidden="true" />
                   <span>Save</span>
+                </button>
+                <button
+                  className="draw-drawer-button"
+                  type="button"
+                  onClick={() => {
+                    handleSaveVariant();
+                    setActiveFullscreenDrawer(null);
+                  }}
+                >
+                  <Save aria-hidden="true" />
+                  <span>Save variant</span>
                 </button>
                 <button
                   className="draw-drawer-button accent"
@@ -1355,6 +1416,18 @@ export default function GlyphEditor({
                   <span>Guides</span>
                 </button>
               </div>
+
+              <button
+                className="draw-drawer-button full"
+                type="button"
+                onClick={() => {
+                  setShowGuides(true);
+                  setActiveFullscreenDrawer("guides");
+                }}
+              >
+                <SlidersHorizontal aria-hidden="true" />
+                <span>Guide settings</span>
+              </button>
 
               <div className="draw-drawer-grid two" aria-label="Eraser mode">
                 <button
@@ -1451,6 +1524,45 @@ export default function GlyphEditor({
                   <span>Delete stroke</span>
                 </button>
               )}
+            </div>
+          )}
+
+          {activeFullscreenDrawer === "guides" && (
+            <div id="draw-guides-drawer" className="draw-control-drawer draw-guide-drawer" aria-label="Guide settings drawer">
+              <div className="draw-guide-settings">
+                {fontGuideRows.map((guide) => (
+                  <label key={guide.key} className="draw-drawer-range draw-guide-range">
+                    <span>{guide.label}</span>
+                    <input
+                      type="range"
+                      min="0.02"
+                      max="0.98"
+                      step="0.01"
+                      value={font.guideSettings[guide.key]}
+                      onChange={(event) => handleGuideSettingChange(guide.key, Number(event.target.value))}
+                    />
+                    <output>{Math.round(font.guideSettings[guide.key] * 100)}%</output>
+                  </label>
+                ))}
+              </div>
+              <div className="draw-drawer-grid two" aria-label="Guide actions">
+                <button
+                  className={`draw-drawer-button ${showGuides ? "active-tool" : ""}`}
+                  type="button"
+                  onClick={() => setShowGuides((current) => !current)}
+                >
+                  <Eye aria-hidden="true" />
+                  <span>Guides</span>
+                </button>
+                <button
+                  className="draw-drawer-button"
+                  type="button"
+                  onClick={() => onUpdateFontGuideSettings({ ...defaultFontGuideSettings })}
+                >
+                  <RotateCcw aria-hidden="true" />
+                  <span>Reset guides</span>
+                </button>
+              </div>
             </div>
           )}
 
@@ -1725,6 +1837,7 @@ export default function GlyphEditor({
         viewOffset={viewOffset}
         viewScale={viewScale}
         onEditStart={pushHistory}
+        onChangeGuideSettings={onUpdateFontGuideSettings}
         onChangeViewOffset={setViewOffset}
         onChangeDecorations={updateDraftDecorations}
         onChangeStrokes={updateDraftStrokes}
@@ -1745,6 +1858,9 @@ export default function GlyphEditor({
       <div className="quick-save-row" aria-label="Primary glyph actions">
         <button className="secondary-button" type="button" onClick={handleSave}>
           Save
+        </button>
+        <button className="secondary-button" type="button" onClick={handleSaveVariant}>
+          Save variant
         </button>
         <button className="primary-button" type="button" onClick={handleSaveAndNext}>
           Save and next

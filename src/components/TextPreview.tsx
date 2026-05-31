@@ -1,7 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { Capacitor } from "@capacitor/core";
+import { Directory, Filesystem } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
 import { spacebar } from "../data/characterSets";
-import type { BackgroundStyle, BackgroundTexture, FontSet, Glyph, PreviewSettings } from "../types/fontTypes";
+import type {
+  BackgroundStyle,
+  BackgroundTexture,
+  FontGuideSettings,
+  FontSet,
+  FontShapeSettings,
+  Glyph,
+  PreviewSettings,
+} from "../types/fontTypes";
 import {
   drawGlyph,
   findPreviewGlyph,
@@ -13,6 +24,7 @@ import {
   getGlyphTopForBaseline,
   getSpacebarAdvance,
   hasDrawnGlyph,
+  selectPreviewGlyph,
 } from "../render/glyphRenderer";
 
 type SavedPreviewImage = {
@@ -25,6 +37,11 @@ type SavedPreviewImage = {
 
 type TextPreviewProps = {
   font: FontSet;
+  onUpdateFontMetrics: (updates: {
+    glyphMetrics?: Partial<Pick<Glyph, "baselineOffset" | "leftBearing" | "rightBearing" | "xAdvance">>;
+    guideSettings?: FontGuideSettings;
+    shapeSettings?: FontShapeSettings;
+  }) => void;
   onRecordExport?: (message: string) => void;
   onSaveImage?: (image: SavedPreviewImage) => boolean;
   onUpdateSelectedGlyph: (glyph: Glyph) => void;
@@ -36,9 +53,16 @@ type TextPreviewProps = {
 
 type ExportPresetId = "phone" | "social" | "transparent";
 type FontMetricKey = "baselineOffset" | "leftBearing" | "rightBearing" | "width" | "xAdvance";
-type ImageMetricKey = "canvasHeight" | "canvasWidth" | "fontSize" | "lineSpacing" | "pagePadding";
+type FontGlyphMetricKey = Exclude<FontMetricKey, "width">;
+type ImageMetricKey = "canvasHeight" | "canvasWidth" | "lineSpacing" | "pagePadding";
 type SettingsPanel = "font" | "image" | "position";
 type TextAlignment = "left" | "center" | "right";
+
+const settingsPanelLabels: Record<SettingsPanel, string> = {
+  font: "Font settings",
+  image: "Image settings",
+  position: "Position settings",
+};
 
 type PreviewImageSettings = PreviewSettings & {
   accentColor: string;
@@ -66,7 +90,10 @@ type PreviewDocument = {
 };
 
 const PREVIEW_DOCUMENTS_KEY = "local-font-studio:preview-documents:v1";
-const MIN_PHONE_IMAGE_HEIGHT = 240;
+const MIN_IMAGE_CANVAS_WIDTH = 640;
+const MAX_IMAGE_CANVAS_WIDTH = 3300;
+const MIN_IMAGE_CANVAS_HEIGHT = 480;
+const MAX_IMAGE_CANVAS_HEIGHT = 3600;
 
 const exportPresets: Array<{
   id: ExportPresetId;
@@ -326,6 +353,7 @@ function savePreviewDocuments(documents: PreviewDocument[]) {
 
 export default function TextPreview({
   font,
+  onUpdateFontMetrics,
   onRecordExport,
   onSaveImage,
   onUpdateSelectedGlyph,
@@ -352,6 +380,11 @@ export default function TextPreview({
 
   const savedGlyphCount = useMemo(
     () => Object.values(font.glyphs).filter((glyph) => hasDrawnGlyph(glyph)).length,
+    [font.glyphs],
+  );
+
+  const fontGlyphs = useMemo(
+    () => Object.values(font.glyphs).filter((glyph) => glyph.character !== spacebar),
     [font.glyphs],
   );
 
@@ -449,11 +482,42 @@ export default function TextPreview({
     return lines;
   }
 
-  function hasOversizeWord(ctx: CanvasRenderingContext2D, text: string, maxLineWidth: number, fontSize: number) {
-    return text
-      .split(/\s+/)
-      .filter(Boolean)
-      .some((word) => measureTextRun(ctx, word, fontSize) > maxLineWidth);
+  function buildCharacterWrappedLines(
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    maxLineWidth: number,
+    fontSize: number,
+  ) {
+    const paragraphs = text.split("\n");
+    const lines: string[] = [];
+
+    for (const paragraph of paragraphs) {
+      let line = "";
+      let lineWidth = 0;
+
+      if (paragraph.length === 0) {
+        lines.push("");
+        continue;
+      }
+
+      for (const character of paragraph) {
+        const characterWidth = measureCharacter(ctx, character, fontSize);
+
+        if (line.length > 0 && lineWidth + characterWidth > maxLineWidth) {
+          lines.push(line);
+          line = character.trimStart();
+          lineWidth = measureTextRun(ctx, line, fontSize);
+          continue;
+        }
+
+        line += character;
+        lineWidth += characterWidth;
+      }
+
+      lines.push(line.trimEnd());
+    }
+
+    return lines;
   }
 
   function getLineX(ctx: CanvasRenderingContext2D, line: string, renderSettings: PreviewImageSettings) {
@@ -485,8 +549,12 @@ export default function TextPreview({
       let x = getLineX(ctx, line, renderSettings);
       const y = renderSettings.pagePadding + lineIndex * lineHeight;
 
-      for (const character of line) {
-        const glyph = findPreviewGlyph(font.glyphs, character);
+      [...line].forEach((character, characterIndex) => {
+        const glyph = selectPreviewGlyph(
+          font.glyphs,
+          character,
+          `${previewText}|${lineIndex}|${characterIndex}|${character}`,
+        );
 
         if (glyph) {
           const scales = getGlyphRenderScales(font, glyph);
@@ -502,15 +570,15 @@ export default function TextPreview({
             renderProfile: font.renderProfile,
             heightScale: scales.heightScale,
             widthScale: scales.widthScale,
-            backgroundTexture: font.theme?.backgroundTexture,
+            backgroundTexture: renderSettings.backgroundTexture,
           });
           x += getGlyphAdvance(glyph, renderSettings.fontSize, fontWidthScale);
-          continue;
+          return;
         }
 
         if (character === spacebar) {
           x += measureCharacter(ctx, character, renderSettings.fontSize);
-          continue;
+          return;
         }
 
         const fallbackWidth = ctx.measureText(character).width;
@@ -521,7 +589,7 @@ export default function TextPreview({
         ctx.fillStyle = renderSettings.inkColor;
         ctx.fillText(character, x, y + renderSettings.fontSize * 0.04);
         x += fallbackWidth;
-      }
+      });
     });
   }
 
@@ -850,41 +918,15 @@ export default function TextPreview({
     drawSelectedImageTexture(ctx, renderSettings);
   }
 
-  function getFittedImageLayout(ctx: CanvasRenderingContext2D): PhoneImageLayout {
-    let fontSize = imageSettings.fontSize;
-    let wrappedLines: string[] = [];
-    const minimumFontSize = 24;
-
-    while (fontSize >= minimumFontSize) {
-      const candidateSettings = { ...imageSettings, fontSize };
-      const maxLineWidth = candidateSettings.canvasWidth - candidateSettings.pagePadding * 2;
-      const maxTextHeight = candidateSettings.canvasHeight - candidateSettings.pagePadding * 2;
-      ctx.font = getFallbackFont(fontSize);
-      wrappedLines = buildWordWrappedLines(ctx, previewText, maxLineWidth, fontSize);
-
-      const lineCount = Math.max(1, wrappedLines.length);
-      const lineHeight = fontSize * candidateSettings.lineSpacing * Math.max(0.72, getFontHeightScale(font));
-      const textBlockHeight = (lineCount - 1) * lineHeight + fontSize * Math.max(1.08, getFontHeightScale(font));
-      const wordsFit = !hasOversizeWord(ctx, previewText, maxLineWidth, fontSize);
-      const heightFits = textBlockHeight <= maxTextHeight || candidateSettings.canvasHeight <= MIN_PHONE_IMAGE_HEIGHT;
-
-      if (!imageSettings.autoFit || (wordsFit && heightFits)) {
-        return {
-          settings: candidateSettings,
-          lines: wrappedLines,
-        };
-      }
-
-      fontSize -= 4;
-    }
-
-    const fittedSettings = { ...imageSettings, fontSize: minimumFontSize };
-    const maxLineWidth = fittedSettings.canvasWidth - fittedSettings.pagePadding * 2;
-    ctx.font = getFallbackFont(minimumFontSize);
-    wrappedLines = buildWordWrappedLines(ctx, previewText, maxLineWidth, minimumFontSize);
+  function getPhoneImageLayout(ctx: CanvasRenderingContext2D): PhoneImageLayout {
+    const maxLineWidth = Math.max(1, imageSettings.canvasWidth - imageSettings.pagePadding * 2);
+    ctx.font = getFallbackFont(imageSettings.fontSize);
+    const wrappedLines = imageSettings.autoFit
+      ? buildWordWrappedLines(ctx, previewText, maxLineWidth, imageSettings.fontSize)
+      : buildCharacterWrappedLines(ctx, previewText, maxLineWidth, imageSettings.fontSize);
 
     return {
-      settings: fittedSettings,
+      settings: imageSettings,
       lines: wrappedLines,
     };
   }
@@ -896,7 +938,7 @@ export default function TextPreview({
       return;
     }
 
-    const fittedLayout = getFittedImageLayout(ctx);
+    const fittedLayout = getPhoneImageLayout(ctx);
     canvas.width = fittedLayout.settings.canvasWidth;
     canvas.height = fittedLayout.settings.canvasHeight;
 
@@ -926,6 +968,45 @@ export default function TextPreview({
     return new Promise<Blob | null>((resolve) => {
       canvas.toBlob((blob) => resolve(blob), "image/png");
     });
+  }
+
+  function getPhoneImageDataUrl() {
+    return imageCanvasRef.current?.toDataURL("image/png") ?? "";
+  }
+
+  async function shareNativePhoneImage() {
+    const dataUrl = getPhoneImageDataUrl();
+    const base64Data = dataUrl.split(",")[1];
+
+    if (!base64Data) {
+      setShareStatus("Could not make an image yet.");
+      return false;
+    }
+
+    const canShare = await Share.canShare().catch(() => ({ value: false }));
+
+    if (!canShare.value) {
+      return false;
+    }
+
+    const fileName = getPhoneImageFileName();
+    const writeResult = await Filesystem.writeFile({
+      data: base64Data,
+      directory: Directory.Cache,
+      path: `share/${Date.now()}-${fileName}`,
+      recursive: true,
+    });
+
+    await Share.share({
+      dialogTitle: "Share image",
+      files: [writeResult.uri],
+      text: "Made in Local Font Studio",
+      title: font.name,
+    });
+
+    setShareStatus("Share opened.");
+    onRecordExport?.(`Shared ${imageSettings.exportPreset} preview PNG.`);
+    return true;
   }
 
   function applyTextPreset(preset: (typeof previewPresets)[number]) {
@@ -1025,6 +1106,17 @@ export default function TextPreview({
   }
 
   async function sharePhoneImage() {
+    if (Capacitor.isNativePlatform()) {
+      try {
+        if (await shareNativePhoneImage()) {
+          return;
+        }
+      } catch {
+        setShareStatus("Android sharing did not work. Try Export PNG.");
+        return;
+      }
+    }
+
     const blob = await getPhoneImageBlob();
 
     if (!blob) {
@@ -1179,17 +1271,81 @@ export default function TextPreview({
     }));
   }
 
+  function updateImageCanvasSize(deltaWidth: number) {
+    setImageSettings((current) => {
+      const requestedWidth = current.canvasWidth + deltaWidth;
+      const requestedScale = requestedWidth / current.canvasWidth;
+      const minScale = Math.max(
+        MIN_IMAGE_CANVAS_WIDTH / current.canvasWidth,
+        MIN_IMAGE_CANVAS_HEIGHT / current.canvasHeight,
+      );
+      const maxScale = Math.min(
+        MAX_IMAGE_CANVAS_WIDTH / current.canvasWidth,
+        MAX_IMAGE_CANVAS_HEIGHT / current.canvasHeight,
+      );
+      const scale = Math.min(maxScale, Math.max(minScale, requestedScale));
+
+      return {
+        ...current,
+        canvasHeight: Math.round(current.canvasHeight * scale),
+        canvasWidth: Math.round(current.canvasWidth * scale),
+      };
+    });
+  }
+
+  function getAverageGlyphMetric(metric: FontGlyphMetricKey) {
+    if (fontGlyphs.length === 0) {
+      return selectedGlyph[metric];
+    }
+
+    const total = fontGlyphs.reduce((sum, glyph) => sum + glyph[metric], 0);
+    return total / fontGlyphs.length;
+  }
+
   function updateFontMetric(
-    metric: FontMetricKey,
+    metric: FontGlyphMetricKey,
     delta: number,
     min: number,
     max: number,
     precision = 2,
   ) {
-    onUpdateSelectedGlyph({
-      ...selectedGlyph,
-      [metric]: getSteppedValue(selectedGlyph[metric], delta, min, max, precision),
-      updatedAt: new Date().toISOString(),
+    const currentValue =
+      metric === "baselineOffset"
+        ? font.guideSettings?.baseline ?? getAverageGlyphMetric(metric)
+        : getAverageGlyphMetric(metric);
+    const nextValue = getSteppedValue(currentValue, delta, min, max, precision);
+    const glyphMetrics: Partial<Pick<Glyph, "baselineOffset" | "leftBearing" | "rightBearing" | "xAdvance">> = {
+      [metric]: nextValue,
+    };
+
+    onUpdateFontMetrics({
+      glyphMetrics,
+      ...(metric === "baselineOffset"
+        ? {
+            guideSettings: {
+              ...font.guideSettings,
+              baseline: nextValue,
+            },
+          }
+        : {}),
+    });
+  }
+
+  function updateFontShapeMetric(
+    metric: keyof FontShapeSettings,
+    delta: number,
+    min: number,
+    max: number,
+    precision = 2,
+  ) {
+    const currentShapeSettings = font.shapeSettings ?? { heightScale: 1, widthScale: 1 };
+    const nextValue = getSteppedValue(currentShapeSettings[metric], delta, min, max, precision);
+
+    onUpdateFontMetrics({
+      shapeSettings: {
+        ...currentShapeSettings,
+        [metric]: nextValue,
+      },
     });
   }
 
@@ -1254,6 +1410,37 @@ export default function TextPreview({
     );
   }
 
+  function renderImageSizeControl() {
+    return (
+      <div className="phone-metric-stepper">
+        <div className="phone-metric-readout">
+          <span>Size</span>
+          <strong>
+            {imageSettings.canvasWidth}x{imageSettings.canvasHeight}
+          </strong>
+        </div>
+        <div className="phone-metric-buttons">
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => updateImageCanvasSize(-80)}
+            aria-label="Decrease Size"
+          >
+            Down
+          </button>
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => updateImageCanvasSize(80)}
+            aria-label="Increase Size"
+          >
+            Up
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   function renderFontMetricControl({
     label,
     max,
@@ -1265,7 +1452,7 @@ export default function TextPreview({
   }: {
     label: string;
     max: number;
-    metric: FontMetricKey;
+    metric: FontGlyphMetricKey;
     min: number;
     precision?: number;
     step: number;
@@ -1292,6 +1479,53 @@ export default function TextPreview({
             className="secondary-button"
             type="button"
             onClick={() => updateFontMetric(metric, step, min, max, precision)}
+            aria-label={`Increase ${label}`}
+          >
+            Up
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  function renderFontShapeMetricControl({
+    label,
+    max,
+    metric,
+    min,
+    precision = 2,
+    step,
+    value,
+  }: {
+    label: string;
+    max: number;
+    metric: keyof FontShapeSettings;
+    min: number;
+    precision?: number;
+    step: number;
+    value: number;
+  }) {
+    const displayValue = precision > 0 ? value.toFixed(precision) : value.toString();
+
+    return (
+      <div className="phone-metric-stepper">
+        <div className="phone-metric-readout">
+          <span>{label}</span>
+          <strong>{displayValue}</strong>
+        </div>
+        <div className="phone-metric-buttons">
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => updateFontShapeMetric(metric, -step, min, max, precision)}
+            aria-label={`Decrease ${label}`}
+          >
+            Down
+          </button>
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => updateFontShapeMetric(metric, step, min, max, precision)}
             aria-label={`Increase ${label}`}
           >
             Up
@@ -1365,27 +1599,20 @@ export default function TextPreview({
   function renderImageLayoutControls(className = "phone-image-tools preview-layout-tools") {
     return (
       <div className={className}>
-        {renderImageMetricControl({
-          label: "Size",
-          max: 220,
-          metric: "fontSize",
-          min: 24,
-          step: 4,
-          value: imageSettings.fontSize,
-        })}
+        {renderImageSizeControl()}
         {renderImageMetricControl({
           label: "Width",
-          max: 3300,
+          max: MAX_IMAGE_CANVAS_WIDTH,
           metric: "canvasWidth",
-          min: 640,
+          min: MIN_IMAGE_CANVAS_WIDTH,
           step: 80,
           value: imageSettings.canvasWidth,
         })}
         {renderImageMetricControl({
           label: "Height",
-          max: 3600,
+          max: MAX_IMAGE_CANVAS_HEIGHT,
           metric: "canvasHeight",
-          min: 480,
+          min: MIN_IMAGE_CANVAS_HEIGHT,
           step: 80,
           value: imageSettings.canvasHeight,
         })}
@@ -1446,15 +1673,15 @@ export default function TextPreview({
           metric: "baselineOffset",
           min: 0,
           step: 0.02,
-          value: selectedGlyph.baselineOffset,
+          value: font.guideSettings?.baseline ?? getAverageGlyphMetric("baselineOffset"),
         })}
-        {renderFontMetricControl({
+        {renderFontShapeMetricControl({
           label: "Width",
-          max: 1.8,
-          metric: "width",
-          min: 0.25,
+          max: 1.6,
+          metric: "widthScale",
+          min: 0.55,
           step: 0.05,
-          value: selectedGlyph.width,
+          value: font.shapeSettings?.widthScale ?? 1,
         })}
         {renderFontMetricControl({
           label: "Advance",
@@ -1462,7 +1689,7 @@ export default function TextPreview({
           metric: "xAdvance",
           min: 0.18,
           step: 0.05,
-          value: selectedGlyph.xAdvance,
+          value: getAverageGlyphMetric("xAdvance"),
         })}
         {renderFontMetricControl({
           label: "Left",
@@ -1470,7 +1697,7 @@ export default function TextPreview({
           metric: "leftBearing",
           min: -0.4,
           step: 0.02,
-          value: selectedGlyph.leftBearing,
+          value: getAverageGlyphMetric("leftBearing"),
         })}
         {renderFontMetricControl({
           label: "Right",
@@ -1478,7 +1705,7 @@ export default function TextPreview({
           metric: "rightBearing",
           min: -0.4,
           step: 0.02,
-          value: selectedGlyph.rightBearing,
+          value: getAverageGlyphMetric("rightBearing"),
         })}
         <div className="phone-metric-stepper">
           <div className="phone-metric-readout">
@@ -1525,16 +1752,6 @@ export default function TextPreview({
             ))}
           </div>
 
-          <textarea
-            className="preview-input phone-text-input"
-            value={previewText}
-            onChange={(event) => {
-              onPreviewTextChange(event.target.value);
-              setActiveDocumentId(null);
-            }}
-            spellCheck={false}
-          />
-
           <div className="preview-document-tools" aria-label="Preview documents">
             <input
               aria-label="Preview document name"
@@ -1566,6 +1783,21 @@ export default function TextPreview({
     );
   }
 
+  function renderPreviewTextBox(className = "preview-input phone-text-input") {
+    return (
+      <textarea
+        className={className}
+        aria-label="Preview text"
+        value={previewText}
+        onChange={(event) => {
+          onPreviewTextChange(event.target.value);
+          setActiveDocumentId(null);
+        }}
+        spellCheck={false}
+      />
+    );
+  }
+
   return (
     <>
       {previewMenuRoot ? createPortal(renderPreviewTextMenu(), previewMenuRoot) : null}
@@ -1592,6 +1824,7 @@ export default function TextPreview({
           Export PNG
         </button>
       </div>
+      {renderPreviewTextBox("preview-input phone-text-input phone-image-text-input")}
       <div className="share-status" aria-live="polite">
         {shareStatus}
       </div>
@@ -1665,6 +1898,9 @@ export default function TextPreview({
                 </span>
               </button>
               {fullscreenSettingsMenuOpen && renderFullscreenSettingsMenu()}
+            </div>
+            <div className="phone-image-active-settings" aria-live="polite">
+              {settingsPanelLabels[activeSettingsPanel]}
             </div>
             <button className="secondary-button compact-button" type="button" onClick={closeFullscreenPreview}>
               Close

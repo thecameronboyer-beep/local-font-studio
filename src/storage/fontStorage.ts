@@ -13,6 +13,7 @@ import type {
   Glyph,
   GlyphDecoration,
   GlyphPoint,
+  GlyphVariant,
   GlyphStroke,
   GlyphStrokeTool,
   ProjectActivity,
@@ -84,6 +85,8 @@ export const defaultFontGuideSettings: FontGuideSettings = {
   ascender: 0.14,
   baseline: 0.76,
   descender: 0.9,
+  leftBound: 0.1,
+  rightBound: 0.9,
   xHeight: 0.42,
 };
 
@@ -241,15 +244,21 @@ function normalizeGuideSettings(value: unknown, fallback: FontGuideSettings): Fo
   const xHeight = safeNumber(value.xHeight, fallback.xHeight, 0.08, 0.82);
   const baseline = safeNumber(value.baseline, fallback.baseline, 0.12, 0.92);
   const descender = safeNumber(value.descender, fallback.descender, 0.2, 0.98);
+  const leftBound = safeNumber(value.leftBound, fallback.leftBound, 0.02, 0.9);
+  const rightBound = safeNumber(value.rightBound, fallback.rightBound, 0.1, 0.98);
   const safeAscender = Math.min(0.72, Math.max(0.04, ascender));
   const safeXHeight = Math.min(0.82, Math.max(safeAscender + 0.04, xHeight));
   const safeBaseline = Math.min(0.92, Math.max(safeXHeight + 0.04, baseline));
   const safeDescender = Math.min(0.98, Math.max(safeBaseline + 0.04, descender));
+  const safeLeftBound = Math.min(0.9, Math.max(0.02, leftBound));
+  const safeRightBound = Math.min(0.98, Math.max(safeLeftBound + 0.08, rightBound));
 
   return {
     ascender: Number(safeAscender.toFixed(2)),
     baseline: Number(safeBaseline.toFixed(2)),
     descender: Number(safeDescender.toFixed(2)),
+    leftBound: Number(safeLeftBound.toFixed(2)),
+    rightBound: Number(safeRightBound.toFixed(2)),
     xHeight: Number(safeXHeight.toFixed(2)),
   };
 }
@@ -333,6 +342,31 @@ function normalizeDecoration(decoration: unknown): GlyphDecoration | null {
   };
 }
 
+function normalizeGlyphVariant(rawGlyph: unknown, character: string): GlyphVariant | null {
+  if (!isRecord(rawGlyph)) {
+    return null;
+  }
+
+  return {
+    character,
+    decorations: Array.isArray(rawGlyph.decorations)
+      ? rawGlyph.decorations
+          .map(normalizeDecoration)
+          .filter((decoration): decoration is GlyphDecoration => Boolean(decoration))
+      : [],
+    strokes: Array.isArray(rawGlyph.strokes)
+      ? rawGlyph.strokes.map(normalizeStroke).filter((stroke): stroke is GlyphStroke => Boolean(stroke))
+      : [],
+    width: safeNumber(rawGlyph.width, defaultGlyphMetrics.width, 0.1, 3),
+    height: safeNumber(rawGlyph.height, defaultGlyphMetrics.height, 0.1, 3),
+    xAdvance: safeNumber(rawGlyph.xAdvance, defaultGlyphMetrics.xAdvance, 0.1, 3),
+    baselineOffset: safeNumber(rawGlyph.baselineOffset, defaultGlyphMetrics.baselineOffset, -2, 2),
+    leftBearing: safeNumber(rawGlyph.leftBearing, defaultGlyphMetrics.leftBearing, -1, 1),
+    rightBearing: safeNumber(rawGlyph.rightBearing, defaultGlyphMetrics.rightBearing, -1, 1),
+    updatedAt: safeString(rawGlyph.updatedAt, new Date().toISOString()),
+  };
+}
+
 function normalizeGlyph(rawGlyph: unknown, character: string): Glyph {
   const emptyGlyph = createEmptyGlyph(character);
 
@@ -356,6 +390,11 @@ function normalizeGlyph(rawGlyph: unknown, character: string): Glyph {
       : [],
     strokes: Array.isArray(rawGlyph.strokes)
       ? rawGlyph.strokes.map(normalizeStroke).filter((stroke): stroke is GlyphStroke => Boolean(stroke))
+      : [],
+    variants: Array.isArray(rawGlyph.variants)
+      ? rawGlyph.variants
+          .map((variant) => normalizeGlyphVariant(variant, character))
+          .filter((variant): variant is GlyphVariant => Boolean(variant))
       : [],
     updatedAt: safeString(rawGlyph.updatedAt, emptyGlyph.updatedAt),
   };
@@ -484,12 +523,16 @@ function migrateFontStudioData(rawData: unknown): FontStudioData {
   return migratedData;
 }
 
+function hasCountableGlyphMarks(glyph: Glyph | GlyphVariant) {
+  return glyph.strokes.length > 0 || glyph.decorations.length > 0;
+}
+
 function countDrawnGlyphs(data: FontStudioData) {
   return data.fonts.reduce(
     (total, font) =>
       total +
       Object.values(font.glyphs).filter(
-        (glyph) => glyph.strokes.length > 0 || glyph.decorations.length > 0,
+        (glyph) => hasCountableGlyphMarks(glyph) || glyph.variants?.some(hasCountableGlyphMarks),
       ).length,
     0,
   );
@@ -638,6 +681,20 @@ export function cloneFontSet(font: FontSet, existingFonts: FontSet[], requestedN
             ...stroke,
             id: createId("stroke"),
             points: stroke.points.map((point) => ({ ...point })),
+          })),
+          variants: (glyph.variants ?? []).map((variant) => ({
+            ...variant,
+            character,
+            decorations: (variant.decorations ?? []).map((decoration) => ({
+              ...decoration,
+              id: createId("decoration"),
+            })),
+            strokes: variant.strokes.map((stroke) => ({
+              ...stroke,
+              id: createId("stroke"),
+              points: stroke.points.map((point) => ({ ...point })),
+            })),
+            updatedAt: now,
           })),
           updatedAt: now,
         },

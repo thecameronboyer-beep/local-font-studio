@@ -28,7 +28,7 @@ export type GlyphDecoration = {
   y: number;
 };
 
-export type Glyph = {
+export type GlyphShape = {
   character: string;
   decorations: GlyphDecoration[];
   strokes: GlyphStroke[];
@@ -39,6 +39,12 @@ export type Glyph = {
   leftBearing: number;
   rightBearing: number;
   updatedAt: string;
+};
+
+export type GlyphVariant = GlyphShape;
+
+export type Glyph = GlyphShape & {
+  variants?: GlyphVariant[];
 };
 
 export type BackgroundStyle =
@@ -80,6 +86,8 @@ export type FontGuideSettings = {
   ascender: number;
   baseline: number;
   descender: number;
+  leftBound: number;
+  rightBound: number;
   xHeight: number;
 };
 

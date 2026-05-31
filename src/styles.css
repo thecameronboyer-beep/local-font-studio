@@ -716,9 +716,18 @@ h3 {
 }
 
 .glyph-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
   color: #cfbfaa;
   font-size: 0.78rem;
   font-weight: 900;
+}
+
+.glyph-label strong {
+  color: #82d0bc;
+  font-size: 0.68rem;
 }
 
 .glyph-placeholder {
@@ -848,6 +857,14 @@ h3 {
 }
 
 .pan-cursor:active {
+  cursor: grabbing;
+}
+
+.guide-cursor {
+  cursor: grab;
+}
+
+.guide-cursor:active {
   cursor: grabbing;
 }
 
@@ -1061,6 +1078,10 @@ input[type="color"] {
 .tool-row,
 .quick-save-row {
   grid-template-columns: 1fr 1fr;
+}
+
+.quick-save-row {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .engine-option-row {
@@ -1359,6 +1380,11 @@ input[type="color"] {
 
 .phone-text-input {
   margin-bottom: 12px;
+}
+
+.phone-image-text-input {
+  min-height: 96px;
+  margin: 10px 18px 8px;
 }
 
 .preview-tools {
@@ -2443,6 +2469,20 @@ h1 {
   min-width: 0;
 }
 
+.draw-guide-drawer {
+  max-height: min(54dvh, 430px);
+  overflow: auto;
+}
+
+.draw-guide-settings {
+  display: grid;
+  gap: 8px;
+}
+
+.draw-guide-range {
+  grid-template-columns: 82px minmax(0, 1fr) 42px;
+}
+
 .draw-ink-swatches {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -2700,7 +2740,7 @@ h1 {
 .phone-image-fullscreen-heading {
   position: static;
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   padding: max(10px, env(safe-area-inset-top)) 10px 10px;
@@ -2717,6 +2757,17 @@ h1 {
   width: 58px;
   min-height: 48px;
   padding: 0;
+}
+
+.phone-image-active-settings {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--paper);
+  font-size: 1rem;
+  font-weight: 800;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .hamburger-lines {
@@ -2938,4 +2989,117 @@ h1 {
 
 .saved-image-actions .compact-button {
   min-height: 42px;
+}
+
+@media (min-width: 700px) and (max-width: 1024px) and (orientation: portrait) {
+  :root {
+    --phone-shell-width: 720px;
+  }
+
+  .app-shell {
+    padding: 84px 24px 24px;
+  }
+
+  h1 {
+    font-size: 3.4rem;
+  }
+
+  .panel-heading {
+    align-items: center;
+    flex-direction: row;
+    padding: 16px 18px;
+  }
+
+  .library-form {
+    padding-right: 18px;
+    padding-left: 18px;
+  }
+
+  .font-list,
+  .phone-image-actions,
+  .preview-preset-grid,
+  .export-preset-grid,
+  .preview-document-tools,
+  .preview-document-list,
+  .alignment-row {
+    padding-right: 24px;
+    padding-left: 24px;
+  }
+
+  .phone-generator-panel > .export-preset-grid {
+    padding-top: 22px;
+  }
+
+  .preview-input {
+    width: calc(100% - 48px);
+    margin-right: 24px;
+    margin-left: 24px;
+  }
+
+  .phone-image-preview {
+    padding: 18px 24px 24px;
+  }
+
+  .phone-image-canvas {
+    max-height: min(68dvh, 900px);
+  }
+
+  .glyph-grid {
+    grid-template-columns: repeat(auto-fill, minmax(82px, 1fr));
+  }
+
+  .fullscreen-grid-page .glyph-cell {
+    min-height: 104px;
+  }
+
+  .phone-image-fullscreen-surface {
+    padding: 14px 18px;
+  }
+
+  .phone-image-fullscreen-settings {
+    max-height: 34dvh;
+    padding: 10px 14px;
+  }
+
+  .phone-image-fullscreen-tools {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .phone-image-fullscreen-tools .phone-metric-stepper {
+    padding: 9px;
+  }
+
+  .phone-image-fullscreen-tools .phone-metric-readout strong {
+    font-size: 1.02rem;
+  }
+
+  .phone-image-fullscreen-tools .phone-metric-buttons .secondary-button {
+    min-height: 36px;
+    font-size: 0.72rem;
+  }
+
+  .phone-style-fullscreen {
+    grid-template-rows: auto minmax(240px, 44dvh) minmax(0, 1fr);
+  }
+
+  .phone-style-content {
+    padding: 14px 18px max(18px, env(safe-area-inset-bottom));
+  }
+
+  .phone-style-content .background-preset-grid,
+  .phone-style-content .ink-swatch-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .draw-control-drawer {
+    justify-self: center;
+    width: min(100%, 620px);
+  }
+
+  .saved-images-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding-right: 14px;
+    padding-left: 14px;
+  }
 }

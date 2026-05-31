@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { Capacitor } from "@capacitor/core";
+import { Directory, Filesystem } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
 import type { SavedImage } from "../types/fontTypes";
 
 type SavedImagesPanelProps = {
@@ -21,10 +24,14 @@ function dataUrlToFile(dataUrl: string, fileName: string) {
   return new File([bytes], fileName, { type: mimeType });
 }
 
+function getSavedImageFileName(image: SavedImage) {
+  return `${image.fontName.trim().replace(/[^a-z0-9]+/gi, "-") || "font-studio"}-${image.id}.png`;
+}
+
 function downloadSavedImage(image: SavedImage) {
   const link = document.createElement("a");
   link.href = image.imageDataUrl;
-  link.download = `${image.fontName.trim().replace(/[^a-z0-9]+/gi, "-") || "font-studio"}-${image.id}.png`;
+  link.download = getSavedImageFileName(image);
   link.click();
 }
 
@@ -38,8 +45,51 @@ function formatSavedDate(createdAt: string) {
 export default function SavedImagesPanel({ images, onClose, onDeleteImage }: SavedImagesPanelProps) {
   const [status, setStatus] = useState("");
 
+  async function shareNativeSavedImage(image: SavedImage) {
+    const base64Data = image.imageDataUrl.split(",")[1];
+
+    if (!base64Data) {
+      setStatus("Could not make this image yet.");
+      return false;
+    }
+
+    const canShare = await Share.canShare().catch(() => ({ value: false }));
+
+    if (!canShare.value) {
+      return false;
+    }
+
+    const writeResult = await Filesystem.writeFile({
+      data: base64Data,
+      directory: Directory.Cache,
+      path: `share/${Date.now()}-${getSavedImageFileName(image)}`,
+      recursive: true,
+    });
+
+    await Share.share({
+      dialogTitle: "Share image",
+      files: [writeResult.uri],
+      text: image.message,
+      title: image.fontName,
+    });
+
+    setStatus("Share opened.");
+    return true;
+  }
+
   async function shareSavedImage(image: SavedImage) {
-    const file = dataUrlToFile(image.imageDataUrl, `${image.fontName}-${image.id}.png`);
+    if (Capacitor.isNativePlatform()) {
+      try {
+        if (await shareNativeSavedImage(image)) {
+          return;
+        }
+      } catch {
+        setStatus("Android sharing did not work. Try Save PNG.");
+        return;
+      }
+    }
+
+    const file = dataUrlToFile(image.imageDataUrl, getSavedImageFileName(image));
     const shareData: ShareData & { files?: File[] } = {
       files: [file],
       text: image.message,

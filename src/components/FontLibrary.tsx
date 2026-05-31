@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import {
   drawGlyph,
-  findPreviewGlyph,
   getFontHeightScale,
   getFontWidthScale,
   getGlyphAdvance,
   getGlyphLeftBearingOffset,
   getGlyphRenderScales,
   getGlyphTopForBaseline,
+  selectPreviewGlyph,
 } from "../render/glyphRenderer";
 import {
   defaultFontCharacterSettings,
@@ -24,6 +24,8 @@ import type {
   FontShapeSettings,
   FontTheme,
 } from "../types/fontTypes";
+import { clampFontGuideSettings, fontGuideRows } from "../utils/fontGuides";
+import type { FontGuideKey } from "../utils/fontGuides";
 
 type FontLibraryProps = {
   fonts: FontSet[];
@@ -93,8 +95,8 @@ function FontNamePreview({ font }: { font: FontSet }) {
 
     let x = paddingX;
 
-    for (const character of font.name) {
-      const glyph = findPreviewGlyph(font.glyphs, character);
+    for (const [characterIndex, character] of [...font.name].entries()) {
+      const glyph = selectPreviewGlyph(font.glyphs, character, `${font.id}|${font.name}|${characterIndex}|${character}`);
 
       if (glyph) {
         const scales = getGlyphRenderScales(font, glyph);
@@ -146,49 +148,6 @@ function downloadFontJson(font: FontSet) {
   URL.revokeObjectURL(url);
 }
 
-type GuideKey = keyof FontGuideSettings;
-
-const guideRows: Array<{
-  color: string;
-  key: GuideKey;
-  label: string;
-}> = [
-  { key: "ascender", label: "Ascender", color: "rgba(41, 128, 145, 0.86)" },
-  { key: "xHeight", label: "Height", color: "rgba(181, 132, 42, 0.9)" },
-  { key: "baseline", label: "Baseline", color: "rgba(35, 112, 76, 0.92)" },
-  { key: "descender", label: "Descender", color: "rgba(133, 58, 57, 0.86)" },
-];
-
-function clampGuideValue(settings: FontGuideSettings, key: GuideKey, value: number): FontGuideSettings {
-  const next = {
-    ...settings,
-    [key]: Math.min(0.98, Math.max(0.04, value)),
-  };
-
-  if (key === "ascender") {
-    next.ascender = Math.min(next.xHeight - 0.04, Math.max(0.04, next.ascender));
-  }
-
-  if (key === "xHeight") {
-    next.xHeight = Math.min(next.baseline - 0.04, Math.max(next.ascender + 0.04, next.xHeight));
-  }
-
-  if (key === "baseline") {
-    next.baseline = Math.min(next.descender - 0.04, Math.max(next.xHeight + 0.04, next.baseline));
-  }
-
-  if (key === "descender") {
-    next.descender = Math.min(0.98, Math.max(next.baseline + 0.04, next.descender));
-  }
-
-  return {
-    ascender: Number(next.ascender.toFixed(2)),
-    baseline: Number(next.baseline.toFixed(2)),
-    descender: Number(next.descender.toFixed(2)),
-    xHeight: Number(next.xHeight.toFixed(2)),
-  };
-}
-
 function FontGuideEditor({
   settings,
   onChange,
@@ -201,7 +160,7 @@ function FontGuideEditor({
   onReset: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const activeGuideRef = useRef<GuideKey | null>(null);
+  const activeGuideRef = useRef<FontGuideKey | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -238,60 +197,84 @@ function FontGuideEditor({
       ctx.stroke();
     }
 
-    ctx.strokeStyle = "rgba(23, 17, 11, 0.18)";
+    const left = settings.leftBound * size;
+    const right = settings.rightBound * size;
+    const fullTop = settings.ascender * size;
+    const fullBottom = settings.descender * size;
+    const bodyTop = settings.xHeight * size;
+    const bodyBottom = settings.baseline * size;
+
+    ctx.fillStyle = "rgba(68, 85, 118, 0.08)";
+    ctx.fillRect(left, fullTop, Math.max(1, right - left), Math.max(1, fullBottom - fullTop));
+    ctx.fillStyle = "rgba(181, 132, 42, 0.11)";
+    ctx.fillRect(left, bodyTop, Math.max(1, right - left), Math.max(1, bodyBottom - bodyTop));
+
+    ctx.strokeStyle = "rgba(68, 85, 118, 0.22)";
     ctx.lineWidth = 2;
-    for (const x of [0.1, 0.9]) {
-      const px = x * size;
-      ctx.beginPath();
-      ctx.moveTo(px, 0);
-      ctx.lineTo(px, size);
-      ctx.stroke();
-    }
+    ctx.beginPath();
+    ctx.moveTo((left + right) / 2, 0);
+    ctx.lineTo((left + right) / 2, size);
+    ctx.stroke();
 
     ctx.font = "900 18px Inter, ui-sans-serif, system-ui";
     ctx.textBaseline = "middle";
 
-    for (const guide of guideRows) {
-      const y = settings[guide.key] * size;
+    for (const guide of fontGuideRows) {
+      const offset = settings[guide.key] * size;
       ctx.strokeStyle = guide.color;
       ctx.fillStyle = guide.color;
       ctx.lineWidth = guide.key === "baseline" ? 4 : 3;
       ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(size, y);
+      if (guide.axis === "x") {
+        ctx.moveTo(offset, 0);
+        ctx.lineTo(offset, size);
+      } else {
+        ctx.moveTo(0, offset);
+        ctx.lineTo(size, offset);
+      }
       ctx.stroke();
       ctx.beginPath();
-      ctx.arc(size - 42, y, 15, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillText(guide.label, 18, Math.max(24, y - 18));
+      if (guide.axis === "x") {
+        ctx.arc(offset, size - 42, 15, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillText(guide.label, Math.min(size - 92, Math.max(18, offset - 28)), size - 70);
+      } else {
+        ctx.arc(size - 42, offset, 15, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillText(guide.label, 18, Math.max(24, offset - 18));
+      }
     }
   }, [settings]);
 
-  function getPointerY(event: ReactPointerEvent<HTMLCanvasElement>) {
+  function getPointerPosition(event: ReactPointerEvent<HTMLCanvasElement>) {
     const rect = event.currentTarget.getBoundingClientRect();
-    return Math.min(0.98, Math.max(0.04, (event.clientY - rect.top) / rect.height));
+    return {
+      x: Math.min(0.98, Math.max(0.02, (event.clientX - rect.left) / rect.width)),
+      y: Math.min(0.98, Math.max(0.02, (event.clientY - rect.top) / rect.height)),
+    };
   }
 
-  function findNearestGuide(y: number) {
-    return guideRows.reduce((nearest, guide) => {
-      const distance = Math.abs(settings[guide.key] - y);
+  function findNearestGuide(point: { x: number; y: number }) {
+    return fontGuideRows.reduce((nearest, guide) => {
+      const distance = Math.abs(settings[guide.key] - (guide.axis === "x" ? point.x : point.y));
       return distance < nearest.distance ? { distance, key: guide.key } : nearest;
     }, {
       distance: Number.POSITIVE_INFINITY,
-      key: "baseline" as GuideKey,
+      key: "baseline" as FontGuideKey,
     }).key;
   }
 
-  function updateGuide(key: GuideKey, value: number) {
-    onChange(clampGuideValue(settings, key, value));
+  function updateGuide(key: FontGuideKey, point: { x: number; y: number }) {
+    const guide = fontGuideRows.find((item) => item.key === key);
+    onChange(clampFontGuideSettings(settings, key, guide?.axis === "x" ? point.x : point.y));
   }
 
   function handlePointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
-    const y = getPointerY(event);
-    const guideKey = findNearestGuide(y);
+    const point = getPointerPosition(event);
+    const guideKey = findNearestGuide(point);
     activeGuideRef.current = guideKey;
     event.currentTarget.setPointerCapture(event.pointerId);
-    updateGuide(guideKey, y);
+    updateGuide(guideKey, point);
   }
 
   function handlePointerMove(event: ReactPointerEvent<HTMLCanvasElement>) {
@@ -299,7 +282,7 @@ function FontGuideEditor({
       return;
     }
 
-    updateGuide(activeGuideRef.current, getPointerY(event));
+    updateGuide(activeGuideRef.current, getPointerPosition(event));
   }
 
   function handlePointerUp(event: ReactPointerEvent<HTMLCanvasElement>) {
@@ -334,7 +317,7 @@ function FontGuideEditor({
           />
 
           <div className="font-guide-controls">
-            {guideRows.map((guide) => (
+            {fontGuideRows.map((guide) => (
               <label key={guide.key} className="font-guide-control">
                 <span>
                   {guide.label}
@@ -342,11 +325,13 @@ function FontGuideEditor({
                 </span>
                 <input
                   type="range"
-                  min="0.04"
+                  min="0.02"
                   max="0.98"
                   step="0.01"
                   value={settings[guide.key]}
-                  onChange={(event) => updateGuide(guide.key, Number(event.target.value))}
+                  onChange={(event) =>
+                    onChange(clampFontGuideSettings(settings, guide.key, Number(event.target.value)))
+                  }
                 />
               </label>
             ))}
@@ -613,6 +598,8 @@ export default function FontLibrary({
                         <div className="font-guide-summary">
                           <span>Height {Math.round(activeFont.guideSettings.xHeight * 100)}%</span>
                           <span>Baseline {Math.round(activeFont.guideSettings.baseline * 100)}%</span>
+                          <span>Left {Math.round(activeFont.guideSettings.leftBound * 100)}%</span>
+                          <span>Right {Math.round(activeFont.guideSettings.rightBound * 100)}%</span>
                         </div>
                       </div>
                     )}
@@ -738,6 +725,8 @@ export default function FontLibrary({
                 <div className="font-guide-summary">
                   <span>Height {Math.round(newFontGuideSettings.xHeight * 100)}%</span>
                   <span>Baseline {Math.round(newFontGuideSettings.baseline * 100)}%</span>
+                  <span>Left {Math.round(newFontGuideSettings.leftBound * 100)}%</span>
+                  <span>Right {Math.round(newFontGuideSettings.rightBound * 100)}%</span>
                 </div>
               </div>
             )}
