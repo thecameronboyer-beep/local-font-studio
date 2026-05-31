@@ -23,6 +23,7 @@ type FontLibraryProps = {
     characterSettings: FontCharacterSettings,
     guideSettings: FontGuideSettings,
   ) => void;
+  onStartDrawing: () => void;
   onRenameFont: (fontId: string, name: string) => void;
   onDuplicateFont: (fontId: string) => void;
   onDeleteFont: (fontId: string) => void;
@@ -341,6 +342,7 @@ export default function FontLibrary({
   activeFontId,
   onSelectFont,
   onCreateFont,
+  onStartDrawing,
   onRenameFont,
   onDuplicateFont,
   onDeleteFont,
@@ -507,6 +509,12 @@ export default function FontLibrary({
             )}
           </div>
         ))}
+      </div>
+
+      <div className="library-actions">
+        <button className="primary-button start-drawing-button" type="button" onClick={onStartDrawing}>
+          Start drawing
+        </button>
       </div>
 
       <form

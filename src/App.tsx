@@ -88,6 +88,18 @@ export default function App() {
     setEditorFullScreen(true);
   }
 
+  function handleStartDrawing() {
+    const firstMissingCharacter =
+      activeCharacters.find((character) => !hasDrawnGlyph(activeFont.glyphs[character] ?? createEmptyGlyph(character))) ??
+      activeCharacters[0] ??
+      "A";
+
+    setSelectedCharacter(firstMissingCharacter);
+    setGridFullScreen(false);
+    setSidebarOpen(false);
+    setEditorFullScreen(true);
+  }
+
   function selectCharacterByOffset(offset: number) {
     const currentIndex = Math.max(0, selectedCharacterIndex);
     const nextIndex = (currentIndex + offset + activeCharacters.length) % activeCharacters.length;
@@ -324,6 +336,7 @@ export default function App() {
               fonts={studioData.fonts}
               activeFontId={studioData.activeFontId}
               onSelectFont={handleSelectFont}
+              onStartDrawing={handleStartDrawing}
               onCreateFont={handleCreateFont}
               onRenameFont={handleRenameFont}
               onDuplicateFont={handleDuplicateFont}
