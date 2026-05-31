@@ -35,4 +35,5 @@ android/app/build/outputs/apk/debug/app-debug.apk
 
 - The app ID is `com.thecameronboyer.localfontstudio`.
 - The Android shell loads the built Vite assets from `dist`.
+- Debug APKs use the project debug signing key so future downloads install as updates.
 - Project data still stays local to the device WebView storage, so use the Phase 4 JSON export/import tools when moving projects between devices.
