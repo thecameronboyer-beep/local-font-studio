@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { spacebar } from "../data/characterSets";
-import type { BackgroundStyle, FontSet, Glyph, PreviewSettings } from "../types/fontTypes";
+import type { BackgroundStyle, BackgroundTexture, FontSet, Glyph, PreviewSettings } from "../types/fontTypes";
 import {
   drawGlyph,
   findPreviewGlyph,
@@ -45,6 +45,7 @@ type PreviewImageSettings = PreviewSettings & {
   alignment: TextAlignment;
   autoFit: boolean;
   backgroundStyle: BackgroundStyle;
+  backgroundTexture: BackgroundTexture;
   canvasHeight: number;
   canvasWidth: number;
   exportPreset: ExportPresetId;
@@ -116,6 +117,7 @@ const defaultPhoneImageSettings: PreviewImageSettings = {
   autoFit: true,
   backgroundColor: "#f4ead7",
   backgroundStyle: "paper",
+  backgroundTexture: "grain",
   canvasHeight: 1920,
   canvasWidth: 1080,
   exportPreset: "phone",
@@ -379,9 +381,10 @@ export default function TextPreview({
       accentColor: font.theme?.accentColor ?? current.accentColor,
       backgroundColor: font.theme?.backgroundColor ?? current.backgroundColor,
       backgroundStyle: font.theme?.backgroundStyle ?? current.backgroundStyle,
+      backgroundTexture: font.theme?.backgroundTexture ?? current.backgroundTexture,
       inkColor: font.theme?.inkColor ?? current.inkColor,
     }));
-  }, [font.id]);
+  }, [font.id, font.theme?.accentColor, font.theme?.backgroundColor, font.theme?.backgroundStyle, font.theme?.backgroundTexture, font.theme?.inkColor]);
 
   function measureCharacter(ctx: CanvasRenderingContext2D, character: string, fontSize: number) {
     if (character === spacebar) {
@@ -499,6 +502,7 @@ export default function TextPreview({
             renderProfile: font.renderProfile,
             heightScale: scales.heightScale,
             widthScale: scales.widthScale,
+            backgroundTexture: font.theme?.backgroundTexture,
           });
           x += getGlyphAdvance(glyph, renderSettings.fontSize, fontWidthScale);
           continue;
@@ -538,6 +542,155 @@ export default function TextPreview({
     }
 
     ctx.restore();
+  }
+
+  function drawImageGrainTexture(ctx: CanvasRenderingContext2D, renderSettings: PreviewImageSettings) {
+    const imageWidth = renderSettings.canvasWidth;
+    const imageHeight = renderSettings.canvasHeight;
+    const speckleCount = Math.max(220, Math.ceil((imageWidth * imageHeight) / 2400));
+
+    ctx.save();
+    ctx.fillStyle = renderSettings.accentColor;
+
+    for (let index = 0; index < speckleCount; index += 1) {
+      const x = (index * 97) % imageWidth;
+      const y = (index * 193) % imageHeight;
+      const radius = Math.max(1, imageWidth / 1500) * (0.9 + (index % 5) * 0.32);
+      ctx.globalAlpha = 0.075 + (index % 5) * 0.012;
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.fillStyle = "#fff7e6";
+    for (let index = 0; index < speckleCount * 0.28; index += 1) {
+      const x = (index * 173) % imageWidth;
+      const y = (index * 89) % imageHeight;
+      const size = Math.max(1, imageWidth / 1700) * (1 + (index % 2) * 0.7);
+      ctx.globalAlpha = 0.04 + (index % 3) * 0.012;
+      ctx.fillRect(x, y, size, size);
+    }
+
+    ctx.restore();
+  }
+
+  function drawImageFiberTexture(ctx: CanvasRenderingContext2D, renderSettings: PreviewImageSettings) {
+    const imageWidth = renderSettings.canvasWidth;
+    const imageHeight = renderSettings.canvasHeight;
+    const fiberCount = Math.max(80, Math.ceil(imageHeight / 12));
+
+    ctx.save();
+    ctx.strokeStyle = renderSettings.accentColor;
+    ctx.lineWidth = Math.max(1.2, imageWidth / 900);
+
+    for (let index = 0; index < fiberCount; index += 1) {
+      const y = (index * 37) % imageHeight;
+      const startX = (index * 61) % Math.max(1, imageWidth * 0.22);
+      const length = imageWidth * (0.48 + ((index * 17) % 39) / 100);
+      const wave = Math.max(5, imageWidth / 180) + (index % 5) * 2;
+
+      ctx.globalAlpha = 0.14 + (index % 4) * 0.03;
+      ctx.beginPath();
+      ctx.moveTo(startX, y);
+      ctx.bezierCurveTo(
+        startX + length * 0.32,
+        y - wave,
+        startX + length * 0.66,
+        y + wave,
+        Math.min(imageWidth, startX + length),
+        y + (index % 2 === 0 ? -1 : 1) * wave * 0.6,
+      );
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = "#fff7e6";
+    ctx.lineWidth = Math.max(0.8, imageWidth / 1500);
+    for (let index = 0; index < fiberCount * 0.4; index += 1) {
+      const y = (index * 47) % imageHeight;
+      const startX = (index * 83) % Math.max(1, imageWidth * 0.38);
+      const length = imageWidth * (0.24 + ((index * 13) % 28) / 100);
+
+      ctx.globalAlpha = 0.07 + (index % 3) * 0.018;
+      ctx.beginPath();
+      ctx.moveTo(startX, y);
+      ctx.lineTo(Math.min(imageWidth, startX + length), y + ((index % 3) - 1) * Math.max(3, imageWidth / 360));
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  function drawImageCanvasTexture(ctx: CanvasRenderingContext2D, renderSettings: PreviewImageSettings, spacingMultiplier = 1) {
+    const imageWidth = renderSettings.canvasWidth;
+    const imageHeight = renderSettings.canvasHeight;
+    const spacing = Math.max(12, Math.min(imageWidth, imageHeight) * 0.032);
+
+    ctx.save();
+    ctx.strokeStyle = renderSettings.accentColor;
+    ctx.lineWidth = Math.max(1.4, imageWidth / 720);
+
+    for (let x = 0; x <= imageWidth; x += spacing * spacingMultiplier) {
+      ctx.globalAlpha = 0.15;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, imageHeight);
+      ctx.stroke();
+    }
+
+    for (let y = 0; y <= imageHeight; y += spacing * 0.86 * spacingMultiplier) {
+      ctx.globalAlpha = 0.13;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(imageWidth, y);
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = "#fff7e6";
+    ctx.lineWidth = Math.max(0.9, imageWidth / 1500);
+    for (let x = spacing * 0.48; x <= imageWidth; x += spacing * spacingMultiplier) {
+      ctx.globalAlpha = 0.075;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, imageHeight);
+      ctx.stroke();
+    }
+
+    for (let y = spacing * 0.4; y <= imageHeight; y += spacing * 0.86 * spacingMultiplier) {
+      ctx.globalAlpha = 0.062;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(imageWidth, y);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  function drawSelectedImageTexture(ctx: CanvasRenderingContext2D, renderSettings: PreviewImageSettings) {
+    if (renderSettings.backgroundTexture === "clean") {
+      return;
+    }
+
+    if (renderSettings.backgroundTexture === "grain") {
+      drawImageGrainTexture(ctx, renderSettings);
+      return;
+    }
+
+    if (renderSettings.backgroundTexture === "fiber") {
+      drawImageGrainTexture(ctx, renderSettings);
+      drawImageFiberTexture(ctx, renderSettings);
+      return;
+    }
+
+    if (renderSettings.backgroundTexture === "canvas") {
+      drawImageGrainTexture(ctx, renderSettings);
+      drawImageCanvasTexture(ctx, renderSettings, 0.64);
+      return;
+    }
+
+    drawImageGrainTexture(ctx, renderSettings);
+    drawImageFiberTexture(ctx, renderSettings);
+    drawImageCanvasTexture(ctx, renderSettings, 0.82);
   }
 
   function drawParchmentTexture(ctx: CanvasRenderingContext2D, renderSettings: PreviewImageSettings) {
@@ -602,6 +755,7 @@ export default function TextPreview({
 
     if (renderSettings.backgroundStyle === "parchment") {
       drawParchmentTexture(ctx, renderSettings);
+      drawSelectedImageTexture(ctx, renderSettings);
       return;
     }
 
@@ -619,6 +773,7 @@ export default function TextPreview({
       ctx.fillStyle = glow;
       ctx.fillRect(0, 0, imageWidth, imageHeight);
       drawPaperTexture(ctx, renderSettings.accentColor, imageWidth, imageHeight);
+      drawSelectedImageTexture(ctx, renderSettings);
       return;
     }
 
@@ -629,6 +784,7 @@ export default function TextPreview({
       ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, imageWidth, imageHeight);
       drawPaperTexture(ctx, renderSettings.accentColor, imageWidth, imageHeight);
+      drawSelectedImageTexture(ctx, renderSettings);
       return;
     }
 
@@ -640,6 +796,7 @@ export default function TextPreview({
       ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, imageWidth, imageHeight);
       drawPaperTexture(ctx, "#ffffff", imageWidth, imageHeight);
+      drawSelectedImageTexture(ctx, renderSettings);
       return;
     }
 
@@ -689,6 +846,8 @@ export default function TextPreview({
 
       ctx.restore();
     }
+
+    drawSelectedImageTexture(ctx, renderSettings);
   }
 
   function getFittedImageLayout(ctx: CanvasRenderingContext2D): PhoneImageLayout {

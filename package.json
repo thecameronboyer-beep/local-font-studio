@@ -7,7 +7,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc && vite build",
     "android:sync": "npm run build && npx cap sync android",
-    "android:build:debug": "npm run android:sync && cd android && ./gradlew assembleDebug",
+    "android:build:debug": "npm run android:sync && node scripts/build-android-debug.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "serve:dist": "node scripts/serve-dist.mjs",
     "verify:renderer": "node scripts/verify-renderer.mjs"

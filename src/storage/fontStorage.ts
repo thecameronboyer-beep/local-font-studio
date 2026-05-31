@@ -1,6 +1,7 @@
 import { fontCharacters, spacebar } from "../data/characterSets";
 import type {
   BackgroundStyle,
+  BackgroundTexture,
   FontCharacterSettings,
   FontGuideSettings,
   FontRenderProfile,
@@ -65,6 +66,7 @@ export const quillParchmentTheme: FontTheme = {
   accentColor: "#9b6f3b",
   backgroundColor: "#efe0bd",
   backgroundStyle: "parchment",
+  backgroundTexture: "fiber",
   inkColor: "#2a160d",
 };
 
@@ -203,12 +205,20 @@ function normalizeRenderProfile(value: unknown): FontRenderProfile | undefined {
   return value === "quillParchment" ? "quillParchment" : undefined;
 }
 
+function normalizeBackgroundTexture(value: unknown): BackgroundTexture {
+  return value === "clean" || value === "fiber" || value === "canvas" || value === "woven"
+    ? value
+    : value === "stained"
+      ? "canvas"
+      : "grain";
+}
+
 function normalizeStrokeTool(value: unknown): GlyphStrokeTool | undefined {
   return value === "quill" ? "quill" : undefined;
 }
 
 function normalizeGlyphInkEffect(value: unknown): GlyphInkEffect | undefined {
-  return value === "dramaticPooling" ? "dramaticPooling" : undefined;
+  return value === "dramaticPooling" || value === "subtleSpread" ? value : undefined;
 }
 
 function normalizeCharacterSettings(value: unknown, fallback: FontCharacterSettings): FontCharacterSettings {
@@ -263,6 +273,7 @@ function normalizePoint(point: unknown): GlyphPoint | null {
   return {
     ...(typeof point.ink === "number" ? { ink: point.ink } : {}),
     ...(typeof point.pressure === "number" ? { pressure: point.pressure } : {}),
+    ...(typeof point.spread === "number" ? { spread: safeNumber(point.spread, 0, 0, 1) } : {}),
     x: point.x,
     y: point.y,
   };
@@ -291,9 +302,11 @@ function normalizeStroke(stroke: unknown): GlyphStroke | null {
     return null;
   }
 
+  const inkEffect = normalizeGlyphInkEffect(stroke.inkEffect);
+
   return {
     ...(typeof stroke.color === "string" ? { color: stroke.color } : {}),
-    ...(normalizeGlyphInkEffect(stroke.inkEffect) ? { inkEffect: "dramaticPooling" as const } : {}),
+    ...(inkEffect ? { inkEffect } : {}),
     id: safeString(stroke.id, createId("stroke")),
     points,
     size: normalizeStrokeSize(stroke.size),
@@ -400,6 +413,7 @@ function normalizeFont(font: unknown, usedFontIds: Set<string>, fallbackName: st
             accentColor: safeString(font.theme.accentColor, "#82d0bc"),
             backgroundColor: safeString(font.theme.backgroundColor, "#f3dfb6"),
             backgroundStyle: safeString(font.theme.backgroundStyle, "paper") as BackgroundStyle,
+            backgroundTexture: normalizeBackgroundTexture(font.theme.backgroundTexture),
             inkColor: safeString(font.theme.inkColor, "#191512"),
           },
         }

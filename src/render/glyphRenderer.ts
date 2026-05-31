@@ -6,6 +6,7 @@ import type {
   GlyphInkEffect,
   GlyphStroke,
   GlyphStrokeTool,
+  BackgroundTexture,
 } from "../types/fontTypes";
 
 export type GlyphDrawOptions = {
@@ -17,9 +18,11 @@ export type GlyphDrawOptions = {
   renderProfile?: FontRenderProfile;
   heightScale?: number;
   widthScale?: number;
+  backgroundTexture?: BackgroundTexture;
 };
 
 type StrokeDrawOptions = {
+  backgroundTexture?: BackgroundTexture;
   renderProfile?: FontRenderProfile;
   skipInkEffect?: boolean;
 };
@@ -191,8 +194,7 @@ function drawPointDot(
   sizeX: number,
   sizeY: number,
 ) {
-  const px = x + point.x * sizeX;
-  const py = y + point.y * sizeY;
+  const { x: px, y: py } = getCanvasPoint(point, x, y, sizeX, sizeY);
   const radius = getLineWidth(baseWidth, point) / 2;
   const stretchX = sizeX / Math.max(1, sizeY);
 
@@ -413,6 +415,107 @@ function drawDramaticInkEffect(
   ctx.restore();
 }
 
+function getTextureSpreadMultiplier(backgroundTexture: BackgroundTexture | undefined) {
+  if (backgroundTexture === "clean") {
+    return 0.58;
+  }
+
+  if (backgroundTexture === "fiber") {
+    return 1.08;
+  }
+
+  if (backgroundTexture === "canvas") {
+    return 1.2;
+  }
+
+  if (backgroundTexture === "woven") {
+    return 1.02;
+  }
+
+  return 0.82;
+}
+
+function hasSubtleSpreadMarks(stroke: GlyphStroke) {
+  return getEffectiveInkEffect(stroke) === "subtleSpread" ||
+    stroke.points.some((point) => (point.spread ?? 0) > 0);
+}
+
+function drawSubtleInkSpreadEffect(
+  ctx: CanvasRenderingContext2D,
+  stroke: GlyphStroke,
+  strokeColor: string,
+  x: number,
+  y: number,
+  size: number,
+  sizeX = size,
+  sizeY = size,
+  backgroundTexture?: BackgroundTexture,
+) {
+  const points = stroke.points;
+
+  if (points.length === 0) {
+    return;
+  }
+
+  const wholeStroke = getEffectiveInkEffect(stroke) === "subtleSpread";
+  const baseWidth = Math.max(1.2, stroke.size * size);
+  const textureMultiplier = getTextureSpreadMultiplier(backgroundTexture);
+  const darkColor = getDarkerInkColor(strokeColor);
+  const markLimit = wholeStroke ? 42 : 56;
+  const step = Math.max(1, Math.floor(points.length / Math.min(markLimit, points.length)));
+
+  ctx.save();
+  ctx.fillStyle = darkColor;
+  ctx.strokeStyle = darkColor;
+  ctx.lineCap = "round";
+
+  for (let index = 0; index < points.length; index += step) {
+    const point = points[index];
+    const localSpread = Math.max(point.spread ?? 0, wholeStroke ? 0.34 : 0);
+
+    if (localSpread <= 0) {
+      continue;
+    }
+
+    const pressure = getPointPressure(point);
+    const seed = getSeed(stroke.id, index + 1801);
+    const canvasPoint = getCanvasPoint(point, x, y, sizeX, sizeY);
+    const radius = baseWidth * textureMultiplier * localSpread * (0.46 + pressure * 0.34 + seed * 0.18);
+    const textureSkip = backgroundTexture === "clean" ? 0.12 : backgroundTexture === "canvas" ? 0.34 : 0.24;
+
+    if (radius < 0.7 || seed < textureSkip) {
+      continue;
+    }
+
+    ctx.globalAlpha = Math.min(0.16, 0.035 + localSpread * 0.075 * textureMultiplier);
+    ctx.beginPath();
+    ctx.ellipse(
+      canvasPoint.x,
+      canvasPoint.y,
+      radius * (1.05 + seed * 0.5),
+      radius * (0.42 + seed * 0.26),
+      QUILL_NIB_ANGLE + seed * 0.58,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+
+    if (textureMultiplier > 1 && seed > 0.62) {
+      const scratchLength = radius * (1.4 + seed * 1.2);
+      const angle = QUILL_NIB_ANGLE + (seed - 0.5) * 1.3;
+
+      ctx.globalAlpha = Math.min(0.1, 0.035 + localSpread * 0.045);
+      ctx.lineWidth = Math.max(0.45, radius * 0.08);
+      ctx.beginPath();
+      ctx.moveTo(canvasPoint.x, canvasPoint.y);
+      ctx.lineTo(canvasPoint.x + Math.cos(angle) * scratchLength, canvasPoint.y + Math.sin(angle) * scratchLength);
+      ctx.stroke();
+    }
+  }
+
+  ctx.restore();
+}
+
 export function drawStrokePath(
   ctx: CanvasRenderingContext2D,
   stroke: GlyphStroke,
@@ -432,6 +535,8 @@ export function drawStrokePath(
   const strokeColor = String(stroke.color ?? fallbackColor ?? ctx.strokeStyle);
   const strokeTool = getEffectiveStrokeTool(stroke, options.renderProfile);
   const inkEffect = getEffectiveInkEffect(stroke);
+  const drawSubtleSpread = !options.skipInkEffect && hasSubtleSpreadMarks(stroke);
+  const previousAlpha = ctx.globalAlpha;
   ctx.strokeStyle = strokeColor;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
@@ -439,6 +544,9 @@ export function drawStrokePath(
 
   if (strokeTool === "quill") {
     drawQuillStrokePath(ctx, stroke, x, y, size, sizeX, sizeY);
+    if (drawSubtleSpread) {
+      drawSubtleInkSpreadEffect(ctx, stroke, strokeColor, x, y, size, sizeX, sizeY, options.backgroundTexture);
+    }
     if (!options.skipInkEffect && inkEffect === "dramaticPooling") {
       drawDramaticInkEffect(ctx, stroke, strokeColor, x, y, size, sizeX, sizeY);
     }
@@ -450,6 +558,9 @@ export function drawStrokePath(
 
   if (rest.length === 0) {
     drawPointDot(ctx, firstPoint, x, y, baseWidth, sizeX, sizeY);
+    if (drawSubtleSpread) {
+      drawSubtleInkSpreadEffect(ctx, stroke, strokeColor, x, y, size, sizeX, sizeY, options.backgroundTexture);
+    }
     if (!options.skipInkEffect && inkEffect === "dramaticPooling") {
       drawDramaticInkEffect(ctx, stroke, strokeColor, x, y, size, sizeX, sizeY);
     }
@@ -457,19 +568,28 @@ export function drawStrokePath(
     return;
   }
 
-  let previousPoint = firstPoint;
+  const points = stroke.points;
 
-  for (const point of rest) {
-    ctx.beginPath();
+  ctx.globalAlpha = previousAlpha;
+  ctx.filter = "none";
+
+  for (let index = 1; index < points.length; index += 1) {
+    const previousPreviousPoint = points[index - 2];
+    const previousPoint = points[index - 1];
+    const point = points[index];
+    const startPoint = previousPreviousPoint ? getMidpoint(previousPreviousPoint, previousPoint) : previousPoint;
+    const endPoint = index < points.length - 1 ? getMidpoint(previousPoint, point) : point;
+
     ctx.lineWidth = (getLineWidth(baseWidth, previousPoint) + getLineWidth(baseWidth, point)) / 2;
-    ctx.moveTo(x + previousPoint.x * sizeX, y + previousPoint.y * sizeY);
-    ctx.lineTo(x + point.x * sizeX, y + point.y * sizeY);
-    ctx.stroke();
-    previousPoint = point;
+    drawCurveSegment(ctx, startPoint, previousPoint, endPoint, x, y, sizeX, sizeY);
   }
 
   if (!options.skipInkEffect && inkEffect === "dramaticPooling") {
     drawDramaticInkEffect(ctx, stroke, strokeColor, x, y, size, sizeX, sizeY);
+  }
+
+  if (drawSubtleSpread) {
+    drawSubtleInkSpreadEffect(ctx, stroke, strokeColor, x, y, size, sizeX, sizeY, options.backgroundTexture);
   }
 
   ctx.restore();
@@ -524,6 +644,8 @@ export function drawGlyphDecoration(
         : 0;
     const pupilY = expression === "happy"
       ? -radius * 0.08
+      : expression === "sad"
+        ? radius * 0.3
       : expression === "tired" || expression === "stoned"
         ? radius * 0.22
         : expression === "angry"
@@ -584,6 +706,27 @@ export function drawGlyphDecoration(
       ctx.stroke();
     }
 
+    if (expression === "sad") {
+      ctx.strokeStyle = "#17110b";
+      ctx.fillStyle = "rgba(239, 216, 180, 0.84)";
+      ctx.lineWidth = Math.max(1.1, outlineWidth * 0.9);
+      ctx.lineCap = "round";
+
+      ctx.beginPath();
+      ctx.moveTo(eyeX - radius * 0.92, centerY - radius * 0.62);
+      ctx.quadraticCurveTo(eyeX - radius * 0.28, centerY - radius * 0.2, eyeX + radius * 0.18, centerY - radius * 0.02);
+      ctx.quadraticCurveTo(eyeX + radius * 0.64, centerY - radius * 0.18, eyeX + radius * 0.92, centerY - radius * 0.48);
+      ctx.lineTo(eyeX + radius * 0.92, centerY - radius * 0.96);
+      ctx.quadraticCurveTo(eyeX, centerY - radius * 0.72, eyeX - radius * 0.92, centerY - radius * 0.96);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(eyeX - radius * 0.78, centerY - radius * 0.46);
+      ctx.quadraticCurveTo(eyeX - radius * 0.12, centerY - radius * 0.02, eyeX + radius * 0.76, centerY - radius * 0.34);
+      ctx.stroke();
+    }
+
     ctx.fillStyle = expression === "stoned" ? "#fff2e9" : "#fffdf4";
   }
 
@@ -607,6 +750,28 @@ export function drawGlyphDecoration(
     ctx.stroke();
   }
 
+  if (expression === "sad") {
+    ctx.strokeStyle = "#17110b";
+    ctx.lineWidth = Math.max(1.4, radius * 0.2);
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(centerX - eyeOffset - radius * 1.0, centerY - radius * 1.16);
+    ctx.quadraticCurveTo(
+      centerX - eyeOffset - radius * 0.2,
+      centerY - radius * 1.84,
+      centerX - eyeOffset + radius * 0.9,
+      centerY - radius * 1.46,
+    );
+    ctx.moveTo(centerX + eyeOffset - radius * 0.9, centerY - radius * 1.46);
+    ctx.quadraticCurveTo(
+      centerX + eyeOffset + radius * 0.2,
+      centerY - radius * 1.84,
+      centerX + eyeOffset + radius * 1.0,
+      centerY - radius * 1.16,
+    );
+    ctx.stroke();
+  }
+
   ctx.restore();
 }
 
@@ -622,6 +787,7 @@ export function drawGlyph(
     renderProfile = "plain",
     heightScale = glyph.height,
     widthScale = glyph.width,
+    backgroundTexture,
   }: GlyphDrawOptions,
 ) {
   ctx.save();
@@ -629,7 +795,7 @@ export function drawGlyph(
   ctx.strokeStyle = color;
 
   for (const stroke of glyph.strokes) {
-    drawStrokePath(ctx, stroke, x, y, size, size * widthScale, size * heightScale, color, { renderProfile });
+    drawStrokePath(ctx, stroke, x, y, size, size * widthScale, size * heightScale, color, { backgroundTexture, renderProfile });
   }
 
   for (const decoration of glyph.decorations ?? []) {

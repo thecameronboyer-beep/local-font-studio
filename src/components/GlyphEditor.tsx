@@ -1,14 +1,19 @@
 import { useEffect, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
+import { flushSync } from "react-dom";
 import {
   ChevronLeft,
   ChevronRight,
+  Circle,
   Droplets,
   Ellipsis,
   Eraser,
   Eye,
   Feather,
   Hand,
+  Minus,
   MousePointer2,
+  Palette,
   PenLine,
   Redo2,
   RotateCcw,
@@ -22,11 +27,19 @@ import {
   ZoomOut,
 } from "lucide-react";
 import GlyphCanvas from "./GlyphCanvas";
-import type { CanvasViewOffset, DrawingTool, EraserMode, SmoothingMode } from "./GlyphCanvas";
+import type {
+  CanvasViewOffset,
+  DrawingTool,
+  EraserMode,
+  SelectMode,
+  SmoothingMode,
+  StickerDropRequest,
+} from "./GlyphCanvas";
 import SpacingControls from "./SpacingControls";
 import { getCharacterLabel, getVisibleCharacters, spacebar } from "../data/characterSets";
 import {
   drawGlyph,
+  drawGlyphDecoration,
   findPreviewGlyph,
   getFontHeightScale,
   getFontWidthScale,
@@ -36,12 +49,22 @@ import {
   getGlyphTopForBaseline,
   getSpacebarAdvance,
 } from "../render/glyphRenderer";
-import type { FontSet, Glyph, GlyphDecoration, GlyphInkEffect, GlyphStroke } from "../types/fontTypes";
+import type {
+  BackgroundStyle,
+  BackgroundTexture,
+  FontSet,
+  FontTheme,
+  Glyph,
+  GlyphDecoration,
+  GlyphInkEffect,
+  GlyphStroke,
+} from "../types/fontTypes";
 
 type GlyphEditorProps = {
   font: FontSet;
   glyph: Glyph;
   onSaveGlyph: (glyph: Glyph) => void;
+  onUpdateFontTheme: (theme: FontTheme) => void;
   previewText: string;
   onPreviewTextChange: (text: string) => void;
   characterIndex: number;
@@ -52,8 +75,8 @@ type GlyphEditorProps = {
   onToggleFullScreen: () => void;
 };
 
-type FullscreenDrawer = "ink" | "stickers" | "more" | null;
-type InkTool = Extract<DrawingTool, "pen" | "quill">;
+type FullscreenDrawer = "ink" | "background" | "more" | null;
+type InkTool = Extract<DrawingTool, "pen" | "quill" | "line">;
 
 const glyphInkSwatches = [
   { color: "#19140f", label: "Lamp Black" },
@@ -75,11 +98,123 @@ const glyphInkSwatches = [
   { color: "#e5ddc8", label: "Bone White" },
   { color: "#a88943", label: "Aged Gold" },
 ];
+const editorBackgroundPresets: Array<{
+  accentColor: string;
+  backgroundColor: string;
+  id: BackgroundStyle;
+  inkColor: string;
+  label: string;
+  preview: string;
+}> = [
+  {
+    id: "paper",
+    label: "Paper",
+    backgroundColor: "#f4ead7",
+    inkColor: "#17110b",
+    accentColor: "#d3bf97",
+    preview: "#f4ead7",
+  },
+  {
+    id: "parchment",
+    label: "Parchment",
+    backgroundColor: "#efe0bd",
+    inkColor: "#2a160d",
+    accentColor: "#9b6f3b",
+    preview: "linear-gradient(135deg, #f6eccd, #d6b97c 58%, #8f5f30)",
+  },
+  {
+    id: "lined",
+    label: "Lined",
+    backgroundColor: "#fff7e8",
+    inkColor: "#17110b",
+    accentColor: "#96bfce",
+    preview: "repeating-linear-gradient(0deg, #fff7e8 0 20px, #96bfce 21px 22px)",
+  },
+  {
+    id: "grid",
+    label: "Grid",
+    backgroundColor: "#f7f0dc",
+    inkColor: "#17110b",
+    accentColor: "#d7bb70",
+    preview: "linear-gradient(#d7bb70 1px, transparent 1px), linear-gradient(90deg, #d7bb70 1px, #f7f0dc 1px)",
+  },
+  {
+    id: "sage",
+    label: "Sage",
+    backgroundColor: "#dce8d3",
+    inkColor: "#15251d",
+    accentColor: "#93b48b",
+    preview: "linear-gradient(135deg, #edf4dc, #c6dcc5)",
+  },
+  {
+    id: "sky",
+    label: "Sky",
+    backgroundColor: "#dcecff",
+    inkColor: "#142138",
+    accentColor: "#8eb7de",
+    preview: "linear-gradient(135deg, #eef7ff, #bad7f5)",
+  },
+  {
+    id: "lavender",
+    label: "Lavender",
+    backgroundColor: "#e8dcff",
+    inkColor: "#221832",
+    accentColor: "#a68ac8",
+    preview: "linear-gradient(135deg, #f5ecff, #d7c2f3)",
+  },
+  {
+    id: "midnight",
+    label: "Midnight",
+    backgroundColor: "#111827",
+    inkColor: "#f7efe0",
+    accentColor: "#375a66",
+    preview: "linear-gradient(135deg, #111827, #1d2d35)",
+  },
+];
+const editorTexturePresets: Array<{
+  id: BackgroundTexture;
+  label: string;
+  preview: string;
+}> = [
+  { id: "clean", label: "Clean", preview: "#f4ead7" },
+  {
+    id: "grain",
+    label: "Grain",
+    preview: "radial-gradient(circle at 30% 35%, rgba(80, 54, 30, 0.54) 0 2px, transparent 3px), radial-gradient(circle at 70% 62%, rgba(255, 247, 230, 0.34) 0 1px, transparent 2px), #f4ead7",
+  },
+  {
+    id: "fiber",
+    label: "Fibers",
+    preview: "repeating-linear-gradient(8deg, rgba(80, 54, 30, 0.38) 0 2px, transparent 2px 10px), repeating-linear-gradient(-5deg, rgba(255, 247, 230, 0.22) 0 1px, transparent 1px 15px), #f1e4c8",
+  },
+  {
+    id: "canvas",
+    label: "Canvas",
+    preview: "repeating-linear-gradient(0deg, rgba(80, 54, 30, 0.34) 0 2px, rgba(255, 247, 230, 0.16) 2px 3px, transparent 3px 9px), repeating-linear-gradient(90deg, rgba(80, 54, 30, 0.3) 0 2px, rgba(255, 247, 230, 0.14) 2px 3px, transparent 3px 10px), #efe2c4",
+  },
+  {
+    id: "woven",
+    label: "Woven",
+    preview: "repeating-linear-gradient(0deg, rgba(80, 54, 30, 0.36) 0 2px, transparent 2px 11px), repeating-linear-gradient(90deg, rgba(80, 54, 30, 0.32) 0 2px, transparent 2px 11px), repeating-linear-gradient(8deg, rgba(255, 247, 230, 0.18) 0 1px, transparent 1px 12px), #f1e4c8",
+  },
+];
+const DEFAULT_BRUSH_SIZE = 12;
 const DEFAULT_CANVAS_VIEW: CanvasViewOffset = { x: 0, y: 0 };
 const smoothingOptions: Array<{ id: SmoothingMode; label: string }> = [
   { id: "raw", label: "Raw" },
   { id: "gentle", label: "Gentle" },
   { id: "strong", label: "Strong" },
+];
+const eyeExpressionOptions: Array<{
+  id: NonNullable<GlyphDecoration["expression"]>;
+  label: string;
+}> = [
+  { id: "googly", label: "Plain" },
+  { id: "happy", label: "Happy" },
+  { id: "angry", label: "Angry" },
+  { id: "sad", label: "Sad" },
+  { id: "tired", label: "Tired" },
+  { id: "stoned", label: "Stoned" },
 ];
 
 function getDefaultDrawingTool(font: FontSet): InkTool {
@@ -88,6 +223,10 @@ function getDefaultDrawingTool(font: FontSet): InkTool {
 
 function getDefaultInkEffect(font: FontSet): GlyphInkEffect {
   return font.renderProfile === "quillParchment" ? "dramaticPooling" : "none";
+}
+
+function getInkToolLabel(tool: InkTool) {
+  return tool === "quill" ? "Quill" : tool === "line" ? "Line" : "Pen";
 }
 
 function getReadableInkButtonColor(color: string) {
@@ -116,17 +255,6 @@ function getReadableInkButtonColor(color: string) {
   const luminance = (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255;
   return luminance > 0.58 ? "#17110b" : "#fff7e6";
 }
-
-const eyeExpressionOptions: Array<{
-  id: NonNullable<GlyphDecoration["expression"]>;
-  label: string;
-}> = [
-  { id: "googly", label: "Plain" },
-  { id: "happy", label: "Happy" },
-  { id: "angry", label: "Angry" },
-  { id: "tired", label: "Tired" },
-  { id: "stoned", label: "Stoned" },
-];
 
 function cloneStrokes(strokes: GlyphStroke[]) {
   return strokes.map((stroke) => ({
@@ -287,26 +415,95 @@ function InkColorControl({
 }
 
 function EyeExpressionControl({
+  draggableOptions = false,
   expression,
+  onOptionPointerDown,
   onExpressionChange,
+  showLabels = true,
 }: {
+  draggableOptions?: boolean;
   expression: NonNullable<GlyphDecoration["expression"]>;
+  onOptionPointerDown?: (
+    expression: NonNullable<GlyphDecoration["expression"]>,
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) => void;
   onExpressionChange: (expression: NonNullable<GlyphDecoration["expression"]>) => void;
+  showLabels?: boolean;
 }) {
   return (
-    <div className="eye-style-control" aria-label="Eye expression">
+    <div className={`eye-style-control ${showLabels ? "" : "icon-only"}`} aria-label="Eye expression">
       {eyeExpressionOptions.map((option) => (
         <button
           key={option.id}
           className={`eye-style-button ${expression === option.id ? "selected" : ""}`}
+          draggable={false}
           type="button"
+          aria-label={option.label}
+          title={option.label}
           onClick={() => onExpressionChange(option.id)}
+          onPointerDown={(event) => {
+            if (draggableOptions) {
+              onOptionPointerDown?.(option.id, event);
+            }
+          }}
         >
-          {option.label}
+          <EyeExpressionPreview expression={option.id} />
+          {showLabels && <span>{option.label}</span>}
         </button>
       ))}
     </div>
   );
+}
+
+function EyeExpressionPreview({
+  expression,
+}: {
+  expression: NonNullable<GlyphDecoration["expression"]>;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+
+    if (!canvas) {
+      return;
+    }
+
+    const width = 52;
+    const height = 34;
+    const dpr = window.devicePixelRatio || 1;
+    const ctx = canvas.getContext("2d");
+
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+
+    if (!ctx) {
+      return;
+    }
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+    drawGlyphDecoration(
+      ctx,
+      {
+        expression,
+        id: `eye_option_${expression}`,
+        kind: "googly-eyes",
+        size: 0.17,
+        x: 0.5,
+        y: 0.5,
+      },
+      0,
+      0,
+      width,
+      width,
+      height,
+    );
+  }, [expression]);
+
+  return <canvas ref={canvasRef} className="eye-style-preview" aria-hidden="true" />;
 }
 
 function EditorLivePreview({
@@ -323,7 +520,10 @@ function EditorLivePreview({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const [surfaceWidth, setSurfaceWidth] = useState(320);
-  const textToRender = previewText.trim() ? previewText : `${draftGlyph.character} ${draftGlyph.character}${draftGlyph.character}`;
+  const safePreviewText = previewText ?? "";
+  const textToRender = safePreviewText.trim()
+    ? safePreviewText
+    : `${draftGlyph.character} ${draftGlyph.character}${draftGlyph.character}`;
 
   useEffect(() => {
     const surface = surfaceRef.current;
@@ -426,6 +626,7 @@ function EditorLivePreview({
             renderProfile: font.renderProfile,
             heightScale: scales.heightScale,
             widthScale: scales.widthScale,
+            backgroundTexture: font.theme?.backgroundTexture,
           });
           x += getGlyphAdvance(glyph, fontSize, fontWidthScale);
           continue;
@@ -447,7 +648,7 @@ function EditorLivePreview({
     <div className="editor-live-preview">
       <input
         aria-label="Preview text"
-        value={previewText}
+        value={safePreviewText}
         onChange={(event) => onPreviewTextChange(event.target.value)}
       />
       <div ref={surfaceRef} className="editor-live-preview-surface">
@@ -461,6 +662,7 @@ export default function GlyphEditor({
   font,
   glyph,
   onSaveGlyph,
+  onUpdateFontTheme,
   previewText,
   onPreviewTextChange,
   characterIndex,
@@ -474,14 +676,19 @@ export default function GlyphEditor({
   const draftGlyphRef = useRef<Glyph>(draftGlyph);
   const pastRef = useRef<Glyph[]>([]);
   const futureRef = useRef<Glyph[]>([]);
-  const [brushSize, setBrushSize] = useState(12);
+  const [brushSize, setBrushSize] = useState(DEFAULT_BRUSH_SIZE);
   const [eraserMode, setEraserMode] = useState<EraserMode>("stroke");
   const [eyeExpression, setEyeExpression] = useState<NonNullable<GlyphDecoration["expression"]>>("googly");
   const [inkEffect, setInkEffect] = useState<GlyphInkEffect>(() => getDefaultInkEffect(font));
   const [inkColor, setInkColor] = useState(font.theme?.inkColor ?? "#19140f");
   const [referenceCharacter, setReferenceCharacter] = useState("");
+  const [selectMode, setSelectMode] = useState<SelectMode>("moveStroke");
+  const [selectedDecorationId, setSelectedDecorationId] = useState<string | null>(null);
   const [selectedStrokeId, setSelectedStrokeId] = useState<string | null>(null);
   const [showGuides, setShowGuides] = useState(true);
+  const [stickerDropRequest, setStickerDropRequest] = useState<StickerDropRequest | null>(null);
+  const [stickerEyesOpen, setStickerEyesOpen] = useState(false);
+  const [stickerMode, setStickerMode] = useState(false);
   const [smoothingMode, setSmoothingMode] = useState<SmoothingMode>("gentle");
   const [lastInkTool, setLastInkTool] = useState<InkTool>(() => getDefaultDrawingTool(font));
   const [tool, setTool] = useState<DrawingTool>(() => getDefaultDrawingTool(font));
@@ -490,10 +697,24 @@ export default function GlyphEditor({
   const [savedMessage, setSavedMessage] = useState("");
   const [historyCounts, setHistoryCounts] = useState({ past: 0, future: 0 });
   const [activeFullscreenDrawer, setActiveFullscreenDrawer] = useState<FullscreenDrawer>(null);
+  const [draggingEyeSticker, setDraggingEyeSticker] = useState<{
+    expression: NonNullable<GlyphDecoration["expression"]>;
+    x: number;
+    y: number;
+  } | null>(null);
   const fullscreenControlsRef = useRef<HTMLDivElement | null>(null);
+  const [stickerEditOpen, setStickerEditOpen] = useState(false);
   const characterLabel = getCharacterLabel(glyph.character);
   const activeReferenceCharacter = referenceCharacter === glyph.character ? "" : referenceCharacter;
   const referenceGlyph = activeReferenceCharacter ? font.glyphs[activeReferenceCharacter] : null;
+  const selectedSticker = draftGlyph.decorations.find((decoration) => decoration.id === selectedDecorationId) ?? null;
+  const activeFontTheme: FontTheme = font.theme ?? {
+    accentColor: "#d3bf97",
+    backgroundColor: "#f4ead7",
+    backgroundStyle: "paper",
+    backgroundTexture: "grain",
+    inkColor: inkColor,
+  };
 
   useEffect(() => {
     const nextGlyph = cloneGlyph(glyph);
@@ -503,8 +724,14 @@ export default function GlyphEditor({
     setDraftGlyph(nextGlyph);
     setHistoryCounts({ past: 0, future: 0 });
     setReferenceCharacter((current) => (current === glyph.character ? "" : current));
+    setSelectedDecorationId(null);
     setSelectedStrokeId(null);
     setActiveFullscreenDrawer(null);
+    setStickerDropRequest(null);
+    setStickerEyesOpen(false);
+    setStickerEditOpen(false);
+    setStickerMode(false);
+    setDraggingEyeSticker(null);
     setSavedMessage("");
   }, [glyph.character]);
 
@@ -547,6 +774,13 @@ export default function GlyphEditor({
     return () => document.removeEventListener("pointerdown", closeDrawerOnOutsidePress);
   }, [activeFullscreenDrawer, isFullScreen]);
 
+  useEffect(() => {
+    if (!stickerMode) {
+      setStickerEditOpen(false);
+      setStickerEyesOpen(false);
+    }
+  }, [stickerMode]);
+
   function syncHistoryCounts() {
     setHistoryCounts({
       past: pastRef.current.length,
@@ -580,7 +814,7 @@ export default function GlyphEditor({
   }
 
   function chooseTool(nextTool: DrawingTool) {
-    if (nextTool === "pen" || nextTool === "quill") {
+    if (nextTool === "pen" || nextTool === "quill" || nextTool === "line") {
       setLastInkTool(nextTool);
     }
 
@@ -588,6 +822,11 @@ export default function GlyphEditor({
 
     if (nextTool !== "select") {
       setSelectedStrokeId(null);
+    }
+
+    if (nextTool !== "eyes") {
+      setSelectedDecorationId(null);
+      setStickerEyesOpen(false);
     }
   }
 
@@ -600,9 +839,40 @@ export default function GlyphEditor({
     setActiveFullscreenDrawer((current) => (current === drawer ? null : drawer));
   }
 
-  function toggleInkSettings() {
+  function enterStickerMode() {
+    setActiveFullscreenDrawer(null);
+    setStickerEditOpen(false);
+    setStickerEyesOpen(false);
+    setStickerMode(true);
+    chooseTool("eyes");
+  }
+
+  function exitStickerMode() {
+    setStickerMode(false);
+    setStickerEditOpen(false);
+    setStickerEyesOpen(false);
+    setSelectedDecorationId(null);
     chooseTool(lastInkTool);
-    toggleFullscreenDrawer("ink");
+  }
+
+  function handleSelectBackgroundPreset(preset: (typeof editorBackgroundPresets)[number]) {
+    const nextTheme: FontTheme = {
+      accentColor: preset.accentColor,
+      backgroundColor: preset.backgroundColor,
+      backgroundStyle: preset.id,
+      backgroundTexture: activeFontTheme.backgroundTexture,
+      inkColor: preset.inkColor,
+    };
+
+    onUpdateFontTheme(nextTheme);
+    setInkColor(preset.inkColor);
+  }
+
+  function handleSelectBackgroundTexture(texture: BackgroundTexture) {
+    onUpdateFontTheme({
+      ...activeFontTheme,
+      backgroundTexture: texture,
+    });
   }
 
   function handleDeleteSelectedStroke() {
@@ -614,6 +884,130 @@ export default function GlyphEditor({
     updateDraftStrokes(draftGlyphRef.current.strokes.filter((stroke) => stroke.id !== selectedStrokeId));
     setSelectedStrokeId(null);
     setSavedMessage("Deleted stroke");
+  }
+
+  function handleDeleteSelectedSticker() {
+    if (!selectedDecorationId) {
+      return;
+    }
+
+    pushHistory();
+    updateDraftDecorations(draftGlyphRef.current.decorations.filter((decoration) => decoration.id !== selectedDecorationId));
+    setSelectedDecorationId(null);
+    setSavedMessage("Deleted sticker");
+  }
+
+  function handleEyeStickerDragStart(
+    expression: NonNullable<GlyphDecoration["expression"]>,
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) {
+    if (event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+    const dragSource = event.currentTarget;
+    dragSource.setPointerCapture(event.pointerId);
+    flushSync(() => {
+      setEyeExpression(expression);
+      setDraggingEyeSticker({ expression, x: event.clientX, y: event.clientY });
+    });
+
+    function handlePointerMove(pointerEvent: PointerEvent) {
+      setDraggingEyeSticker({ expression, x: pointerEvent.clientX, y: pointerEvent.clientY });
+    }
+
+    function handlePointerUp(pointerEvent: PointerEvent) {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+      if (dragSource.hasPointerCapture(pointerEvent.pointerId)) {
+        dragSource.releasePointerCapture(pointerEvent.pointerId);
+      }
+      setDraggingEyeSticker(null);
+      setStickerDropRequest({
+        clientX: pointerEvent.clientX,
+        clientY: pointerEvent.clientY,
+        expression,
+        id: Date.now(),
+      });
+    }
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerUp);
+  }
+
+  function smoothStrokePoints(points: GlyphStroke["points"]) {
+    if (points.length < 3) {
+      return points.map((point) => ({ ...point }));
+    }
+
+    return points.map((point, index) => {
+      const previousPoint = points[index - 1];
+      const nextPoint = points[index + 1];
+
+      if (!previousPoint || !nextPoint) {
+        return { ...point };
+      }
+
+      return {
+        ...point,
+        ink: point.ink,
+        pressure: ((previousPoint.pressure ?? point.pressure ?? 0.66) + (point.pressure ?? 0.66) * 2 + (nextPoint.pressure ?? point.pressure ?? 0.66)) / 4,
+        x: previousPoint.x * 0.25 + point.x * 0.5 + nextPoint.x * 0.25,
+        y: previousPoint.y * 0.25 + point.y * 0.5 + nextPoint.y * 0.25,
+      };
+    });
+  }
+
+  function handleSmoothSelectedStroke() {
+    if (!selectedStrokeId) {
+      return;
+    }
+
+    pushHistory();
+    updateDraftStrokes(
+      draftGlyphRef.current.strokes.map((stroke) =>
+        stroke.id === selectedStrokeId
+          ? {
+              ...stroke,
+              points: smoothStrokePoints(stroke.points),
+            }
+          : stroke,
+      ),
+    );
+    chooseTool("select");
+    setSavedMessage("Smoothed stroke");
+  }
+
+  function handleSpreadSelectedStroke() {
+    if (!selectedStrokeId) {
+      return;
+    }
+
+    pushHistory();
+    updateDraftStrokes(
+      draftGlyphRef.current.strokes.map((stroke) => {
+        if (stroke.id !== selectedStrokeId) {
+          return stroke;
+        }
+
+        const strokeWidthPx = Math.max(1, stroke.size * 720);
+        const spreadAmount = Math.min(1, 0.34 + Math.min(1, strokeWidthPx / 24) * 0.32);
+
+        return {
+          ...stroke,
+          inkEffect: stroke.inkEffect === "dramaticPooling" ? stroke.inkEffect : "subtleSpread",
+          points: stroke.points.map((point) => ({
+            ...point,
+            spread: Math.max(point.spread ?? 0, spreadAmount),
+          })),
+        };
+      }),
+    );
+    chooseTool("select");
+    setSavedMessage("Added ink spread");
   }
 
   function handleZoom(delta: number) {
@@ -701,7 +1095,6 @@ export default function GlyphEditor({
 
     futureRef.current = [cloneGlyph(draftGlyphRef.current), ...futureRef.current.slice(0, 29)];
     updateDraftGlyph(cloneGlyph(previousGlyph));
-    setSavedMessage("Undid change");
     syncHistoryCounts();
   }
 
@@ -714,7 +1107,6 @@ export default function GlyphEditor({
 
     pastRef.current = [...pastRef.current.slice(-29), cloneGlyph(draftGlyphRef.current)];
     updateDraftGlyph(cloneGlyph(nextGlyph));
-    setSavedMessage("Redid change");
     syncHistoryCounts();
   }
 
@@ -724,6 +1116,10 @@ export default function GlyphEditor({
         <GlyphCanvas
           strokes={draftGlyph.strokes}
           decorations={draftGlyph.decorations}
+          backgroundAccentColor={activeFontTheme.accentColor}
+          backgroundColor={activeFontTheme.backgroundColor}
+          backgroundStyle={activeFontTheme.backgroundStyle}
+          backgroundTexture={activeFontTheme.backgroundTexture}
           brushSize={brushSize}
           eyeExpression={eyeExpression}
           eraserMode={eraserMode}
@@ -732,9 +1128,12 @@ export default function GlyphEditor({
           inkColor={inkColor}
           referenceGlyph={referenceGlyph}
           renderProfile={font.renderProfile}
+          selectMode={selectMode}
+          selectedDecorationId={selectedDecorationId}
           selectedStrokeId={selectedStrokeId}
           showGuides={showGuides}
           smoothingMode={smoothingMode}
+          stickerDropRequest={stickerDropRequest}
           tool={tool}
           viewOffset={viewOffset}
           viewScale={viewScale}
@@ -742,7 +1141,11 @@ export default function GlyphEditor({
           onChangeViewOffset={setViewOffset}
           onChangeDecorations={updateDraftDecorations}
           onChangeStrokes={updateDraftStrokes}
+          onSelectDecoration={setSelectedDecorationId}
           onSelectStroke={setSelectedStrokeId}
+          onStickerDropHandled={(requestId) => {
+            setStickerDropRequest((current) => (current?.id === requestId ? null : current));
+          }}
         />
 
         <div className="draw-only-topbar" aria-label="Drawing navigation">
@@ -790,7 +1193,7 @@ export default function GlyphEditor({
 
           {activeFullscreenDrawer === "ink" && (
             <div id="draw-ink-drawer" className="draw-control-drawer" aria-label="Ink drawer">
-              <div className="draw-drawer-grid two" aria-label="Ink tool">
+              <div className="draw-drawer-grid three" aria-label="Ink tool">
                 <button
                   className={`draw-drawer-button ${lastInkTool === "pen" ? "active-tool" : ""}`}
                   type="button"
@@ -806,6 +1209,14 @@ export default function GlyphEditor({
                 >
                   <Feather aria-hidden="true" />
                   <span>Quill</span>
+                </button>
+                <button
+                  className={`draw-drawer-button ${lastInkTool === "line" ? "active-tool" : ""}`}
+                  type="button"
+                  onClick={() => chooseTool("line")}
+                >
+                  <Minus aria-hidden="true" />
+                  <span>Line</span>
                 </button>
               </div>
 
@@ -855,6 +1266,40 @@ export default function GlyphEditor({
                   >
                     <SlidersHorizontal aria-hidden="true" />
                     <span>{option.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {activeFullscreenDrawer === "background" && (
+            <div id="draw-background-drawer" className="draw-control-drawer" aria-label="Background drawer">
+              <div className="draw-background-presets" aria-label="Canvas backgrounds">
+                {editorBackgroundPresets.map((preset) => (
+                  <button
+                    key={preset.id}
+                    className={`draw-background-preset ${activeFontTheme.backgroundStyle === preset.id ? "selected" : ""}`}
+                    type="button"
+                    onClick={() => handleSelectBackgroundPreset(preset)}
+                    aria-label={`Use ${preset.label} background`}
+                    title={preset.label}
+                  >
+                    <span style={{ background: preset.preview }} />
+                  </button>
+                ))}
+              </div>
+              <div className="draw-background-textures" aria-label="Background textures">
+                {editorTexturePresets.map((preset) => (
+                  <button
+                    key={preset.id}
+                    className={`draw-texture-preset ${activeFontTheme.backgroundTexture === preset.id ? "selected" : ""}`}
+                    type="button"
+                    onClick={() => handleSelectBackgroundTexture(preset.id)}
+                    aria-label={`Use ${preset.label} texture`}
+                    title={preset.label}
+                  >
+                    <span style={{ background: preset.preview }} />
+                    <strong>{preset.label}</strong>
                   </button>
                 ))}
               </div>
@@ -930,6 +1375,76 @@ export default function GlyphEditor({
                 </button>
               </div>
 
+              <div className="draw-drawer-grid two" aria-label="Select options">
+                <button
+                  className={`draw-drawer-button ${selectMode === "moveStroke" ? "active-tool" : ""}`}
+                  type="button"
+                  onClick={() => {
+                    setSelectMode("moveStroke");
+                    chooseTool("select");
+                  }}
+                >
+                  <Hand aria-hidden="true" />
+                  <span>Move stroke</span>
+                </button>
+                <button
+                  className={`draw-drawer-button ${selectMode === "editPoint" ? "active-tool" : ""}`}
+                  type="button"
+                  onClick={() => {
+                    setSelectMode("editPoint");
+                    chooseTool("select");
+                  }}
+                >
+                  <MousePointer2 aria-hidden="true" />
+                  <span>Point edit</span>
+                </button>
+                <button
+                  className={`draw-drawer-button ${selectMode === "smoothCircle" ? "active-tool" : ""}`}
+                  type="button"
+                  onClick={() => {
+                    setSelectMode("smoothCircle");
+                    chooseTool("select");
+                  }}
+                >
+                  <Circle aria-hidden="true" />
+                  <span>Smooth circle</span>
+                </button>
+                <button
+                  className="draw-drawer-button"
+                  type="button"
+                  disabled={!selectedStrokeId}
+                  onClick={handleSmoothSelectedStroke}
+                >
+                  <SlidersHorizontal aria-hidden="true" />
+                  <span>Smooth stroke</span>
+                </button>
+                <button
+                  className={`draw-drawer-button ${selectMode === "spreadCircle" ? "active-tool" : ""}`}
+                  type="button"
+                  onClick={() => {
+                    setSelectMode("spreadCircle");
+                    chooseTool("select");
+                  }}
+                >
+                  <Droplets aria-hidden="true" />
+                  <span>Spread circle</span>
+                </button>
+                <button
+                  className="draw-drawer-button"
+                  type="button"
+                  disabled={!selectedStrokeId}
+                  onClick={handleSpreadSelectedStroke}
+                >
+                  <Droplets aria-hidden="true" />
+                  <span>Spread stroke</span>
+                </button>
+              </div>
+
+              <button className="draw-drawer-button full" type="button" onClick={enterStickerMode}>
+                <Sticker aria-hidden="true" />
+                <span>Sticker mode</span>
+              </button>
+
               {selectedStrokeId && (
                 <button className="draw-drawer-button danger-action full" type="button" onClick={handleDeleteSelectedStroke}>
                   <X aria-hidden="true" />
@@ -939,37 +1454,64 @@ export default function GlyphEditor({
             </div>
           )}
 
-          {activeFullscreenDrawer === "stickers" && (
-            <div id="draw-stickers-drawer" className="draw-control-drawer" aria-label="Stickers drawer">
-              <div className="draw-drawer-grid two" aria-label="Sticker tools">
-                <button
-                  className={`draw-drawer-button ${tool === "eyes" ? "active-tool" : ""}`}
-                  type="button"
-                  onClick={() => chooseTool("eyes")}
-                >
-                  <Eye aria-hidden="true" />
-                  <span>Eyes</span>
-                </button>
+          {stickerMode && (
+            <div id="draw-stickers-drawer" className="draw-sticker-popouts" aria-label="Stickers drawer">
+              <div className="draw-sticker-category-popout" aria-label="Sticker categories">
+                {stickerEyesOpen && (
+                  <div className="draw-control-drawer">
+                  <EyeExpressionControl
+                    draggableOptions
+                    expression={eyeExpression}
+                    onExpressionChange={setEyeExpression}
+                    onOptionPointerDown={handleEyeStickerDragStart}
+                    showLabels={false}
+                  />
+                  </div>
+                )}
               </div>
 
-              {tool === "eyes" && <EyeExpressionControl expression={eyeExpression} onExpressionChange={setEyeExpression} />}
+              <div className="draw-sticker-edit-column">
+                {stickerEditOpen && (
+                  <div id="draw-sticker-edit-popout" className="draw-control-drawer draw-sticker-edit-popout" aria-label="Sticker edit actions">
+                    <button
+                      className={`draw-drawer-button ${tool === "eyes" ? "active-tool" : ""}`}
+                      type="button"
+                      onClick={() => chooseTool("eyes")}
+                    >
+                      <Hand aria-hidden="true" />
+                      <span>Move</span>
+                    </button>
+                    <button
+                      className="draw-drawer-button danger-action"
+                      type="button"
+                      disabled={!selectedSticker}
+                      onClick={handleDeleteSelectedSticker}
+                    >
+                      <X aria-hidden="true" />
+                      <span>Delete</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
+          {!stickerMode ? (
           <div className="draw-only-toolbar" aria-label="Drawing dock">
             <button
-              className={`draw-glass-button draw-icon-button draw-ink-color-button ${
-                tool === lastInkTool || activeFullscreenDrawer === "ink" ? "active-tool" : ""
-              }`}
+              className={`draw-glass-button draw-icon-button ${tool === lastInkTool ? "active-tool" : ""}`}
               type="button"
-              aria-label={`Use ${lastInkTool} and open ink settings`}
-              aria-expanded={activeFullscreenDrawer === "ink"}
-              aria-controls="draw-ink-drawer"
-              title={lastInkTool === "quill" ? "Quill ink" : "Pen ink"}
-              style={{ backgroundColor: inkColor, color: getReadableInkButtonColor(inkColor) }}
-              onClick={toggleInkSettings}
+              aria-label={`Use ${getInkToolLabel(lastInkTool).toLowerCase()}`}
+              title={getInkToolLabel(lastInkTool)}
+              onClick={() => chooseDockTool(lastInkTool)}
             >
-              {lastInkTool === "quill" ? <Feather aria-hidden="true" /> : <PenLine aria-hidden="true" />}
+              {lastInkTool === "quill" ? (
+                <Feather aria-hidden="true" />
+              ) : lastInkTool === "line" ? (
+                <Minus aria-hidden="true" />
+              ) : (
+                <PenLine aria-hidden="true" />
+              )}
             </button>
             <button
               className={`draw-glass-button draw-icon-button ${tool === "eraser" ? "active-tool" : ""}`}
@@ -990,6 +1532,15 @@ export default function GlyphEditor({
               <MousePointer2 aria-hidden="true" />
             </button>
             <button
+              className={`draw-glass-button draw-icon-button ${tool === "pan" ? "active-tool" : ""}`}
+              type="button"
+              aria-label="Use pan"
+              title="Pan"
+              onClick={() => chooseDockTool("pan")}
+            >
+              <Hand aria-hidden="true" />
+            </button>
+            <button
               className="draw-gold-button draw-icon-button draw-save-next-button"
               type="button"
               aria-label="Save and next glyph"
@@ -999,29 +1550,29 @@ export default function GlyphEditor({
               <SkipForward aria-hidden="true" />
             </button>
             <button
-              className={`draw-glass-button draw-icon-button ${
-                tool === "eyes" || activeFullscreenDrawer === "stickers" ? "active-tool" : ""
+              className={`draw-glass-button draw-icon-button draw-ink-color-button ${
+                activeFullscreenDrawer === "ink" ? "active-tool" : ""
               }`}
               type="button"
-              aria-label="Open stickers"
-              aria-expanded={activeFullscreenDrawer === "stickers"}
-              aria-controls="draw-stickers-drawer"
-              title="Stickers"
-              onClick={() => {
-                chooseTool("eyes");
-                toggleFullscreenDrawer("stickers");
-              }}
+              aria-label={`Open ink settings, using ${getInkToolLabel(lastInkTool).toLowerCase()}`}
+              aria-expanded={activeFullscreenDrawer === "ink"}
+              aria-controls="draw-ink-drawer"
+              title="Ink settings"
+              style={{ backgroundColor: inkColor, color: getReadableInkButtonColor(inkColor) }}
+              onClick={() => toggleFullscreenDrawer("ink")}
             >
-              <Sticker aria-hidden="true" />
+              <Droplets aria-hidden="true" />
             </button>
             <button
-              className={`draw-glass-button draw-icon-button ${tool === "pan" ? "active-tool" : ""}`}
+              className={`draw-glass-button draw-icon-button ${activeFullscreenDrawer === "background" ? "active-tool" : ""}`}
               type="button"
-              aria-label="Use pan"
-              title="Pan"
-              onClick={() => chooseDockTool("pan")}
+              aria-label="Open background settings"
+              aria-expanded={activeFullscreenDrawer === "background"}
+              aria-controls="draw-background-drawer"
+              title="Background"
+              onClick={() => toggleFullscreenDrawer("background")}
             >
-              <Hand aria-hidden="true" />
+              <Palette aria-hidden="true" />
             </button>
             <button
               className="draw-glass-button draw-icon-button"
@@ -1057,6 +1608,60 @@ export default function GlyphEditor({
               <Ellipsis aria-hidden="true" />
             </button>
           </div>
+          ) : (
+          <div className="draw-only-toolbar draw-sticker-mode-toolbar" aria-label="Sticker mode dock">
+            <button
+              className={`draw-glass-button draw-icon-button ${stickerEyesOpen ? "active-tool" : ""}`}
+              type="button"
+              aria-label="Open eyes stickers"
+              aria-expanded={stickerEyesOpen}
+              aria-controls="draw-stickers-drawer"
+              title="Eyes"
+              onClick={() => {
+                setStickerEyesOpen((current) => !current);
+                setStickerEditOpen(false);
+              }}
+            >
+              <Eye aria-hidden="true" />
+            </button>
+            <button
+              className={`draw-glass-button draw-icon-button ${stickerEditOpen ? "active-tool" : ""}`}
+              type="button"
+              aria-label="Edit sticker"
+              aria-expanded={stickerEditOpen}
+              aria-controls="draw-sticker-edit-popout"
+              title="Edit sticker"
+              onClick={() => {
+                setStickerEditOpen((current) => !current);
+                setStickerEyesOpen(false);
+              }}
+            >
+              <Sticker aria-hidden="true" />
+              <span>Edit</span>
+            </button>
+            <button
+              className="draw-glass-button draw-icon-button"
+              type="button"
+              aria-label="Exit sticker mode"
+              title="Done"
+              onClick={exitStickerMode}
+            >
+              <X aria-hidden="true" />
+            </button>
+          </div>
+          )}
+
+          {draggingEyeSticker && (
+            <div
+              className="sticker-drag-ghost"
+              style={{
+                left: draggingEyeSticker.x,
+                top: draggingEyeSticker.y,
+              }}
+            >
+              <EyeExpressionPreview expression={draggingEyeSticker.expression} />
+            </div>
+          )}
         </div>
       </section>
     );
@@ -1098,6 +1703,10 @@ export default function GlyphEditor({
       <GlyphCanvas
         strokes={draftGlyph.strokes}
         decorations={draftGlyph.decorations}
+        backgroundAccentColor={activeFontTheme.accentColor}
+        backgroundColor={activeFontTheme.backgroundColor}
+        backgroundStyle={activeFontTheme.backgroundStyle}
+        backgroundTexture={activeFontTheme.backgroundTexture}
         brushSize={brushSize}
         eyeExpression={eyeExpression}
         eraserMode={eraserMode}
@@ -1106,9 +1715,12 @@ export default function GlyphEditor({
         inkColor={inkColor}
         referenceGlyph={referenceGlyph}
         renderProfile={font.renderProfile}
+        selectMode={selectMode}
+        selectedDecorationId={selectedDecorationId}
         selectedStrokeId={selectedStrokeId}
         showGuides={showGuides}
         smoothingMode={smoothingMode}
+        stickerDropRequest={stickerDropRequest}
         tool={tool}
         viewOffset={viewOffset}
         viewScale={viewScale}
@@ -1116,7 +1728,11 @@ export default function GlyphEditor({
         onChangeViewOffset={setViewOffset}
         onChangeDecorations={updateDraftDecorations}
         onChangeStrokes={updateDraftStrokes}
+        onSelectDecoration={setSelectedDecorationId}
         onSelectStroke={setSelectedStrokeId}
+        onStickerDropHandled={(requestId) => {
+          setStickerDropRequest((current) => (current?.id === requestId ? null : current));
+        }}
       />
 
       <EditorLivePreview
@@ -1152,9 +1768,20 @@ export default function GlyphEditor({
             Quill
           </button>
           <button
-            className={`secondary-button ${tool === "eyes" ? "active-tool" : ""}`}
+            className={`secondary-button ${tool === "line" ? "active-tool" : ""}`}
             type="button"
-            onClick={() => chooseTool("eyes")}
+            onClick={() => chooseTool("line")}
+          >
+            Line
+          </button>
+          <button
+            className={`secondary-button ${tool === "eyes" || stickerEyesOpen ? "active-tool" : ""}`}
+            type="button"
+            aria-expanded={stickerEyesOpen}
+            onClick={() => {
+              chooseTool("eyes");
+              setStickerEyesOpen((current) => !current);
+            }}
           >
             Eyes
           </button>
@@ -1197,8 +1824,14 @@ export default function GlyphEditor({
           </button>
         </div>
 
-        {tool === "eyes" && (
-          <EyeExpressionControl expression={eyeExpression} onExpressionChange={setEyeExpression} />
+        {stickerEyesOpen && (
+          <EyeExpressionControl
+            draggableOptions
+            expression={eyeExpression}
+            onExpressionChange={setEyeExpression}
+            onOptionPointerDown={handleEyeStickerDragStart}
+            showLabels={false}
+          />
         )}
 
         {tool === "eraser" && (
@@ -1233,13 +1866,11 @@ export default function GlyphEditor({
           ))}
         </div>
 
-        <div className="engine-option-row" aria-label="Ink effect">
+        <div className="engine-option-row ink-effect-row" aria-label="Ink effect">
           <button
             className={`secondary-button ${inkEffect === "dramaticPooling" ? "active-tool" : ""}`}
             type="button"
-            onClick={() =>
-              setInkEffect((current) => (current === "dramaticPooling" ? "none" : "dramaticPooling"))
-            }
+            onClick={() => setInkEffect((current) => (current === "dramaticPooling" ? "none" : "dramaticPooling"))}
           >
             Dramatic ink
           </button>
@@ -1282,6 +1913,14 @@ export default function GlyphEditor({
             onChange={(event) => setBrushSize(Number(event.target.value))}
           />
           <output>{brushSize}px</output>
+          <button
+            className="metric-default-button"
+            type="button"
+            disabled={brushSize === DEFAULT_BRUSH_SIZE}
+            onClick={() => setBrushSize(DEFAULT_BRUSH_SIZE)}
+          >
+            Default
+          </button>
         </label>
 
         <InkColorControl inkColor={inkColor} onInkColorChange={setInkColor} />
@@ -1298,17 +1937,17 @@ export default function GlyphEditor({
           </button>
         </div>
 
-        <div className="nudge-row" aria-label="Nudge glyph">
-          <button className="secondary-button" type="button" onClick={() => handleNudge(0, -0.025, "up")}>
+        <div className="nudge-row nudge-pad" aria-label="Nudge glyph">
+          <button className="secondary-button nudge-up" type="button" onClick={() => handleNudge(0, -0.025, "up")}>
             Nudge up
           </button>
-          <button className="secondary-button" type="button" onClick={() => handleNudge(-0.025, 0, "left")}>
+          <button className="secondary-button nudge-left" type="button" onClick={() => handleNudge(-0.025, 0, "left")}>
             Nudge left
           </button>
-          <button className="secondary-button" type="button" onClick={() => handleNudge(0.025, 0, "right")}>
+          <button className="secondary-button nudge-right" type="button" onClick={() => handleNudge(0.025, 0, "right")}>
             Nudge right
           </button>
-          <button className="secondary-button" type="button" onClick={() => handleNudge(0, 0.025, "down")}>
+          <button className="secondary-button nudge-down" type="button" onClick={() => handleNudge(0, 0.025, "down")}>
             Nudge down
           </button>
         </div>
@@ -1329,6 +1968,18 @@ export default function GlyphEditor({
       <div className="save-status" aria-live="polite">
         {savedMessage}
       </div>
+
+      {draggingEyeSticker && (
+        <div
+          className="sticker-drag-ghost"
+          style={{
+            left: draggingEyeSticker.x,
+            top: draggingEyeSticker.y,
+          }}
+        >
+          <EyeExpressionPreview expression={draggingEyeSticker.expression} />
+        </div>
+      )}
     </section>
   );
 }

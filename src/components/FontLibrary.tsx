@@ -22,6 +22,7 @@ import type {
   FontRenderProfile,
   FontSet,
   FontShapeSettings,
+  FontTheme,
 } from "../types/fontTypes";
 
 type FontLibraryProps = {
@@ -43,6 +44,7 @@ type FontLibraryProps = {
       characterSettings?: FontCharacterSettings;
       guideSettings?: FontGuideSettings;
       shapeSettings?: FontShapeSettings;
+      theme?: FontTheme;
     },
   ) => void;
   onDuplicateFont: (fontId: string) => void;
@@ -108,6 +110,7 @@ function FontNamePreview({ font }: { font: FontSet }) {
           renderProfile: font.renderProfile,
           heightScale: scales.heightScale,
           widthScale: scales.widthScale,
+          backgroundTexture: font.theme?.backgroundTexture,
         });
         x += getGlyphAdvance(glyph, fontSize, fontWidthScale);
       } else if (character === " ") {

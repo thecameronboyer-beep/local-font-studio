@@ -1,4 +1,5 @@
 import type { Glyph } from "../types/fontTypes";
+import { defaultGlyphMetrics } from "../storage/fontStorage";
 
 type SpacingControlsProps = {
   glyph: Glyph;
@@ -24,9 +25,10 @@ export default function SpacingControls({ glyph, onChange }: SpacingControlsProp
   return (
     <div className="spacing-controls" aria-label="Glyph spacing controls">
       {controls.map((control) => (
-        <label key={control.key} className="metric-control">
-          <span>{control.label}</span>
+        <div key={control.key} className="metric-control">
+          <span id={`metric-${control.key}`}>{control.label}</span>
           <input
+            aria-labelledby={`metric-${control.key}`}
             type="range"
             min={control.min}
             max={control.max}
@@ -35,7 +37,15 @@ export default function SpacingControls({ glyph, onChange }: SpacingControlsProp
             onChange={(event) => updateMetric(control.key, Number(event.target.value))}
           />
           <output>{glyph[control.key].toFixed(2)}</output>
-        </label>
+          <button
+            className="metric-default-button"
+            type="button"
+            disabled={glyph[control.key] === defaultGlyphMetrics[control.key]}
+            onClick={() => updateMetric(control.key, defaultGlyphMetrics[control.key])}
+          >
+            Default
+          </button>
+        </div>
       ))}
     </div>
   );

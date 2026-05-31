@@ -1,34 +1,64 @@
 import { useEffect, useRef } from "react";
 import type { PointerEvent } from "react";
-import type { FontGuideSettings, FontRenderProfile, Glyph, GlyphDecoration, GlyphInkEffect, GlyphStroke } from "../types/fontTypes";
+import type {
+  BackgroundStyle,
+  BackgroundTexture,
+  FontGuideSettings,
+  FontRenderProfile,
+  Glyph,
+  GlyphDecoration,
+  GlyphInkEffect,
+  GlyphStroke,
+} from "../types/fontTypes";
 import { drawGlyphDecoration, drawStrokePath } from "../render/glyphRenderer";
 import { defaultFontGuideSettings } from "../storage/fontStorage";
 
 const CANVAS_SIZE = 720;
+const DEFAULT_RENDER_SIZE = {
+  height: CANVAS_SIZE,
+  scale: CANVAS_SIZE,
+  width: CANVAS_SIZE,
+};
 
 export type CanvasViewOffset = {
   x: number;
   y: number;
 };
 
-export type DrawingTool = "pen" | "quill" | "eraser" | "eyes" | "select" | "pan";
+export type DrawingTool = "pen" | "quill" | "line" | "eraser" | "eyes" | "select" | "pan";
 export type EraserMode = "stroke" | "point";
+export type SelectMode = "moveStroke" | "editPoint" | "smoothCircle" | "spreadCircle";
 export type SmoothingMode = "raw" | "gentle" | "strong";
+export type StickerDropRequest = {
+  clientX: number;
+  clientY: number;
+  expression: NonNullable<GlyphDecoration["expression"]>;
+  id: number;
+};
+
+type CanvasRenderSize = typeof DEFAULT_RENDER_SIZE;
 
 type GlyphCanvasProps = {
   strokes: GlyphStroke[];
   decorations: GlyphDecoration[];
+  backgroundAccentColor?: string;
+  backgroundColor?: string;
+  backgroundStyle?: BackgroundStyle;
+  backgroundTexture?: BackgroundTexture;
   brushSize: number;
   eyeExpression: NonNullable<GlyphDecoration["expression"]>;
   eraserMode: EraserMode;
+  guideSettings?: FontGuideSettings;
   inkEffect: GlyphInkEffect;
   inkColor: string;
-  guideSettings?: FontGuideSettings;
   referenceGlyph?: Glyph | null;
   renderProfile?: FontRenderProfile;
+  selectMode: SelectMode;
+  selectedDecorationId: string | null;
   selectedStrokeId: string | null;
   showGuides: boolean;
   smoothingMode: SmoothingMode;
+  stickerDropRequest: StickerDropRequest | null;
   tool: DrawingTool;
   viewOffset: CanvasViewOffset;
   viewScale: number;
@@ -36,11 +66,25 @@ type GlyphCanvasProps = {
   onChangeViewOffset: (offset: CanvasViewOffset) => void;
   onChangeDecorations: (decorations: GlyphDecoration[]) => void;
   onChangeStrokes: (strokes: GlyphStroke[]) => void;
+  onSelectDecoration: (decorationId: string | null) => void;
   onSelectStroke: (strokeId: string | null) => void;
+  onStickerDropHandled: (requestId: number) => void;
 };
 
 function clamp(value: number) {
   return Math.min(1, Math.max(0, value));
+}
+
+function getCanvasRenderSize(canvas: HTMLCanvasElement): CanvasRenderSize {
+  const rect = canvas.getBoundingClientRect();
+  const width = Math.max(1, Math.round(rect.width || CANVAS_SIZE));
+  const height = Math.max(1, Math.round(rect.height || width || CANVAS_SIZE));
+
+  return {
+    height,
+    scale: Math.min(width, height),
+    width,
+  };
 }
 
 function makeStrokeId() {
@@ -102,12 +146,13 @@ function getEyeHitRadius(decoration: GlyphDecoration) {
 }
 
 function moveDecoration(decoration: GlyphDecoration, x: number, y: number): GlyphDecoration {
-  const safeInset = getEyeHitRadius(decoration);
+  const horizontalInset = getEyeHitRadius(decoration);
+  const verticalInset = decoration.size * 0.8;
 
   return {
     ...decoration,
-    x: Math.min(1 - safeInset, Math.max(safeInset, x)),
-    y: Math.min(1 - safeInset, Math.max(safeInset, y)),
+    x: Math.min(1 - horizontalInset, Math.max(horizontalInset, x)),
+    y: Math.min(1 - verticalInset, Math.max(verticalInset, y)),
   };
 }
 
@@ -154,6 +199,47 @@ function hitTestStroke(strokes: GlyphStroke[], x: number, y: number, radius: num
   return null;
 }
 
+function findStrokeById(strokes: GlyphStroke[], strokeId: string | null) {
+  return strokeId ? strokes.find((stroke) => stroke.id === strokeId) : undefined;
+}
+
+function hitTestStrokePoint(stroke: GlyphStroke | undefined, x: number, y: number, radius: number) {
+  if (!stroke) {
+    return null;
+  }
+
+  let nearestPoint: { distance: number; pointIndex: number } | null = null;
+
+  for (let pointIndex = 0; pointIndex < stroke.points.length; pointIndex += 1) {
+    const point = stroke.points[pointIndex];
+    const distance = Math.hypot(point.x - x, point.y - y);
+
+    if (distance <= radius && (!nearestPoint || distance < nearestPoint.distance)) {
+      nearestPoint = { distance, pointIndex };
+    }
+  }
+
+  return nearestPoint?.pointIndex ?? null;
+}
+
+function smoothPointBetweenNeighbors(
+  point: GlyphStroke["points"][number],
+  previousPoint: GlyphStroke["points"][number] | undefined,
+  nextPoint: GlyphStroke["points"][number] | undefined,
+) {
+  if (!previousPoint || !nextPoint) {
+    return { ...point };
+  }
+
+  return {
+    ...point,
+    ink: point.ink,
+    pressure: ((previousPoint.pressure ?? point.pressure ?? 0.66) + (point.pressure ?? 0.66) * 2 + (nextPoint.pressure ?? point.pressure ?? 0.66)) / 4,
+    x: previousPoint.x * 0.25 + point.x * 0.5 + nextPoint.x * 0.25,
+    y: previousPoint.y * 0.25 + point.y * 0.5 + nextPoint.y * 0.25,
+  };
+}
+
 function getStrokePointCount(strokes: GlyphStroke[]) {
   return strokes.reduce((count, stroke) => count + stroke.points.length, 0);
 }
@@ -175,17 +261,24 @@ function getSmoothedPoint(
 export default function GlyphCanvas({
   strokes,
   decorations,
+  backgroundAccentColor = "#d3bf97",
+  backgroundColor = "#f4ead7",
+  backgroundStyle = "paper",
+  backgroundTexture = "grain",
   brushSize,
   eyeExpression,
   eraserMode,
+  guideSettings = defaultFontGuideSettings,
   inkEffect,
   inkColor,
-  guideSettings = defaultFontGuideSettings,
   referenceGlyph,
   renderProfile = "plain",
+  selectMode,
+  selectedDecorationId,
   selectedStrokeId,
   showGuides,
   smoothingMode,
+  stickerDropRequest,
   tool,
   viewOffset,
   viewScale,
@@ -193,15 +286,30 @@ export default function GlyphCanvas({
   onChangeViewOffset,
   onChangeDecorations,
   onChangeStrokes,
+  onSelectDecoration,
   onSelectStroke,
+  onStickerDropHandled,
 }: GlyphCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const strokesRef = useRef(strokes);
   const decorationsRef = useRef(decorations);
+  const selectedDecorationIdRef = useRef(selectedDecorationId);
   const selectedStrokeIdRef = useRef(selectedStrokeId);
   const viewOffsetRef = useRef(viewOffset);
+  const renderSizeRef = useRef<CanvasRenderSize>(DEFAULT_RENDER_SIZE);
   const activeStrokeRef = useRef<GlyphStroke | null>(null);
   const activeDecorationIdRef = useRef<string | null>(null);
+  const movingStrokeRef = useRef<{
+    originalPoints: GlyphStroke["points"];
+    startPoint: GlyphStroke["points"][number];
+    strokeId: string;
+  } | null>(null);
+  const movingPointRef = useRef<{
+    pointIndex: number;
+    strokeId: string;
+  } | null>(null);
+  const circleToolPointRef = useRef<GlyphStroke["points"][number] | null>(null);
+  const circleToolActiveRef = useRef(false);
   const erasingRef = useRef(false);
   const panStartRef = useRef<{
     clientX: number;
@@ -212,13 +320,44 @@ export default function GlyphCanvas({
   useEffect(() => {
     strokesRef.current = strokes;
     decorationsRef.current = decorations;
+    selectedDecorationIdRef.current = selectedDecorationId;
     selectedStrokeIdRef.current = selectedStrokeId;
     drawCanvas(strokes, decorations);
-  }, [brushSize, decorations, eyeExpression, guideSettings, inkEffect, referenceGlyph, renderProfile, selectedStrokeId, showGuides, strokes, tool]);
+  }, [backgroundAccentColor, backgroundColor, backgroundStyle, backgroundTexture, brushSize, decorations, eyeExpression, guideSettings, inkEffect, referenceGlyph, renderProfile, selectMode, selectedDecorationId, selectedStrokeId, showGuides, strokes, tool]);
 
   useEffect(() => {
     viewOffsetRef.current = viewOffset;
   }, [viewOffset]);
+
+  useEffect(() => {
+    if (tool !== "select" || (selectMode !== "smoothCircle" && selectMode !== "spreadCircle")) {
+      circleToolPointRef.current = null;
+      circleToolActiveRef.current = false;
+    }
+  }, [selectMode, tool]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+
+    if (!canvas) {
+      return undefined;
+    }
+
+    const handleResize = () => drawCanvas(strokesRef.current, decorationsRef.current);
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", handleResize);
+      return () => window.removeEventListener("resize", handleResize);
+    }
+
+    const observer = new ResizeObserver(handleResize);
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, [backgroundAccentColor, backgroundColor, backgroundStyle, backgroundTexture, brushSize, decorations, eyeExpression, guideSettings, inkEffect, referenceGlyph, renderProfile, selectMode, selectedDecorationId, selectedStrokeId, showGuides, strokes, tool]);
+
+  function getCanvasScaleBasis() {
+    return renderSizeRef.current.scale || CANVAS_SIZE;
+  }
 
   function drawCanvas(nextStrokes: GlyphStroke[], nextDecorations: GlyphDecoration[]) {
     const canvas = canvasRef.current;
@@ -228,8 +367,10 @@ export default function GlyphCanvas({
     }
 
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = CANVAS_SIZE * dpr;
-    canvas.height = CANVAS_SIZE * dpr;
+    const renderSize = getCanvasRenderSize(canvas);
+    renderSizeRef.current = renderSize;
+    canvas.width = renderSize.width * dpr;
+    canvas.height = renderSize.height * dpr;
 
     const ctx = canvas.getContext("2d");
 
@@ -238,16 +379,17 @@ export default function GlyphCanvas({
     }
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-    ctx.fillStyle = "#f4ead7";
-    ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+    ctx.clearRect(0, 0, renderSize.width, renderSize.height);
+    drawCanvasBackground(ctx, renderSize);
+
+    drawBoardEdges(ctx, renderSize);
 
     if (showGuides) {
-      drawGuides(ctx);
+      drawGuides(ctx, renderSize);
     }
 
     if (referenceGlyph) {
-      drawReferenceGlyph(ctx, referenceGlyph);
+      drawReferenceGlyph(ctx, referenceGlyph, renderSize);
     }
 
     for (const stroke of nextStrokes) {
@@ -256,22 +398,26 @@ export default function GlyphCanvas({
         stroke,
         0,
         0,
-        CANVAS_SIZE,
-        CANVAS_SIZE,
-        CANVAS_SIZE,
+        renderSize.scale,
+        renderSize.width,
+        renderSize.height,
         "#19140f",
-        { renderProfile, skipInkEffect: activeStrokeRef.current?.id === stroke.id },
+        { backgroundTexture, renderProfile, skipInkEffect: activeStrokeRef.current?.id === stroke.id },
       );
     }
 
     const selectedStroke = nextStrokes.find((stroke) => stroke.id === selectedStrokeId);
 
     if (selectedStroke) {
-      drawStrokeSelection(ctx, selectedStroke);
+      drawStrokeSelection(ctx, selectedStroke, renderSize);
     }
 
     for (const decoration of nextDecorations) {
-      drawGlyphDecoration(ctx, decoration, 0, 0, CANVAS_SIZE);
+      drawGlyphDecoration(ctx, decoration, 0, 0, renderSize.scale, renderSize.width, renderSize.height);
+
+      if (decoration.id === selectedDecorationId) {
+        drawDecorationSelection(ctx, decoration, renderSize);
+      }
     }
 
     if (tool === "eraser") {
@@ -279,40 +425,237 @@ export default function GlyphCanvas({
       ctx.lineWidth = 3;
       ctx.setLineDash([12, 10]);
       ctx.beginPath();
-      ctx.arc(CANVAS_SIZE - 48, 48, Math.max(12, brushSize * 1.4), 0, Math.PI * 2);
+      ctx.arc(renderSize.width - 48, 48, Math.max(12, brushSize * 1.4), 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
     }
 
-    if (tool === "eyes") {
-      ctx.save();
-      ctx.strokeStyle = "rgba(25, 20, 15, 0.34)";
-      ctx.lineWidth = 3;
-      ctx.setLineDash([10, 10]);
-      ctx.beginPath();
-      ctx.arc(CANVAS_SIZE - 52, 52, 24, 0, Math.PI * 2);
-      ctx.arc(CANVAS_SIZE - 104, 52, 24, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.restore();
-      drawGlyphDecoration(
-        ctx,
-        {
-          expression: eyeExpression,
-          id: `eye_preview_${eyeExpression}`,
-          kind: "googly-eyes",
-          size: 0.034,
-          x: 0.89,
-          y: 0.072,
-        },
-        0,
-        0,
-        CANVAS_SIZE,
-      );
+    if (tool === "select" && (selectMode === "smoothCircle" || selectMode === "spreadCircle") && circleToolPointRef.current) {
+      drawCircleTool(ctx, circleToolPointRef.current, renderSize, selectMode === "spreadCircle" ? "spread" : "smooth");
     }
   }
 
-  function drawGuides(ctx: CanvasRenderingContext2D) {
+  function drawGrainTexture(ctx: CanvasRenderingContext2D, renderSize: CanvasRenderSize, color: string) {
+    const speckleCount = Math.max(140, Math.ceil((renderSize.width * renderSize.height) / 2300));
+
+    ctx.save();
+    ctx.fillStyle = color;
+
+    for (let index = 0; index < speckleCount; index += 1) {
+      const x = (index * 97) % renderSize.width;
+      const y = (index * 193) % renderSize.height;
+      const radius = 0.8 + (index % 5) * 0.38;
+      ctx.globalAlpha = 0.08 + (index % 5) * 0.014;
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.fillStyle = "#fff7e6";
+    for (let index = 0; index < speckleCount * 0.34; index += 1) {
+      const x = (index * 173) % renderSize.width;
+      const y = (index * 89) % renderSize.height;
+      ctx.globalAlpha = 0.04 + (index % 3) * 0.012;
+      ctx.fillRect(x, y, 1.2 + (index % 2), 1.2 + (index % 2));
+    }
+
+    ctx.restore();
+  }
+
+  function drawFiberTexture(ctx: CanvasRenderingContext2D, renderSize: CanvasRenderSize) {
+    const fiberCount = Math.max(52, Math.ceil(renderSize.height / 9));
+
+    ctx.save();
+    ctx.strokeStyle = backgroundAccentColor;
+    ctx.lineWidth = Math.max(1, renderSize.scale / 520);
+
+    for (let index = 0; index < fiberCount; index += 1) {
+      const y = (index * 37) % renderSize.height;
+      const startX = (index * 61) % Math.max(1, renderSize.width * 0.22);
+      const length = renderSize.width * (0.48 + ((index * 17) % 39) / 100);
+      const wave = 4 + (index % 5);
+
+      ctx.globalAlpha = 0.16 + (index % 4) * 0.034;
+      ctx.beginPath();
+      ctx.moveTo(startX, y);
+      ctx.bezierCurveTo(
+        startX + length * 0.32,
+        y - wave,
+        startX + length * 0.66,
+        y + wave,
+        Math.min(renderSize.width, startX + length),
+        y + (index % 2 === 0 ? -1 : 1) * wave * 0.6,
+      );
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = "#fff7e6";
+    ctx.lineWidth = Math.max(0.75, renderSize.scale / 720);
+    for (let index = 0; index < fiberCount * 0.45; index += 1) {
+      const y = (index * 47) % renderSize.height;
+      const startX = (index * 83) % Math.max(1, renderSize.width * 0.38);
+      const length = renderSize.width * (0.24 + ((index * 13) % 28) / 100);
+
+      ctx.globalAlpha = 0.08 + (index % 3) * 0.02;
+      ctx.beginPath();
+      ctx.moveTo(startX, y);
+      ctx.lineTo(Math.min(renderSize.width, startX + length), y + ((index % 3) - 1) * 3);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  function drawCanvasTexture(ctx: CanvasRenderingContext2D, renderSize: CanvasRenderSize, spacingMultiplier = 1) {
+    const spacing = Math.max(8, renderSize.scale * 0.036);
+
+    ctx.save();
+    ctx.strokeStyle = backgroundAccentColor;
+    ctx.lineWidth = Math.max(1.2, renderSize.scale / 430);
+
+    for (let x = 0; x <= renderSize.width; x += spacing * spacingMultiplier) {
+      ctx.globalAlpha = 0.16;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, renderSize.height);
+      ctx.stroke();
+    }
+
+    for (let y = 0; y <= renderSize.height; y += spacing * 0.86 * spacingMultiplier) {
+      ctx.globalAlpha = 0.13;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(renderSize.width, y);
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = "#fff7e6";
+    ctx.lineWidth = Math.max(0.8, renderSize.scale / 700);
+    for (let x = spacing * 0.48; x <= renderSize.width; x += spacing * spacingMultiplier) {
+      ctx.globalAlpha = 0.08;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, renderSize.height);
+      ctx.stroke();
+    }
+
+    for (let y = spacing * 0.4; y <= renderSize.height; y += spacing * 0.86 * spacingMultiplier) {
+      ctx.globalAlpha = 0.064;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(renderSize.width, y);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  function drawSelectedBackgroundTexture(ctx: CanvasRenderingContext2D, renderSize: CanvasRenderSize) {
+    if (backgroundTexture === "clean") {
+      return;
+    }
+
+    if (backgroundTexture === "grain") {
+      drawGrainTexture(ctx, renderSize, backgroundAccentColor);
+      return;
+    }
+
+    if (backgroundTexture === "fiber") {
+      drawGrainTexture(ctx, renderSize, backgroundAccentColor);
+      drawFiberTexture(ctx, renderSize);
+      return;
+    }
+
+    if (backgroundTexture === "canvas") {
+      drawGrainTexture(ctx, renderSize, backgroundAccentColor);
+      drawCanvasTexture(ctx, renderSize, 0.64);
+      return;
+    }
+
+    drawGrainTexture(ctx, renderSize, backgroundAccentColor);
+    drawFiberTexture(ctx, renderSize);
+    drawCanvasTexture(ctx, renderSize, 0.82);
+  }
+
+  function drawCanvasBackground(ctx: CanvasRenderingContext2D, renderSize: CanvasRenderSize) {
+    if (backgroundStyle === "parchment") {
+      const gradient = ctx.createLinearGradient(0, 0, renderSize.width, renderSize.height);
+      gradient.addColorStop(0, "#f8edcb");
+      gradient.addColorStop(0.48, backgroundColor);
+      gradient.addColorStop(1, "#c69b5f");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, renderSize.width, renderSize.height);
+      drawSelectedBackgroundTexture(ctx, renderSize);
+      return;
+    }
+
+    if (backgroundStyle === "midnight") {
+      const gradient = ctx.createLinearGradient(0, 0, renderSize.width, renderSize.height);
+      gradient.addColorStop(0, backgroundColor);
+      gradient.addColorStop(1, "#1f3037");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, renderSize.width, renderSize.height);
+      drawSelectedBackgroundTexture(ctx, renderSize);
+      return;
+    }
+
+    if (["blush", "sage", "sky", "lavender"].includes(backgroundStyle)) {
+      const gradient = ctx.createLinearGradient(0, 0, renderSize.width, renderSize.height);
+      gradient.addColorStop(0, "#fff7e8");
+      gradient.addColorStop(0.44, backgroundColor);
+      gradient.addColorStop(1, backgroundAccentColor);
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, renderSize.width, renderSize.height);
+      drawSelectedBackgroundTexture(ctx, renderSize);
+      return;
+    }
+
+    ctx.fillStyle = backgroundColor;
+    ctx.fillRect(0, 0, renderSize.width, renderSize.height);
+
+    if (backgroundStyle === "lined") {
+      ctx.save();
+      ctx.strokeStyle = backgroundAccentColor;
+      ctx.globalAlpha = 0.48;
+      ctx.lineWidth = 1.4;
+
+      for (let y = renderSize.height * 0.16; y < renderSize.height - 18; y += renderSize.scale * 0.09) {
+        ctx.beginPath();
+        ctx.moveTo(renderSize.width * 0.08, y);
+        ctx.lineTo(renderSize.width * 0.92, y);
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+
+    if (backgroundStyle === "grid") {
+      ctx.save();
+      ctx.strokeStyle = backgroundAccentColor;
+      ctx.globalAlpha = 0.24;
+      ctx.lineWidth = 1;
+
+      for (let x = renderSize.width * 0.08; x < renderSize.width; x += renderSize.scale * 0.08) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, renderSize.height);
+        ctx.stroke();
+      }
+
+      for (let y = renderSize.height * 0.08; y < renderSize.height; y += renderSize.scale * 0.08) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(renderSize.width, y);
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+
+    drawSelectedBackgroundTexture(ctx, renderSize);
+  }
+
+  function drawGuides(ctx: CanvasRenderingContext2D, renderSize: CanvasRenderSize) {
     const horizontalGuides = [
       { y: guideSettings.ascender, color: "rgba(41, 128, 145, 0.55)", label: "ascender" },
       { y: guideSettings.xHeight, color: "rgba(181, 132, 42, 0.58)", label: "height" },
@@ -326,11 +669,11 @@ export default function GlyphCanvas({
     ctx.textBaseline = "middle";
 
     for (const guide of horizontalGuides) {
-      const y = guide.y * CANVAS_SIZE;
+      const y = guide.y * renderSize.height;
       ctx.strokeStyle = guide.color;
       ctx.beginPath();
       ctx.moveTo(0, y);
-      ctx.lineTo(CANVAS_SIZE, y);
+      ctx.lineTo(renderSize.width, y);
       ctx.stroke();
       ctx.fillStyle = guide.color;
       ctx.fillText(guide.label, 18, y - 12);
@@ -339,17 +682,60 @@ export default function GlyphCanvas({
     ctx.strokeStyle = "rgba(25, 20, 15, 0.14)";
     ctx.lineWidth = 1;
     for (const x of [0.1, 0.9]) {
-      const px = x * CANVAS_SIZE;
+      const px = x * renderSize.width;
       ctx.beginPath();
       ctx.moveTo(px, 0);
-      ctx.lineTo(px, CANVAS_SIZE);
+      ctx.lineTo(px, renderSize.height);
       ctx.stroke();
     }
 
     ctx.restore();
   }
 
-  function drawStrokeSelection(ctx: CanvasRenderingContext2D, stroke: GlyphStroke) {
+  function drawCircleTool(
+    ctx: CanvasRenderingContext2D,
+    point: GlyphStroke["points"][number],
+    renderSize: CanvasRenderSize,
+    mode: "smooth" | "spread",
+  ) {
+    const radius = getSmoothingCircleRadius() * renderSize.scale;
+    const x = point.x * renderSize.width;
+    const y = point.y * renderSize.height;
+
+    ctx.save();
+    ctx.fillStyle = mode === "spread" ? "rgba(104, 67, 35, 0.1)" : "rgba(130, 208, 188, 0.1)";
+    ctx.strokeStyle = mode === "spread" ? "rgba(180, 130, 74, 0.9)" : "rgba(130, 208, 188, 0.9)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 7]);
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  function drawDecorationSelection(
+    ctx: CanvasRenderingContext2D,
+    decoration: GlyphDecoration,
+    renderSize: CanvasRenderSize,
+  ) {
+    const radius = getEyeHitRadius(decoration) * renderSize.scale;
+    const x = decoration.x * renderSize.width;
+    const y = decoration.y * renderSize.height;
+
+    ctx.save();
+    ctx.strokeStyle = "rgba(130, 208, 188, 0.92)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([7, 6]);
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  function drawStrokeSelection(ctx: CanvasRenderingContext2D, stroke: GlyphStroke, renderSize: CanvasRenderSize) {
     if (stroke.points.length === 0) {
       return;
     }
@@ -368,11 +754,11 @@ export default function GlyphCanvas({
         minY: stroke.points[0].y,
       },
     );
-    const padding = Math.max(10, stroke.size * CANVAS_SIZE * 2.6);
-    const left = bounds.minX * CANVAS_SIZE - padding;
-    const top = bounds.minY * CANVAS_SIZE - padding;
-    const width = (bounds.maxX - bounds.minX) * CANVAS_SIZE + padding * 2;
-    const height = (bounds.maxY - bounds.minY) * CANVAS_SIZE + padding * 2;
+    const padding = Math.max(10, stroke.size * renderSize.scale * 2.6);
+    const left = bounds.minX * renderSize.width - padding;
+    const top = bounds.minY * renderSize.height - padding;
+    const width = (bounds.maxX - bounds.minX) * renderSize.width + padding * 2;
+    const height = (bounds.maxY - bounds.minY) * renderSize.height + padding * 2;
 
     ctx.save();
     ctx.strokeStyle = "rgba(36, 104, 201, 0.86)";
@@ -381,15 +767,18 @@ export default function GlyphCanvas({
     ctx.strokeRect(left, top, Math.max(12, width), Math.max(12, height));
     ctx.setLineDash([]);
     ctx.fillStyle = "rgba(36, 104, 201, 0.92)";
-    for (const point of stroke.points) {
+    const activePoint = movingPointRef.current?.strokeId === stroke.id ? movingPointRef.current.pointIndex : null;
+
+    for (let pointIndex = 0; pointIndex < stroke.points.length; pointIndex += 1) {
+      const point = stroke.points[pointIndex];
       ctx.beginPath();
-      ctx.arc(point.x * CANVAS_SIZE, point.y * CANVAS_SIZE, 4, 0, Math.PI * 2);
+      ctx.arc(point.x * renderSize.width, point.y * renderSize.height, pointIndex === activePoint ? 7 : 4, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.restore();
   }
 
-  function drawReferenceGlyph(ctx: CanvasRenderingContext2D, glyph: Glyph) {
+  function drawReferenceGlyph(ctx: CanvasRenderingContext2D, glyph: Glyph, renderSize: CanvasRenderSize) {
     ctx.save();
     ctx.globalAlpha = 0.18;
 
@@ -402,23 +791,72 @@ export default function GlyphCanvas({
         },
         0,
         0,
-        CANVAS_SIZE,
-        CANVAS_SIZE,
-        CANVAS_SIZE,
+        renderSize.scale,
+        renderSize.width,
+        renderSize.height,
         "#2468c9",
-        { renderProfile },
+        { backgroundTexture, renderProfile },
       );
     }
 
     ctx.globalAlpha = 0.24;
     for (const decoration of glyph.decorations ?? []) {
-      drawGlyphDecoration(ctx, decoration, 0, 0, CANVAS_SIZE);
+      drawGlyphDecoration(ctx, decoration, 0, 0, renderSize.scale, renderSize.width, renderSize.height);
     }
 
     ctx.restore();
   }
 
+  function drawBoardEdges(ctx: CanvasRenderingContext2D, renderSize: CanvasRenderSize) {
+    const railHeight = 10;
+    const tickLength = 54;
+    const labelInset = 20;
+    const rightEdge = renderSize.width;
+    const bottomEdge = renderSize.height;
+
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.font = "900 14px Inter, ui-sans-serif, system-ui";
+    ctx.textBaseline = "middle";
+
+    ctx.fillStyle = "rgba(23, 17, 11, 0.12)";
+    ctx.fillRect(0, 0, rightEdge, railHeight);
+    ctx.fillRect(0, bottomEdge - railHeight, rightEdge, railHeight);
+
+    ctx.strokeStyle = "rgba(23, 17, 11, 0.34)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(0, railHeight + 8);
+    ctx.lineTo(rightEdge, railHeight + 8);
+    ctx.moveTo(0, bottomEdge - railHeight - 8);
+    ctx.lineTo(rightEdge, bottomEdge - railHeight - 8);
+    ctx.stroke();
+
+    ctx.strokeStyle = "rgba(23, 17, 11, 0.48)";
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(labelInset, railHeight + 22);
+    ctx.lineTo(labelInset + tickLength, railHeight + 22);
+    ctx.moveTo(rightEdge - labelInset - tickLength, railHeight + 22);
+    ctx.lineTo(rightEdge - labelInset, railHeight + 22);
+    ctx.moveTo(labelInset, bottomEdge - railHeight - 22);
+    ctx.lineTo(labelInset + tickLength, bottomEdge - railHeight - 22);
+    ctx.moveTo(rightEdge - labelInset - tickLength, bottomEdge - railHeight - 22);
+    ctx.lineTo(rightEdge - labelInset, bottomEdge - railHeight - 22);
+    ctx.stroke();
+
+    ctx.fillStyle = "rgba(23, 17, 11, 0.52)";
+    ctx.fillText("top edge", labelInset + tickLength + 10, railHeight + 22);
+    ctx.fillText("bottom edge", labelInset + tickLength + 10, bottomEdge - railHeight - 22);
+
+    ctx.restore();
+  }
+
   function getCanvasPoint(event: PointerEvent<HTMLCanvasElement>) {
+    return getCanvasPointFromClient(event.clientX, event.clientY);
+  }
+
+  function getCanvasPointFromClient(clientX: number, clientY: number) {
     const canvas = canvasRef.current;
 
     if (!canvas) {
@@ -428,8 +866,8 @@ export default function GlyphCanvas({
     const rect = canvas.getBoundingClientRect();
 
     return {
-      x: clamp((event.clientX - rect.left) / rect.width),
-      y: clamp((event.clientY - rect.top) / rect.height),
+      x: clamp((clientX - rect.left) / rect.width),
+      y: clamp((clientY - rect.top) / rect.height),
     };
   }
 
@@ -437,6 +875,18 @@ export default function GlyphCanvas({
     const eventPressure = event.pressure > 0 ? event.pressure : undefined;
 
     return Math.min(1, Math.max(0.48, eventPressure ?? (event.pointerType === "mouse" ? 0.58 : 0.66)));
+  }
+
+  function getSmoothingCircleRadius() {
+    return Math.max(0.045, (brushSize / getCanvasScaleBasis()) * 4);
+  }
+
+  function getSpreadAmountForStroke(stroke: GlyphStroke, distance: number, radius: number) {
+    const falloff = 1 - Math.min(1, distance / radius);
+    const strokeWidthPx = stroke.size * getCanvasScaleBasis();
+    const thicknessBoost = Math.min(1, Math.max(0.24, strokeWidthPx / 22));
+
+    return Math.min(1, 0.22 + falloff * 0.42 + thicknessBoost * 0.22);
   }
 
   function pushInkPoint(point: GlyphStroke["points"][number]) {
@@ -447,6 +897,28 @@ export default function GlyphCanvas({
     }
 
     stroke.points.push(point);
+
+    const nextStrokes = [...strokesRef.current];
+    strokesRef.current = nextStrokes;
+    onChangeStrokes(nextStrokes);
+  }
+
+  function updateActiveLineStroke(point: GlyphStroke["points"][number]) {
+    const stroke = activeStrokeRef.current;
+
+    if (!stroke) {
+      return;
+    }
+
+    const startPoint = stroke.points[0];
+
+    stroke.points = [
+      startPoint,
+      {
+        ...point,
+        ink: 0,
+      },
+    ];
 
     const nextStrokes = [...strokesRef.current];
     strokesRef.current = nextStrokes;
@@ -474,13 +946,160 @@ export default function GlyphCanvas({
     onChangeDecorations(nextDecorations);
   }
 
-  function placeGooglyEyes(x: number, y: number) {
+  function updateStrokePoints(strokeId: string, points: GlyphStroke["points"]) {
+    const nextStrokes = strokesRef.current.map((stroke) =>
+      stroke.id === strokeId
+        ? {
+            ...stroke,
+            points,
+          }
+        : stroke,
+    );
+
+    strokesRef.current = nextStrokes;
+    onChangeStrokes(nextStrokes);
+  }
+
+  function moveSelectedStroke(point: GlyphStroke["points"][number]) {
+    const movingStroke = movingStrokeRef.current;
+
+    if (!movingStroke) {
+      return;
+    }
+
+    const dx = point.x - movingStroke.startPoint.x;
+    const dy = point.y - movingStroke.startPoint.y;
+
+    updateStrokePoints(
+      movingStroke.strokeId,
+      movingStroke.originalPoints.map((originalPoint) => ({
+        ...originalPoint,
+        x: clamp(originalPoint.x + dx),
+        y: clamp(originalPoint.y + dy),
+      })),
+    );
+  }
+
+  function moveSelectedPoint(point: GlyphStroke["points"][number]) {
+    const movingPoint = movingPointRef.current;
+    const stroke = findStrokeById(strokesRef.current, movingPoint?.strokeId ?? null);
+
+    if (!movingPoint || !stroke) {
+      return;
+    }
+
+    updateStrokePoints(
+      movingPoint.strokeId,
+      stroke.points.map((strokePoint, pointIndex) =>
+        pointIndex === movingPoint.pointIndex
+          ? {
+              ...strokePoint,
+              x: point.x,
+              y: point.y,
+              pressure: point.pressure,
+            }
+          : strokePoint,
+      ),
+    );
+  }
+
+  function smoothCircleAtPoint(point: GlyphStroke["points"][number]) {
+    const radius = getSmoothingCircleRadius();
+    let firstChangedStrokeId: string | null = null;
+    let didChange = false;
+
+    const nextStrokes = strokesRef.current.map((stroke) => {
+      let strokeChanged = false;
+      const originalPoints = stroke.points;
+      const smoothedPoints = originalPoints.map((strokePoint, pointIndex) => {
+        if (pointIndex === 0 || pointIndex === originalPoints.length - 1) {
+          return strokePoint;
+        }
+
+        if (Math.hypot(strokePoint.x - point.x, strokePoint.y - point.y) > radius) {
+          return strokePoint;
+        }
+
+        strokeChanged = true;
+        return smoothPointBetweenNeighbors(strokePoint, originalPoints[pointIndex - 1], originalPoints[pointIndex + 1]);
+      });
+
+      if (!strokeChanged) {
+        return stroke;
+      }
+
+      didChange = true;
+      firstChangedStrokeId ??= stroke.id;
+
+      return {
+        ...stroke,
+        points: smoothedPoints,
+      };
+    });
+
+    if (didChange) {
+      strokesRef.current = nextStrokes;
+      onChangeStrokes(nextStrokes);
+    } else {
+      drawCanvas(strokesRef.current, decorationsRef.current);
+    }
+
+    return firstChangedStrokeId;
+  }
+
+  function spreadCircleAtPoint(point: GlyphStroke["points"][number]) {
+    const radius = getSmoothingCircleRadius();
+    let firstChangedStrokeId: string | null = null;
+    let didChange = false;
+
+    const nextStrokes = strokesRef.current.map((stroke) => {
+      let strokeChanged = false;
+      const nextPoints = stroke.points.map((strokePoint) => {
+        const distance = Math.hypot(strokePoint.x - point.x, strokePoint.y - point.y);
+
+        if (distance > radius) {
+          return strokePoint;
+        }
+
+        strokeChanged = true;
+        return {
+          ...strokePoint,
+          spread: Math.max(strokePoint.spread ?? 0, getSpreadAmountForStroke(stroke, distance, radius)),
+        };
+      });
+
+      if (!strokeChanged) {
+        return stroke;
+      }
+
+      didChange = true;
+      firstChangedStrokeId ??= stroke.id;
+      const nextInkEffect: GlyphInkEffect = stroke.inkEffect === "dramaticPooling" ? "dramaticPooling" : "subtleSpread";
+
+      return {
+        ...stroke,
+        inkEffect: nextInkEffect,
+        points: nextPoints,
+      };
+    });
+
+    if (didChange) {
+      strokesRef.current = nextStrokes;
+      onChangeStrokes(nextStrokes);
+    } else {
+      drawCanvas(strokesRef.current, decorationsRef.current);
+    }
+
+    return firstChangedStrokeId;
+  }
+
+  function placeGooglyEyes(x: number, y: number, expression = eyeExpression) {
     const decoration: GlyphDecoration = moveDecoration(
       {
-        expression: eyeExpression,
+        expression,
         id: makeDecorationId(),
         kind: "googly-eyes",
-        size: Math.min(0.075, Math.max(0.032, (brushSize / CANVAS_SIZE) * 3.25)),
+        size: Math.min(0.075, Math.max(0.032, (brushSize / getCanvasScaleBasis()) * 3.25)),
         x,
         y,
       },
@@ -491,8 +1110,38 @@ export default function GlyphCanvas({
 
     decorationsRef.current = nextDecorations;
     activeDecorationIdRef.current = decoration.id;
+    onSelectDecoration(decoration.id);
     onChangeDecorations(nextDecorations);
   }
+
+  useEffect(() => {
+    if (!stickerDropRequest) {
+      return;
+    }
+
+    const canvas = canvasRef.current;
+
+    if (!canvas) {
+      onStickerDropHandled(stickerDropRequest.id);
+      return;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    const isInsideCanvas =
+      stickerDropRequest.clientX >= rect.left &&
+      stickerDropRequest.clientX <= rect.right &&
+      stickerDropRequest.clientY >= rect.top &&
+      stickerDropRequest.clientY <= rect.bottom;
+
+    if (isInsideCanvas) {
+      const point = getCanvasPointFromClient(stickerDropRequest.clientX, stickerDropRequest.clientY);
+      onEditStart();
+      onSelectStroke(null);
+      placeGooglyEyes(point.x, point.y, stickerDropRequest.expression);
+    }
+
+    onStickerDropHandled(stickerDropRequest.id);
+  }, [stickerDropRequest]);
 
   function handlePointerDown(event: PointerEvent<HTMLCanvasElement>) {
     if (event.pointerType === "mouse" && event.button !== 0) {
@@ -514,11 +1163,51 @@ export default function GlyphCanvas({
     }
 
     if (tool === "select") {
-      onSelectStroke(hitTestStroke(strokesRef.current, point.x, point.y, Math.max(0.02, brushSize / CANVAS_SIZE)));
+      if (selectMode === "smoothCircle" || selectMode === "spreadCircle") {
+        onEditStart();
+        circleToolActiveRef.current = true;
+        circleToolPointRef.current = point;
+        movingStrokeRef.current = null;
+        movingPointRef.current = null;
+        const changedStrokeId = selectMode === "spreadCircle" ? spreadCircleAtPoint(point) : smoothCircleAtPoint(point);
+        onSelectStroke(changedStrokeId ?? selectedStrokeIdRef.current);
+        return;
+      }
+
+      const hitRadius = Math.max(0.02, brushSize / getCanvasScaleBasis());
+      const hitStrokeId = hitTestStroke(strokesRef.current, point.x, point.y, hitRadius);
+      const hitStroke = findStrokeById(strokesRef.current, hitStrokeId);
+
+      onSelectDecoration(null);
+      onSelectStroke(hitStrokeId);
+
+      if (!hitStrokeId || !hitStroke) {
+        movingStrokeRef.current = null;
+        movingPointRef.current = null;
+        return;
+      }
+
+      onEditStart();
+
+      if (selectMode === "editPoint") {
+        const pointIndex = hitTestStrokePoint(hitStroke, point.x, point.y, Math.max(hitRadius * 1.8, 0.028));
+        movingPointRef.current = pointIndex === null ? null : { pointIndex, strokeId: hitStrokeId };
+        movingStrokeRef.current = null;
+        drawCanvas(strokesRef.current, decorationsRef.current);
+        return;
+      }
+
+      movingStrokeRef.current = {
+        originalPoints: hitStroke.points.map((strokePoint) => ({ ...strokePoint })),
+        startPoint: point,
+        strokeId: hitStrokeId,
+      };
+      movingPointRef.current = null;
       return;
     }
 
     if (tool === "eraser") {
+      onSelectDecoration(null);
       onEditStart();
       erasingRef.current = true;
       eraseAtPoint(point.x, point.y);
@@ -526,33 +1215,34 @@ export default function GlyphCanvas({
     }
 
     if (tool === "eyes") {
-      onEditStart();
       const hitDecoration = hitTestDecoration(point.x, point.y);
 
       if (hitDecoration) {
+        onEditStart();
         activeDecorationIdRef.current = hitDecoration.id;
+        onSelectDecoration(hitDecoration.id);
         return;
       }
 
-      placeGooglyEyes(point.x, point.y);
+      onSelectDecoration(null);
       return;
     }
 
     onEditStart();
     onSelectStroke(null);
+    onSelectDecoration(null);
 
+    const startPoint = {
+      ...point,
+      pressure,
+      ink: 0,
+    };
     const stroke: GlyphStroke = {
       color: inkColor,
       id: makeStrokeId(),
       inkEffect,
-      points: [
-        {
-          ...point,
-          pressure,
-          ink: 0,
-        },
-      ],
-      size: brushSize / CANVAS_SIZE,
+      points: tool === "line" ? [startPoint, { ...startPoint }] : [startPoint],
+      size: brushSize / getCanvasScaleBasis(),
       strokeTool: tool === "quill" ? "quill" : "pen",
     };
 
@@ -575,6 +1265,37 @@ export default function GlyphCanvas({
       return;
     }
 
+    if (tool === "select") {
+      const point = {
+        ...getCanvasPoint(event),
+        pressure: getEventPressure(event),
+        ink: 0,
+      };
+
+      if (selectMode === "smoothCircle" || selectMode === "spreadCircle") {
+        circleToolPointRef.current = point;
+
+        if (circleToolActiveRef.current) {
+          const changedStrokeId = selectMode === "spreadCircle" ? spreadCircleAtPoint(point) : smoothCircleAtPoint(point);
+          onSelectStroke(changedStrokeId ?? selectedStrokeIdRef.current);
+        } else {
+          drawCanvas(strokesRef.current, decorationsRef.current);
+        }
+
+        return;
+      }
+
+      if (movingStrokeRef.current) {
+        moveSelectedStroke(point);
+      }
+
+      if (movingPointRef.current) {
+        moveSelectedPoint(point);
+      }
+
+      return;
+    }
+
     if (tool === "eyes" && activeDecorationIdRef.current) {
       const point = getCanvasPoint(event);
       updateDecorationPosition(activeDecorationIdRef.current, point.x, point.y);
@@ -590,6 +1311,15 @@ export default function GlyphCanvas({
     const stroke = activeStrokeRef.current;
 
     if (!stroke) {
+      return;
+    }
+
+    if (tool === "line") {
+      updateActiveLineStroke({
+        ...getCanvasPoint(event),
+        pressure: getEventPressure(event),
+        ink: 0,
+      });
       return;
     }
 
@@ -620,13 +1350,16 @@ export default function GlyphCanvas({
 
     activeStrokeRef.current = null;
     activeDecorationIdRef.current = null;
+    movingStrokeRef.current = null;
+    movingPointRef.current = null;
+    circleToolActiveRef.current = false;
     erasingRef.current = false;
     panStartRef.current = null;
     drawCanvas(strokesRef.current, decorationsRef.current);
   }
 
   function eraseAtPoint(x: number, y: number) {
-    const radius = Math.max(0.018, (brushSize / CANVAS_SIZE) * 2.2);
+    const radius = Math.max(0.018, (brushSize / getCanvasScaleBasis()) * 2.2);
     const nextStrokes = eraserMode === "stroke"
       ? eraseStrokeNearPoint(strokesRef.current, x, y, radius)
       : eraseSegmentsNearPoint(strokesRef.current, x, y, radius);
@@ -649,6 +1382,13 @@ export default function GlyphCanvas({
     if (nextDecorations.length !== decorationsRef.current.length) {
       decorationsRef.current = nextDecorations;
       onChangeDecorations(nextDecorations);
+
+      if (
+        selectedDecorationIdRef.current &&
+        !nextDecorations.some((decoration) => decoration.id === selectedDecorationIdRef.current)
+      ) {
+        onSelectDecoration(null);
+      }
     }
   }
 

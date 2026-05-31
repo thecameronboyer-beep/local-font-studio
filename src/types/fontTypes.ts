@@ -1,6 +1,7 @@
 export type GlyphPoint = {
   ink?: number;
   pressure?: number;
+  spread?: number;
   x: number;
   y: number;
 };
@@ -16,10 +17,10 @@ export type GlyphStroke = {
 
 export type GlyphStrokeTool = "pen" | "quill";
 
-export type GlyphInkEffect = "none" | "dramaticPooling";
+export type GlyphInkEffect = "none" | "dramaticPooling" | "subtleSpread";
 
 export type GlyphDecoration = {
-  expression?: "googly" | "happy" | "angry" | "tired" | "stoned";
+  expression?: "googly" | "happy" | "angry" | "sad" | "tired" | "stoned";
   id: string;
   kind: "googly-eyes";
   size: number;
@@ -53,12 +54,15 @@ export type BackgroundStyle =
   | "lined"
   | "grid";
 
+export type BackgroundTexture = "clean" | "grain" | "fiber" | "canvas" | "woven";
+
 export type FontRenderProfile = "plain" | "quillParchment";
 
 export type FontTheme = {
   accentColor: string;
   backgroundColor: string;
   backgroundStyle: BackgroundStyle;
+  backgroundTexture: BackgroundTexture;
   inkColor: string;
 };
 
@@ -161,6 +165,18 @@ export type FontExportFile = {
   font: FontSet;
   schemaVersion: 2;
 };
+
+export type SavedImage = {
+  createdAt: string;
+  fontName: string;
+  height: number;
+  id: string;
+  imageDataUrl: string;
+  message: string;
+  width: number;
+};
+
+export type SavedImageDraft = Omit<SavedImage, "createdAt" | "id">;
 
 export type PreviewSettings = {
   fontSize: number;

@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { RefObject } from "react";
+import { useEffect, useMemo, useState } from "react";
 import FontLibrary from "./components/FontLibrary";
 import FontMetricsPanel from "./components/FontMetricsPanel";
 import GlyphEditor from "./components/GlyphEditor";
 import GlyphGrid from "./components/GlyphGrid";
+import SavedImagesPanel from "./components/SavedImagesPanel";
 import TextPreview from "./components/TextPreview";
 import { getVisibleCharacters, spacebar } from "./data/characterSets";
 import { hasDrawnGlyph } from "./render/glyphRenderer";
@@ -11,10 +11,12 @@ import {
   cloneFontSet,
   createEmptyGlyph,
   createFontSet,
+  createId,
   loadFontStudioDataWithHealth,
   recordProjectActivity,
   saveFontStudioData,
 } from "./storage/fontStorage";
+import { loadSavedImages, saveSavedImages } from "./storage/savedImageStorage";
 import type {
   FontCharacterSettings,
   FontGuideSettings,
@@ -22,13 +24,14 @@ import type {
   FontShapeSettings,
   FontSet,
   FontStudioData,
+  FontTheme,
   Glyph,
   ProjectActivityDraft,
+  SavedImage,
+  SavedImageDraft,
 } from "./types/fontTypes";
 
 export default function App() {
-  const libraryRef = useRef<HTMLDivElement | null>(null);
-  const previewRef = useRef<HTMLDivElement | null>(null);
   const [initialLoad] = useState(() => {
     const result = loadFontStudioDataWithHealth();
     saveFontStudioData(result.data, {
@@ -41,8 +44,10 @@ export default function App() {
   const [selectedCharacter, setSelectedCharacter] = useState("A");
   const [editorFullScreen, setEditorFullScreen] = useState(false);
   const [gridFullScreen, setGridFullScreen] = useState(false);
+  const [savedImagesOpen, setSavedImagesOpen] = useState(false);
+  const [savedImages, setSavedImages] = useState<SavedImage[]>(() => loadSavedImages());
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [previewText, setPreviewText] = useState("Draw and save A, then type A here.");
+  const [previewText, setPreviewText] = useState("the ducks know about the blue canoe.");
 
   const activeFont = useMemo(
     () =>
@@ -60,15 +65,13 @@ export default function App() {
     return Object.values(font.glyphs).filter((glyph) => hasDrawnGlyph(glyph)).length;
   }
 
-  const savedGlyphCount = getSavedGlyphCount(activeFont);
-
   useEffect(() => {
-    document.body.classList.toggle("editor-fullscreen-open", editorFullScreen || gridFullScreen);
+    document.body.classList.toggle("editor-fullscreen-open", editorFullScreen || gridFullScreen || savedImagesOpen);
 
     return () => {
       document.body.classList.remove("editor-fullscreen-open");
     };
-  }, [editorFullScreen, gridFullScreen]);
+  }, [editorFullScreen, gridFullScreen, savedImagesOpen]);
 
   useEffect(() => {
     if (!activeCharacters.includes(selectedCharacter)) {
@@ -81,6 +84,11 @@ export default function App() {
 
     setStudioData(dataWithActivity);
     saveFontStudioData(dataWithActivity, { backupReason: activity?.type ?? "autosave" });
+  }
+
+  function persistSavedImages(nextImages: SavedImage[]) {
+    saveSavedImages(nextImages);
+    setSavedImages(nextImages);
   }
 
   function handleSelectCharacter(character: string) {
@@ -97,6 +105,7 @@ export default function App() {
 
     setSelectedCharacter(firstMissingCharacter);
     setGridFullScreen(false);
+    setSavedImagesOpen(false);
     setSidebarOpen(false);
     setEditorFullScreen(true);
   }
@@ -105,14 +114,6 @@ export default function App() {
     const currentIndex = Math.max(0, selectedCharacterIndex);
     const nextIndex = (currentIndex + offset + activeCharacters.length) % activeCharacters.length;
     setSelectedCharacter(activeCharacters[nextIndex]);
-  }
-
-  function jumpToSection(ref: RefObject<HTMLDivElement | null>) {
-    setSidebarOpen(false);
-
-    window.setTimeout(() => {
-      ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 0);
   }
 
   function handleSelectFont(fontId: string) {
@@ -169,6 +170,7 @@ export default function App() {
       characterSettings?: FontCharacterSettings;
       guideSettings?: FontGuideSettings;
       shapeSettings?: FontShapeSettings;
+      theme?: FontTheme;
     },
   ) {
     const now = new Date().toISOString();
@@ -183,6 +185,7 @@ export default function App() {
               characterSettings: settings.characterSettings ?? font.characterSettings,
               guideSettings: settings.guideSettings ?? font.guideSettings,
               shapeSettings: settings.shapeSettings ?? font.shapeSettings,
+              theme: settings.theme ?? font.theme,
               updatedAt: now,
             }
           : font,
@@ -273,6 +276,26 @@ export default function App() {
     });
   }
 
+  function handleSaveImage(image: SavedImageDraft) {
+    const nextImage: SavedImage = {
+      ...image,
+      createdAt: new Date().toISOString(),
+      id: createId("saved_image"),
+    };
+    const nextImages = [nextImage, ...savedImages].slice(0, 24);
+
+    try {
+      persistSavedImages(nextImages);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function handleDeleteSavedImage(imageId: string) {
+    persistSavedImages(savedImages.filter((image) => image.id !== imageId));
+  }
+
   return (
     <main className="app-shell">
       <button
@@ -295,28 +318,12 @@ export default function App() {
 
       <aside className={`sidebar-menu ${sidebarOpen ? "open" : ""}`} aria-label="App menu">
         <div className="sidebar-heading">
-          <div>
-            <p className="eyebrow">Menu</p>
-            <h2>Font Studio</h2>
-          </div>
-          <button className="secondary-button compact-button" type="button" onClick={() => setSidebarOpen(false)}>
-            Close
-          </button>
-        </div>
-
-        <div className="sidebar-status">
-          <span>{activeFont.name}</span>
-          <strong>
-            {savedGlyphCount}/{activeCharacters.length} glyphs
-          </strong>
+          <h2>Menu</h2>
         </div>
 
         <div id="preview-text-menu-slot" className="sidebar-preview-slot" />
 
         <nav className="sidebar-nav">
-          <button type="button" onClick={() => jumpToSection(libraryRef)}>
-            Font library
-          </button>
           <button
             type="button"
             onClick={() => {
@@ -324,10 +331,16 @@ export default function App() {
               setGridFullScreen(true);
             }}
           >
-            Glyph grid
+            Alphabet
           </button>
-          <button type="button" onClick={() => jumpToSection(previewRef)}>
-            Phone image
+          <button
+            type="button"
+            onClick={() => {
+              setSidebarOpen(false);
+              setSavedImagesOpen(true);
+            }}
+          >
+            Saved Images
           </button>
           <button
             type="button"
@@ -336,55 +349,39 @@ export default function App() {
               setEditorFullScreen(true);
             }}
           >
-            Edit selected glyph
+            Draw Letters
           </button>
         </nav>
       </aside>
 
       <header className="app-header">
-        <div>
-          <p className="eyebrow">Standalone local app</p>
-          <h1>Local Font Studio</h1>
-          <p className="header-copy">
-            Draw glyphs, save strokes in this browser, and preview your custom hand.
-          </p>
-        </div>
-
-        <div className="font-badge" aria-label="Current font set">
-          <span>{activeFont.name}</span>
-          <strong>
-            {savedGlyphCount}/{activeCharacters.length}
-          </strong>
-        </div>
+        <h1>Font Studio</h1>
       </header>
 
       <div className="workspace">
         <div className="left-stack">
-          <div ref={libraryRef}>
-            <FontLibrary
-              fonts={studioData.fonts}
-              activeFontId={studioData.activeFontId}
-              onSelectFont={handleSelectFont}
-              onStartDrawing={handleStartDrawing}
-              onCreateFont={handleCreateFont}
-              onRenameFont={handleRenameFont}
-              onUpdateFontSettings={handleUpdateFontSettings}
-              onDuplicateFont={handleDuplicateFont}
-              onDeleteFont={handleDeleteFont}
-              getSavedGlyphCount={getSavedGlyphCount}
-            />
-          </div>
-          <div ref={previewRef}>
-            <TextPreview
-              font={activeFont}
-              onRecordExport={handleRecordPreviewExport}
-              onUpdateSelectedGlyph={handleSaveGlyph}
-              previewText={previewText}
-              onPreviewTextChange={setPreviewText}
-              selectedGlyph={selectedGlyph}
-              spacebarGlyph={spacebarGlyph}
-            />
-          </div>
+          <FontLibrary
+            fonts={studioData.fonts}
+            activeFontId={studioData.activeFontId}
+            onSelectFont={handleSelectFont}
+            onStartDrawing={handleStartDrawing}
+            onCreateFont={handleCreateFont}
+            onRenameFont={handleRenameFont}
+            onUpdateFontSettings={handleUpdateFontSettings}
+            onDuplicateFont={handleDuplicateFont}
+            onDeleteFont={handleDeleteFont}
+            getSavedGlyphCount={getSavedGlyphCount}
+          />
+          <TextPreview
+            font={activeFont}
+            onRecordExport={handleRecordPreviewExport}
+            onSaveImage={handleSaveImage}
+            onUpdateSelectedGlyph={handleSaveGlyph}
+            previewText={previewText}
+            onPreviewTextChange={setPreviewText}
+            selectedGlyph={selectedGlyph}
+            spacebarGlyph={spacebarGlyph}
+          />
           <FontMetricsPanel
             font={activeFont}
             previewText={previewText}
@@ -404,12 +401,21 @@ export default function App() {
         />
       )}
 
+      {savedImagesOpen && (
+        <SavedImagesPanel
+          images={savedImages}
+          onClose={() => setSavedImagesOpen(false)}
+          onDeleteImage={handleDeleteSavedImage}
+        />
+      )}
+
       {editorFullScreen && (
         <GlyphEditor
           key={activeFont.id}
           font={activeFont}
           glyph={selectedGlyph}
           onSaveGlyph={handleSaveGlyph}
+          onUpdateFontTheme={(theme) => handleUpdateFontSettings(activeFont.id, { theme })}
           previewText={previewText}
           onPreviewTextChange={setPreviewText}
           characterIndex={Math.max(0, selectedCharacterIndex)}

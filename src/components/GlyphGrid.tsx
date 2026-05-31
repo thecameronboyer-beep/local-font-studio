@@ -41,6 +41,7 @@ function GlyphMiniPreview({ font, glyph }: { font: FontSet; glyph: Glyph }) {
       size: 56,
       color: "#f4ead7",
       renderProfile: font.renderProfile,
+      backgroundTexture: font.theme?.backgroundTexture,
       ...getGlyphRenderScales(font, glyph),
     });
   }, [font, glyph, isDrawn]);
@@ -64,12 +65,12 @@ export default function GlyphGrid({
   return (
     <section
       className={`studio-panel grid-panel ${isFullScreen ? "fullscreen-grid-page" : ""}`}
-      aria-label="Glyph grid"
+      aria-label="Alphabet"
     >
       <div className="panel-heading">
         <div>
           <p className="eyebrow">Character set</p>
-          <h2>Glyph grid</h2>
+          <h2>Alphabet</h2>
         </div>
         {isFullScreen ? (
           <button className="secondary-button compact-button" type="button" onClick={onClose}>
