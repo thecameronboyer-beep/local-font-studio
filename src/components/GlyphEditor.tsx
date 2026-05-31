@@ -69,6 +69,34 @@ function getDefaultDrawingTool(font: FontSet): InkTool {
 function getDefaultInkEffect(font: FontSet): GlyphInkEffect {
   return font.renderProfile === "quillParchment" ? "dramaticPooling" : "none";
 }
+
+function getReadableInkButtonColor(color: string) {
+  const normalizedColor = color.trim();
+  const hex = normalizedColor.startsWith("#") ? normalizedColor.slice(1) : normalizedColor;
+  const expandedHex =
+    hex.length === 3
+      ? hex
+          .split("")
+          .map((digit) => `${digit}${digit}`)
+          .join("")
+      : hex;
+
+  if (expandedHex.length !== 6) {
+    return "#fff7e6";
+  }
+
+  const red = Number.parseInt(expandedHex.slice(0, 2), 16);
+  const green = Number.parseInt(expandedHex.slice(2, 4), 16);
+  const blue = Number.parseInt(expandedHex.slice(4, 6), 16);
+
+  if ([red, green, blue].some((channel) => Number.isNaN(channel))) {
+    return "#fff7e6";
+  }
+
+  const luminance = (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255;
+  return luminance > 0.58 ? "#17110b" : "#fff7e6";
+}
+
 const eyeExpressionOptions: Array<{
   id: NonNullable<GlyphDecoration["expression"]>;
   label: string;
@@ -939,10 +967,10 @@ export default function GlyphEditor({
               aria-expanded={activeFullscreenDrawer === "ink"}
               aria-controls="draw-ink-drawer"
               title="Ink color"
+              style={{ backgroundColor: inkColor, color: getReadableInkButtonColor(inkColor) }}
               onClick={toggleInkSettings}
             >
               <Droplets aria-hidden="true" />
-              <span className="draw-ink-dot" style={{ backgroundColor: inkColor }} />
             </button>
             <button
               className="draw-glass-button draw-icon-button"
