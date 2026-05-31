@@ -2237,7 +2237,12 @@ h1 {
 }
 
 .draw-more-button {
-  grid-column: span 2;
+  grid-column: auto;
+}
+
+.draw-save-next-button {
+  grid-column: 5;
+  color: #17110b;
 }
 
 .draw-control-drawer {

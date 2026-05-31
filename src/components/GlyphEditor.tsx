@@ -950,13 +950,13 @@ export default function GlyphEditor({
               <MousePointer2 aria-hidden="true" />
             </button>
             <button
-              className={`draw-glass-button draw-icon-button ${tool === "pan" ? "active-tool" : ""}`}
+              className="draw-gold-button draw-icon-button draw-save-next-button"
               type="button"
-              aria-label="Use pan"
-              title="Pan"
-              onClick={() => chooseDockTool("pan")}
+              aria-label="Save and next glyph"
+              title="Save + next"
+              onClick={handleSaveAndNext}
             >
-              <Hand aria-hidden="true" />
+              <SkipForward aria-hidden="true" />
             </button>
             <button
               className={`draw-glass-button draw-icon-button draw-ink-color-button ${
@@ -971,6 +971,15 @@ export default function GlyphEditor({
               onClick={toggleInkSettings}
             >
               <Droplets aria-hidden="true" />
+            </button>
+            <button
+              className={`draw-glass-button draw-icon-button ${tool === "pan" ? "active-tool" : ""}`}
+              type="button"
+              aria-label="Use pan"
+              title="Pan"
+              onClick={() => chooseDockTool("pan")}
+            >
+              <Hand aria-hidden="true" />
             </button>
             <button
               className="draw-glass-button draw-icon-button"
