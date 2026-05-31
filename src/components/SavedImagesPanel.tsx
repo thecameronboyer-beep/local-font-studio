@@ -1,8 +1,6 @@
 import { useState } from "react";
-import { Capacitor } from "@capacitor/core";
-import { Directory, Filesystem } from "@capacitor/filesystem";
-import { Share } from "@capacitor/share";
 import type { SavedImage } from "../types/fontTypes";
+import { isNativeFilePlatform, saveNativeFileToDocuments, shareNativeFile } from "../utils/nativeFiles";
 
 type SavedImagesPanelProps = {
   images: SavedImage[];
@@ -28,7 +26,21 @@ function getSavedImageFileName(image: SavedImage) {
   return `${image.fontName.trim().replace(/[^a-z0-9]+/gi, "-") || "font-studio"}-${image.id}.png`;
 }
 
-function downloadSavedImage(image: SavedImage) {
+async function downloadSavedImage(image: SavedImage) {
+  if (isNativeFilePlatform()) {
+    const base64Data = image.imageDataUrl.split(",")[1];
+
+    if (!base64Data) {
+      throw new Error("Missing image data.");
+    }
+
+    await saveNativeFileToDocuments({
+      base64Data,
+      fileName: getSavedImageFileName(image),
+    });
+    return;
+  }
+
   const link = document.createElement("a");
   link.href = image.imageDataUrl;
   link.download = getSavedImageFileName(image);
@@ -53,22 +65,10 @@ export default function SavedImagesPanel({ images, onClose, onDeleteImage }: Sav
       return false;
     }
 
-    const canShare = await Share.canShare().catch(() => ({ value: false }));
-
-    if (!canShare.value) {
-      return false;
-    }
-
-    const writeResult = await Filesystem.writeFile({
-      data: base64Data,
-      directory: Directory.Cache,
-      path: `share/${Date.now()}-${getSavedImageFileName(image)}`,
-      recursive: true,
-    });
-
-    await Share.share({
+    await shareNativeFile({
+      base64Data,
       dialogTitle: "Share image",
-      files: [writeResult.uri],
+      fileName: getSavedImageFileName(image),
       text: image.message,
       title: image.fontName,
     });
@@ -78,7 +78,7 @@ export default function SavedImagesPanel({ images, onClose, onDeleteImage }: Sav
   }
 
   async function shareSavedImage(image: SavedImage) {
-    if (Capacitor.isNativePlatform()) {
+    if (isNativeFilePlatform()) {
       try {
         if (await shareNativeSavedImage(image)) {
           return;
@@ -112,7 +112,7 @@ export default function SavedImagesPanel({ images, onClose, onDeleteImage }: Sav
         return;
       }
 
-      downloadSavedImage(image);
+      await downloadSavedImage(image);
       setStatus("Sharing is not supported here, so I saved the PNG.");
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
@@ -160,7 +160,18 @@ export default function SavedImagesPanel({ images, onClose, onDeleteImage }: Sav
                 <button className="primary-button compact-button" type="button" onClick={() => shareSavedImage(image)}>
                   Share
                 </button>
-                <button className="secondary-button compact-button" type="button" onClick={() => downloadSavedImage(image)}>
+                <button
+                  className="secondary-button compact-button"
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await downloadSavedImage(image);
+                      setStatus("Saved PNG to Documents / Local Font Studio.");
+                    } catch {
+                      setStatus("Could not save the PNG.");
+                    }
+                  }}
+                >
                   Save PNG
                 </button>
                 <button className="danger-button compact-button" type="button" onClick={() => onDeleteImage(image.id)}>

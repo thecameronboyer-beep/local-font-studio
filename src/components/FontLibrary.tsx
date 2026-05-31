@@ -26,6 +26,7 @@ import type {
 } from "../types/fontTypes";
 import { clampFontGuideSettings, fontGuideRows } from "../utils/fontGuides";
 import type { FontGuideKey } from "../utils/fontGuides";
+import { isNativeFilePlatform, saveNativeFileToDocuments, shareNativeFile } from "../utils/nativeFiles";
 
 type FontLibraryProps = {
   fonts: FontSet[];
@@ -135,13 +136,30 @@ function sanitizeFileName(value: string) {
   return value.trim().replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "") || "font";
 }
 
-function downloadFontJson(font: FontSet) {
-  const blob = new Blob([exportFontSet(font)], { type: "application/json" });
+async function downloadFontJson(font: FontSet) {
+  const fileName = `${sanitizeFileName(font.name)}.font-studio.json`;
+  const textData = exportFontSet(font);
+
+  if (isNativeFilePlatform()) {
+    await saveNativeFileToDocuments({
+      fileName,
+      textData,
+    });
+    await shareNativeFile({
+      dialogTitle: "Export font JSON",
+      fileName,
+      textData,
+      title: font.name,
+    });
+    return;
+  }
+
+  const blob = new Blob([textData], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
 
   link.href = url;
-  link.download = `${sanitizeFileName(font.name)}.font-studio.json`;
+  link.download = fileName;
   document.body.appendChild(link);
   link.click();
   link.remove();
@@ -527,9 +545,12 @@ export default function FontLibrary({
                     <button
                       className="secondary-button"
                       type="button"
-                      onClick={() => {
-                        downloadFontJson(activeFont);
-                        setSettingsOpen(false);
+                      onClick={async () => {
+                        try {
+                          await downloadFontJson(activeFont);
+                        } finally {
+                          setSettingsOpen(false);
+                        }
                       }}
                     >
                       Export JSON

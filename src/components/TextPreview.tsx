@@ -1,8 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Capacitor } from "@capacitor/core";
-import { Directory, Filesystem } from "@capacitor/filesystem";
-import { Share } from "@capacitor/share";
 import { spacebar } from "../data/characterSets";
 import type {
   BackgroundStyle,
@@ -26,6 +23,7 @@ import {
   hasDrawnGlyph,
   selectPreviewGlyph,
 } from "../render/glyphRenderer";
+import { isNativeFilePlatform, saveNativeFileToDocuments, shareNativeFile } from "../utils/nativeFiles";
 
 type SavedPreviewImage = {
   fontName: string;
@@ -983,23 +981,11 @@ export default function TextPreview({
       return false;
     }
 
-    const canShare = await Share.canShare().catch(() => ({ value: false }));
-
-    if (!canShare.value) {
-      return false;
-    }
-
     const fileName = getPhoneImageFileName();
-    const writeResult = await Filesystem.writeFile({
-      data: base64Data,
-      directory: Directory.Cache,
-      path: `share/${Date.now()}-${fileName}`,
-      recursive: true,
-    });
-
-    await Share.share({
+    await shareNativeFile({
+      base64Data,
       dialogTitle: "Share image",
-      files: [writeResult.uri],
+      fileName,
       text: "Made in Local Font Studio",
       title: font.name,
     });
@@ -1076,19 +1062,44 @@ export default function TextPreview({
   }
 
   async function downloadPhoneImage() {
-    const blob = await getPhoneImageBlob();
     const canvas = imageCanvasRef.current;
 
-    if (!blob || !canvas) {
+    if (!canvas) {
       setShareStatus("Could not make an image yet.");
       return;
     }
 
     try {
+      const imageDataUrl = canvas.toDataURL("image/png");
+      const base64Data = imageDataUrl.split(",")[1];
+
+      if (isNativeFilePlatform()) {
+        if (!base64Data) {
+          setShareStatus("Could not make an image yet.");
+          return;
+        }
+
+        const fileName = getPhoneImageFileName();
+        await saveNativeFileToDocuments({
+          base64Data,
+          fileName,
+        });
+        setShareStatus("Saved PNG to Documents / Local Font Studio.");
+        onRecordExport?.(`Exported ${imageSettings.exportPreset} preview PNG.`);
+        return;
+      }
+
+      const blob = await getPhoneImageBlob();
+
+      if (!blob) {
+        setShareStatus("Could not make an image yet.");
+        return;
+      }
+
       const savedLocally = onSaveImage?.({
         fontName: font.name,
         height: canvas.height,
-        imageDataUrl: canvas.toDataURL("image/png"),
+        imageDataUrl,
         message: previewText.trim() || "(blank message)",
         width: canvas.width,
       });
@@ -1106,7 +1117,7 @@ export default function TextPreview({
   }
 
   async function sharePhoneImage() {
-    if (Capacitor.isNativePlatform()) {
+    if (isNativeFilePlatform()) {
       try {
         if (await shareNativePhoneImage()) {
           return;
