@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type {
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
+  TouchEvent as ReactTouchEvent,
+} from "react";
 import { flushSync } from "react-dom";
 import {
   ChevronLeft,
@@ -68,6 +72,7 @@ type GlyphEditorProps = {
   font: FontSet;
   glyph: Glyph;
   onSaveGlyph: (glyph: Glyph) => void;
+  onSaveGlyphAndNext: (glyph: Glyph) => void;
   onSaveGlyphVariant: (glyph: Glyph) => void;
   onUpdateFontGuideSettings: (guideSettings: FontGuideSettings) => void;
   onUpdateFontTheme: (theme: FontTheme) => void;
@@ -719,6 +724,7 @@ export default function GlyphEditor({
   font,
   glyph,
   onSaveGlyph,
+  onSaveGlyphAndNext,
   onSaveGlyphVariant,
   onUpdateFontGuideSettings,
   onUpdateFontTheme,
@@ -735,6 +741,7 @@ export default function GlyphEditor({
   const draftGlyphRef = useRef<Glyph>(draftGlyph);
   const pastRef = useRef<Glyph[]>([]);
   const futureRef = useRef<Glyph[]>([]);
+  const saveAndNextLockRef = useRef(false);
   const [brushSize, setBrushSize] = useState(DEFAULT_BRUSH_SIZE);
   const [eraserMode, setEraserMode] = useState<EraserMode>("stroke");
   const [eyeExpression, setEyeExpression] = useState<NonNullable<GlyphDecoration["expression"]>>("googly");
@@ -1179,25 +1186,59 @@ export default function GlyphEditor({
     );
   }
 
-  function handleSave() {
-    const savedGlyph = {
+  function getSavedGlyphDraft() {
+    return {
       ...cloneGlyph(draftGlyphRef.current),
+      character: glyph.character,
       updatedAt: new Date().toISOString(),
     };
+  }
 
-    onSaveGlyph({
-      ...savedGlyph,
-      character: glyph.character,
-    });
+  function handleSave() {
+    const savedGlyph = getSavedGlyphDraft();
+
+    onSaveGlyph(savedGlyph);
 
     setSavedMessage(`Saved ${getCharacterLabel(glyph.character)}`);
   }
 
   function handleSaveAndNext() {
+    const savedGlyph = getSavedGlyphDraft();
+
     flushSync(() => {
-      handleSave();
+      onSaveGlyphAndNext(savedGlyph);
     });
-    onNextCharacter();
+    setSavedMessage(`Saved ${getCharacterLabel(glyph.character)}`);
+  }
+
+  function runFullscreenSaveAndNext() {
+    if (saveAndNextLockRef.current) {
+      return;
+    }
+
+    saveAndNextLockRef.current = true;
+    handleSaveAndNext();
+    window.setTimeout(() => {
+      saveAndNextLockRef.current = false;
+    }, 350);
+  }
+
+  function handleFullscreenSaveAndNext(event: ReactPointerEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    runFullscreenSaveAndNext();
+  }
+
+  function handleFullscreenSaveAndNextTouch(event: ReactTouchEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    runFullscreenSaveAndNext();
+  }
+
+  function handleSaveAndNextClick(event: ReactMouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    runFullscreenSaveAndNext();
   }
 
   function handleSaveVariant() {
@@ -1512,10 +1553,9 @@ export default function GlyphEditor({
                 <button
                   className="draw-drawer-button accent"
                   type="button"
-                  onClick={() => {
-                    handleSaveAndNext();
-                    setActiveFullscreenDrawer(null);
-                  }}
+                  onPointerDown={handleFullscreenSaveAndNext}
+                  onTouchEnd={handleFullscreenSaveAndNextTouch}
+                  onClick={handleSaveAndNextClick}
                 >
                   <SkipForward aria-hidden="true" />
                   <span>Save + next</span>
@@ -1785,7 +1825,9 @@ export default function GlyphEditor({
               type="button"
               aria-label="Save and next glyph"
               title="Save + next"
-              onClick={handleSaveAndNext}
+              onPointerDown={handleFullscreenSaveAndNext}
+              onTouchEnd={handleFullscreenSaveAndNextTouch}
+              onClick={handleSaveAndNextClick}
             >
               <SkipForward aria-hidden="true" />
             </button>

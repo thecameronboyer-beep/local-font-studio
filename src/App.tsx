@@ -269,6 +269,64 @@ export default function App() {
     });
   }
 
+  function getNextCharacterAfterSave(savedGlyph: Glyph) {
+    if (activeCharacters.length === 0) {
+      return savedGlyph.character;
+    }
+
+    const currentIndex = Math.max(0, activeCharacters.indexOf(savedGlyph.character));
+    const sequentialNext = activeCharacters[(currentIndex + 1) % activeCharacters.length] ?? savedGlyph.character;
+
+    if (!hasDrawnGlyph(savedGlyph)) {
+      return sequentialNext;
+    }
+
+    for (let offset = 1; offset <= activeCharacters.length; offset += 1) {
+      const candidate = activeCharacters[(currentIndex + offset) % activeCharacters.length];
+      const candidateGlyph = candidate === savedGlyph.character
+        ? savedGlyph
+        : activeFont.glyphs[candidate] ?? createEmptyGlyph(candidate);
+
+      if (!hasDrawnGlyph(candidateGlyph)) {
+        return candidate;
+      }
+    }
+
+    return sequentialNext;
+  }
+
+  function handleSaveGlyphAndNext(glyph: Glyph) {
+    const now = new Date().toISOString();
+    const savedGlyph = {
+      ...glyph,
+      updatedAt: glyph.updatedAt ?? now,
+    };
+    const nextCharacter = getNextCharacterAfterSave(savedGlyph);
+    const nextData: FontStudioData = {
+      ...studioData,
+      fonts: studioData.fonts.map((font) =>
+        font.id === activeFont.id
+          ? {
+              ...font,
+              glyphs: {
+                ...font.glyphs,
+                [savedGlyph.character]: savedGlyph,
+              },
+              updatedAt: now,
+            }
+          : font,
+      ),
+    };
+
+    persist(nextData, {
+      character: savedGlyph.character,
+      fontId: activeFont.id,
+      message: `Saved glyph "${savedGlyph.character}" in "${activeFont.name}".`,
+      type: "glyph_edit",
+    });
+    setSelectedCharacter(nextCharacter);
+  }
+
   function handleSaveGlyphVariant(glyph: Glyph) {
     const now = new Date().toISOString();
     const { variants: _discardedVariants, ...variantDraft } = glyph;
@@ -502,6 +560,7 @@ export default function App() {
           font={activeFont}
           glyph={selectedGlyph}
           onSaveGlyph={handleSaveGlyph}
+          onSaveGlyphAndNext={handleSaveGlyphAndNext}
           onSaveGlyphVariant={handleSaveGlyphVariant}
           onUpdateFontGuideSettings={(guideSettings) => handleUpdateFontSettings(activeFont.id, { guideSettings })}
           onUpdateFontTheme={(theme) => handleUpdateFontSettings(activeFont.id, { theme })}
