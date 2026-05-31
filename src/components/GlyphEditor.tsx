@@ -1220,7 +1220,7 @@ export default function GlyphEditor({
     handleSaveAndNext();
     window.setTimeout(() => {
       saveAndNextLockRef.current = false;
-    }, 350);
+    }, 180);
   }
 
   function handleFullscreenSaveAndNext(event: ReactPointerEvent<HTMLButtonElement>) {
@@ -1553,7 +1553,7 @@ export default function GlyphEditor({
                 <button
                   className="draw-drawer-button accent"
                   type="button"
-                  onPointerDown={handleFullscreenSaveAndNext}
+                  onPointerUp={handleFullscreenSaveAndNext}
                   onTouchEnd={handleFullscreenSaveAndNextTouch}
                   onClick={handleSaveAndNextClick}
                 >
@@ -1825,7 +1825,7 @@ export default function GlyphEditor({
               type="button"
               aria-label="Save and next glyph"
               title="Save + next"
-              onPointerDown={handleFullscreenSaveAndNext}
+              onPointerUp={handleFullscreenSaveAndNext}
               onTouchEnd={handleFullscreenSaveAndNextTouch}
               onClick={handleSaveAndNextClick}
             >

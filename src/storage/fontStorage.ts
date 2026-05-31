@@ -584,6 +584,16 @@ function saveBackups(backups: ProjectBackup[]) {
   storage.setItem(BACKUP_STORAGE_KEY, JSON.stringify(backups.slice(0, MAX_BACKUPS)));
 }
 
+function clearAutomaticBackups() {
+  const storage = getStorage();
+
+  if (!storage) {
+    return;
+  }
+
+  storage.removeItem(BACKUP_STORAGE_KEY);
+}
+
 function maybeCreateAutomaticBackupFromRaw(rawData: string | null, reason: string) {
   if (!rawData) {
     return;
@@ -798,7 +808,14 @@ export function saveFontStudioData(data: FontStudioData, options: SaveOptions = 
     maybeCreateAutomaticBackupFromRaw(storage.getItem(STORAGE_KEY), backupReason);
   }
 
-  storage.setItem(STORAGE_KEY, JSON.stringify(migrateFontStudioData(data)));
+  const payload = JSON.stringify(migrateFontStudioData(data));
+
+  try {
+    storage.setItem(STORAGE_KEY, payload);
+  } catch {
+    clearAutomaticBackups();
+    storage.setItem(STORAGE_KEY, payload);
+  }
 }
 
 export function exportFontStudioProject(data: FontStudioData) {

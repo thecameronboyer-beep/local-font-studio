@@ -35,10 +35,14 @@ import type {
 export default function App() {
   const [initialLoad] = useState(() => {
     const result = loadFontStudioDataWithHealth();
-    saveFontStudioData(result.data, {
-      backupReason: result.health.status === "migrated" ? "migration" : "autosave",
-      createBackup: result.health.status === "migrated",
-    });
+    try {
+      saveFontStudioData(result.data, {
+        backupReason: result.health.status === "migrated" ? "migration" : "autosave",
+        createBackup: result.health.status === "migrated",
+      });
+    } catch (error) {
+      console.warn("Unable to persist initial font studio data.", error);
+    }
     return result;
   });
   const [studioData, setStudioData] = useState<FontStudioData>(initialLoad.data);
@@ -80,11 +84,23 @@ export default function App() {
     }
   }, [activeCharacters, selectedCharacter]);
 
+  function saveProjectData(data: FontStudioData, activity?: ProjectActivityDraft) {
+    try {
+      saveFontStudioData(data, { backupReason: activity?.type ?? "autosave" });
+    } catch (error) {
+      console.warn("Unable to persist font studio data.", error);
+    }
+  }
+
+  function deferProjectSave(data: FontStudioData, activity?: ProjectActivityDraft) {
+    window.setTimeout(() => saveProjectData(data, activity), 0);
+  }
+
   function persist(nextData: FontStudioData, activity?: ProjectActivityDraft) {
     const dataWithActivity = activity ? recordProjectActivity(nextData, activity) : nextData;
 
     setStudioData(dataWithActivity);
-    saveFontStudioData(dataWithActivity, { backupReason: activity?.type ?? "autosave" });
+    saveProjectData(dataWithActivity, activity);
   }
 
   function persistSavedImages(nextImages: SavedImage[]) {
@@ -317,14 +333,17 @@ export default function App() {
           : font,
       ),
     };
-
-    persist(nextData, {
+    const activity = {
       character: savedGlyph.character,
       fontId: activeFont.id,
       message: `Saved glyph "${savedGlyph.character}" in "${activeFont.name}".`,
       type: "glyph_edit",
-    });
+    } satisfies ProjectActivityDraft;
+    const dataWithActivity = recordProjectActivity(nextData, activity);
+
+    setStudioData(dataWithActivity);
     setSelectedCharacter(nextCharacter);
+    deferProjectSave(dataWithActivity, activity);
   }
 
   function handleSaveGlyphVariant(glyph: Glyph) {
