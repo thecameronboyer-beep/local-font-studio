@@ -14,6 +14,7 @@ import {
   RotateCcw,
   Save,
   SkipForward,
+  Sticker,
   SlidersHorizontal,
   Undo2,
   X,
@@ -51,7 +52,7 @@ type GlyphEditorProps = {
   onToggleFullScreen: () => void;
 };
 
-type FullscreenDrawer = "ink" | "more" | null;
+type FullscreenDrawer = "ink" | "stickers" | "more" | null;
 type InkTool = Extract<DrawingTool, "pen" | "quill">;
 
 const glyphInkSwatches = [
@@ -595,10 +596,6 @@ export default function GlyphEditor({
     setActiveFullscreenDrawer(null);
   }
 
-  function chooseInkTool(nextTool: InkTool) {
-    chooseDockTool(nextTool);
-  }
-
   function toggleFullscreenDrawer(drawer: Exclude<FullscreenDrawer, null>) {
     setActiveFullscreenDrawer((current) => (current === drawer ? null : drawer));
   }
@@ -793,6 +790,25 @@ export default function GlyphEditor({
 
           {activeFullscreenDrawer === "ink" && (
             <div id="draw-ink-drawer" className="draw-control-drawer" aria-label="Ink drawer">
+              <div className="draw-drawer-grid two" aria-label="Ink tool">
+                <button
+                  className={`draw-drawer-button ${lastInkTool === "pen" ? "active-tool" : ""}`}
+                  type="button"
+                  onClick={() => chooseTool("pen")}
+                >
+                  <PenLine aria-hidden="true" />
+                  <span>Pen</span>
+                </button>
+                <button
+                  className={`draw-drawer-button ${lastInkTool === "quill" ? "active-tool" : ""}`}
+                  type="button"
+                  onClick={() => chooseTool("quill")}
+                >
+                  <Feather aria-hidden="true" />
+                  <span>Quill</span>
+                </button>
+              </div>
+
               <label className="draw-drawer-range">
                 <span>Brush</span>
                 <input
@@ -895,15 +911,7 @@ export default function GlyphEditor({
                 </button>
               </div>
 
-              <div className="draw-drawer-grid three" aria-label="Secondary tools">
-                <button
-                  className={`draw-drawer-button ${tool === "eyes" ? "active-tool" : ""}`}
-                  type="button"
-                  onClick={() => chooseTool("eyes")}
-                >
-                  <Eye aria-hidden="true" />
-                  <span>Eyes</span>
-                </button>
+              <div className="draw-drawer-grid two" aria-label="Eraser mode">
                 <button
                   className={`draw-drawer-button ${eraserMode === "stroke" ? "active-tool" : ""}`}
                   type="button"
@@ -922,8 +930,6 @@ export default function GlyphEditor({
                 </button>
               </div>
 
-              {tool === "eyes" && <EyeExpressionControl expression={eyeExpression} onExpressionChange={setEyeExpression} />}
-
               {selectedStrokeId && (
                 <button className="draw-drawer-button danger-action full" type="button" onClick={handleDeleteSelectedStroke}>
                   <X aria-hidden="true" />
@@ -933,24 +939,37 @@ export default function GlyphEditor({
             </div>
           )}
 
+          {activeFullscreenDrawer === "stickers" && (
+            <div id="draw-stickers-drawer" className="draw-control-drawer" aria-label="Stickers drawer">
+              <div className="draw-drawer-grid two" aria-label="Sticker tools">
+                <button
+                  className={`draw-drawer-button ${tool === "eyes" ? "active-tool" : ""}`}
+                  type="button"
+                  onClick={() => chooseTool("eyes")}
+                >
+                  <Eye aria-hidden="true" />
+                  <span>Eyes</span>
+                </button>
+              </div>
+
+              {tool === "eyes" && <EyeExpressionControl expression={eyeExpression} onExpressionChange={setEyeExpression} />}
+            </div>
+          )}
+
           <div className="draw-only-toolbar" aria-label="Drawing dock">
             <button
-              className={`draw-glass-button draw-icon-button ${tool === "pen" ? "active-tool" : ""}`}
+              className={`draw-glass-button draw-icon-button draw-ink-color-button ${
+                tool === lastInkTool || activeFullscreenDrawer === "ink" ? "active-tool" : ""
+              }`}
               type="button"
-              aria-label="Use pen"
-              title="Pen"
-              onClick={() => chooseInkTool("pen")}
+              aria-label={`Use ${lastInkTool} and open ink settings`}
+              aria-expanded={activeFullscreenDrawer === "ink"}
+              aria-controls="draw-ink-drawer"
+              title={lastInkTool === "quill" ? "Quill ink" : "Pen ink"}
+              style={{ backgroundColor: inkColor, color: getReadableInkButtonColor(inkColor) }}
+              onClick={toggleInkSettings}
             >
-              <PenLine aria-hidden="true" />
-            </button>
-            <button
-              className={`draw-glass-button draw-icon-button ${tool === "quill" ? "active-tool" : ""}`}
-              type="button"
-              aria-label="Use quill"
-              title="Quill"
-              onClick={() => chooseInkTool("quill")}
-            >
-              <Feather aria-hidden="true" />
+              {lastInkTool === "quill" ? <Feather aria-hidden="true" /> : <PenLine aria-hidden="true" />}
             </button>
             <button
               className={`draw-glass-button draw-icon-button ${tool === "eraser" ? "active-tool" : ""}`}
@@ -980,18 +999,20 @@ export default function GlyphEditor({
               <SkipForward aria-hidden="true" />
             </button>
             <button
-              className={`draw-glass-button draw-icon-button draw-ink-color-button ${
-                activeFullscreenDrawer === "ink" ? "active-tool" : ""
+              className={`draw-glass-button draw-icon-button ${
+                tool === "eyes" || activeFullscreenDrawer === "stickers" ? "active-tool" : ""
               }`}
               type="button"
-              aria-label={`Open ink settings, using ${lastInkTool}`}
-              aria-expanded={activeFullscreenDrawer === "ink"}
-              aria-controls="draw-ink-drawer"
-              title="Ink color"
-              style={{ backgroundColor: inkColor, color: getReadableInkButtonColor(inkColor) }}
-              onClick={toggleInkSettings}
+              aria-label="Open stickers"
+              aria-expanded={activeFullscreenDrawer === "stickers"}
+              aria-controls="draw-stickers-drawer"
+              title="Stickers"
+              onClick={() => {
+                chooseTool("eyes");
+                toggleFullscreenDrawer("stickers");
+              }}
             >
-              <Droplets aria-hidden="true" />
+              <Sticker aria-hidden="true" />
             </button>
             <button
               className={`draw-glass-button draw-icon-button ${tool === "pan" ? "active-tool" : ""}`}
