@@ -2218,7 +2218,7 @@ h1 {
 
 .draw-only-toolbar {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 5px;
   border: 1px solid rgba(248, 230, 194, 0.16);
   border-radius: 8px;
@@ -2226,6 +2226,14 @@ h1 {
   padding: 5px;
   backdrop-filter: blur(16px);
   box-shadow: 0 18px 55px rgba(0, 0, 0, 0.24);
+}
+
+.draw-ink-color-button {
+  grid-column: 1;
+}
+
+.draw-more-button {
+  grid-column: span 2;
 }
 
 .draw-control-drawer {
