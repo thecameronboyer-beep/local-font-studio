@@ -54,7 +54,26 @@ type GlyphEditorProps = {
 type FullscreenDrawer = "ink" | "more" | null;
 type InkTool = Extract<DrawingTool, "pen" | "quill">;
 
-const glyphInkSwatches = ["#19140f", "#d93434", "#f0a934", "#16815f", "#2468c9", "#8b4bd9"];
+const glyphInkSwatches = [
+  { color: "#19140f", label: "Lamp Black" },
+  { color: "#d93434", label: "Modern Red" },
+  { color: "#f0a934", label: "Modern Amber" },
+  { color: "#16815f", label: "Modern Green" },
+  { color: "#2468c9", label: "Modern Blue" },
+  { color: "#8b4bd9", label: "Modern Violet" },
+  { color: "#e34234", label: "Vermilion Red" },
+  { color: "#5a3726", label: "Walnut Brown" },
+  { color: "#9f4632", label: "Red Ochre" },
+  { color: "#3d6f8f", label: "Azurite Blue" },
+  { color: "#263ca8", label: "Ultramarine" },
+  { color: "#3a9b88", label: "Verdigris Green" },
+  { color: "#68743c", label: "Herbal Green" },
+  { color: "#c4933a", label: "Yellow Ochre" },
+  { color: "#d79a22", label: "Saffron Gold" },
+  { color: "#493424", label: "Umber Brown" },
+  { color: "#e5ddc8", label: "Bone White" },
+  { color: "#a88943", label: "Aged Gold" },
+];
 const DEFAULT_CANVAS_VIEW: CanvasViewOffset = { x: 0, y: 0 };
 const smoothingOptions: Array<{ id: SmoothingMode; label: string }> = [
   { id: "raw", label: "Raw" },
@@ -248,15 +267,16 @@ function InkColorControl({
 
       {isOpen && (
         <div className="glyph-ink-menu" aria-label="Ink color menu">
-          {glyphInkSwatches.map((color) => (
+          {glyphInkSwatches.map((swatch) => (
             <button
-              key={color}
-              className={`glyph-ink-swatch ${inkColor === color ? "selected" : ""}`}
+              key={swatch.label}
+              className={`glyph-ink-swatch ${inkColor === swatch.color ? "selected" : ""}`}
               type="button"
-              onClick={() => selectColor(color)}
-              aria-label={`Use ink color ${color}`}
+              onClick={() => selectColor(swatch.color)}
+              aria-label={`Use ${swatch.label} ink`}
+              title={swatch.label}
             >
-              <span style={{ backgroundColor: color }} />
+              <span style={{ backgroundColor: swatch.color }} />
             </button>
           ))}
         </div>
@@ -786,15 +806,16 @@ export default function GlyphEditor({
               </label>
 
               <div className="draw-ink-swatches" aria-label="Ink colors">
-                {glyphInkSwatches.map((color) => (
+                {glyphInkSwatches.map((swatch) => (
                   <button
-                    key={color}
-                    className={`draw-ink-swatch ${inkColor === color ? "selected" : ""}`}
+                    key={swatch.label}
+                    className={`draw-ink-swatch ${inkColor === swatch.color ? "selected" : ""}`}
                     type="button"
-                    onClick={() => setInkColor(color)}
-                    aria-label={`Use ink color ${color}`}
+                    onClick={() => setInkColor(swatch.color)}
+                    aria-label={`Use ${swatch.label} ink`}
+                    title={swatch.label}
                   >
-                    <span style={{ backgroundColor: color }} />
+                    <span style={{ backgroundColor: swatch.color }} />
                   </button>
                 ))}
               </div>

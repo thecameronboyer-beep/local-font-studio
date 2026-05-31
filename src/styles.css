@@ -956,7 +956,7 @@ h3 {
   right: 0;
   bottom: calc(100% + 6px);
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(6, 40px);
   gap: 5px;
   border: 1px solid rgba(248, 230, 194, 0.16);
   border-radius: 8px;
