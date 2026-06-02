@@ -1250,6 +1250,11 @@ export default function GlyphEditor({
     });
   }
 
+  function openConstructionMode() {
+    setEditorMode("construction");
+    setActiveFullscreenDrawer(null);
+  }
+
   function updateActiveInkPreset(patch: Partial<InkPreset>) {
     setInkPresets((current) => ({
       ...current,
@@ -2032,7 +2037,7 @@ export default function GlyphEditor({
     );
   }
 
-  if (isFullScreen) {
+  if (isFullScreen && editorMode === "draw") {
     return (
       <section className="studio-panel editor-panel fullscreen-editor fullscreen-draw-only" aria-label="Glyph editor">
         <GlyphCanvas
@@ -2098,6 +2103,15 @@ export default function GlyphEditor({
               {activeVariationLabel} - {characterIndex + 1}/{characterTotal}
             </span>
           </div>
+          <button
+            className="draw-glass-button draw-top-construction-button"
+            type="button"
+            aria-label="Open letter construction mode"
+            title="Construction"
+            onClick={openConstructionMode}
+          >
+            Build
+          </button>
           <button
             className="draw-glass-button draw-icon-button draw-top-icon"
             type="button"
@@ -2739,6 +2753,13 @@ export default function GlyphEditor({
           <div className="glyph-pill">
             {draftGlyph.strokes.length} strokes / {draftGlyph.construction?.paths.length ?? 0} paths
           </div>
+          <button
+            className={`secondary-button compact-button ${editorMode === "construction" ? "active-tool" : ""}`}
+            type="button"
+            onClick={openConstructionMode}
+          >
+            Construction
+          </button>
           <button className="secondary-button compact-button" type="button" onClick={onToggleFullScreen}>
             {isFullScreen ? "Exit" : "Full screen"}
           </button>

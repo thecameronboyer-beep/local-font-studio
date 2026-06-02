@@ -2668,7 +2668,7 @@ h1 {
   left: 0;
   right: 0;
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 5px;
   padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) 8px max(8px, env(safe-area-inset-left));
@@ -2695,6 +2695,15 @@ h1 {
 .draw-character-pill span {
   color: #4a4135;
   font-size: 0.62rem;
+  font-weight: 900;
+}
+
+.draw-top-construction-button {
+  min-width: 58px;
+  min-height: 46px;
+  padding: 0 10px;
+  color: #f3dfb6;
+  font-size: 0.74rem;
   font-weight: 900;
 }
 
@@ -4269,7 +4278,7 @@ h1 {
     top: 0;
     left: 0;
     right: 0;
-    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    grid-template-columns: auto auto minmax(0, 1fr) auto auto;
     gap: 8px;
     justify-self: center;
     margin: 0 auto;
