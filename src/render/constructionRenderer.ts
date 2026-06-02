@@ -191,11 +191,14 @@ export function drawConstructionPaths(
     if (path.closed && path.filled) {
       ctx.fillStyle = path.fillColor ?? construction.fillColor ?? options.color;
       ctx.fill();
+      drawPathShape(ctx, path, options);
     }
 
-    ctx.strokeStyle = path.strokeColor ?? construction.strokeColor ?? options.color;
-    ctx.lineWidth = Math.max(1, path.strokeWidth * options.size);
-    ctx.stroke();
+    if (path.strokeWidth > 0) {
+      ctx.strokeStyle = path.strokeColor ?? construction.strokeColor ?? options.color;
+      ctx.lineWidth = Math.max(1, path.strokeWidth * options.size);
+      ctx.stroke();
+    }
   }
 
   ctx.restore();
