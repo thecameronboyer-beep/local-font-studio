@@ -2626,31 +2626,161 @@ h1 {
 }
 
 .fullscreen-editor.construction-mode-editor {
-  display: block;
+  display: grid;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto auto;
   height: 100dvh;
   max-height: 100dvh;
+  min-height: 0;
   overflow-x: hidden;
-  overflow-y: auto;
+  overflow-y: hidden;
   overscroll-behavior: contain;
-  padding-bottom: max(18px, env(safe-area-inset-bottom));
 }
 
 .fullscreen-editor.construction-mode-editor .panel-heading,
 .fullscreen-editor.construction-mode-editor .glyph-nav {
-  position: sticky;
+  position: static;
   z-index: 3;
 }
 
 .fullscreen-editor.construction-mode-editor .panel-heading {
-  top: 0;
+  min-height: 44px;
+  padding: 6px 10px;
+}
+
+.fullscreen-editor.construction-mode-editor .panel-heading h2 {
+  font-size: 1.08rem;
 }
 
 .fullscreen-editor.construction-mode-editor .glyph-nav {
-  top: 52px;
+  padding: 4px 10px;
+}
+
+.fullscreen-editor.construction-mode-editor .glyph-nav .secondary-button,
+.fullscreen-editor.construction-mode-editor .compact-button {
+  min-height: 34px;
+}
+
+.fullscreen-editor.construction-mode-editor .glyph-progress strong {
+  font-size: 1rem;
+}
+
+.fullscreen-editor.construction-mode-editor .glyph-progress span {
+  font-size: 0.68rem;
+}
+
+.fullscreen-editor.construction-mode-editor .glyph-variation-strip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+}
+
+.fullscreen-editor.construction-mode-editor .variation-summary {
+  min-width: 92px;
+}
+
+.fullscreen-editor.construction-mode-editor .variation-button {
+  min-height: 34px;
+  padding: 0 10px;
+}
+
+.fullscreen-editor.construction-mode-editor .editor-mode-switch {
+  gap: 6px;
+  padding: 6px 10px;
+}
+
+.fullscreen-editor.construction-mode-editor .editor-mode-switch .secondary-button {
+  min-height: 36px;
+}
+
+.fullscreen-editor.construction-mode-editor .construction-editor-layout {
+  display: grid;
+  grid-template-areas:
+    "canvas controls"
+    "viewer controls";
+  grid-template-columns: minmax(0, 1.18fr) minmax(250px, 0.82fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-height: 0;
+  overflow: hidden;
+  padding: 8px 10px;
+}
+
+.fullscreen-editor.construction-mode-editor .construction-center-panel {
+  grid-area: canvas;
+  min-height: 0;
+  padding: 8px;
+}
+
+.fullscreen-editor.construction-mode-editor .construction-canvas-shell {
+  width: min(100%, 64dvh);
+  max-height: 100%;
+}
+
+.fullscreen-editor.construction-mode-editor .construction-controls-panel {
+  grid-area: controls;
+  min-height: 0;
+  max-height: none;
+  overflow: auto;
+  padding: 8px;
+}
+
+.fullscreen-editor.construction-mode-editor .construction-viewer-panel {
+  grid-area: viewer;
+  min-height: 0;
+  overflow: hidden;
+  padding: 8px;
+}
+
+.fullscreen-editor.construction-mode-editor .construction-viewer-panel .editor-live-preview {
+  display: none;
+}
+
+.fullscreen-editor.construction-mode-editor .construction-stat-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.fullscreen-editor.construction-mode-editor .construction-stat-grid div {
+  min-height: 42px;
+  padding: 6px 8px;
+}
+
+.fullscreen-editor.construction-mode-editor .construction-stat-grid strong {
+  font-size: 1rem;
+}
+
+.fullscreen-editor.construction-mode-editor .construction-path-list {
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(124px, 1fr);
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+
+.fullscreen-editor.construction-mode-editor .construction-path-chip {
+  min-height: 36px;
+}
+
+.fullscreen-editor.construction-mode-editor .construction-tool-grid .secondary-button,
+.fullscreen-editor.construction-mode-editor .construction-tool-grid .danger-button {
+  min-height: 38px;
+}
+
+.fullscreen-editor.construction-mode-editor .construction-check-grid label {
+  min-height: 34px;
+}
+
+.fullscreen-editor.construction-mode-editor .construction-section {
+  padding-top: 8px;
 }
 
 .fullscreen-editor.construction-mode-editor .quick-save-row {
   position: static;
+  padding: 6px 10px;
+}
+
+.fullscreen-editor.construction-mode-editor .save-status {
+  padding-bottom: max(4px, env(safe-area-inset-bottom));
 }
 
 /* Full-screen draw mode: keep the drawing surface dominant and float compact controls over it. */
