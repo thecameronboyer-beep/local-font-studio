@@ -49,7 +49,6 @@ import type {
   ConstructionTool,
 } from "./GlyphConstructionCanvas";
 import SpacingControls from "./SpacingControls";
-import { createSampleConstructionA, createSampleConstructionB } from "../data/constructionSamples";
 import { getCharacterLabel, getVisibleCharacters, spacebar } from "../data/characterSets";
 import {
   drawGlyph,
@@ -68,10 +67,7 @@ import type {
   BackgroundStyle,
   BackgroundTexture,
   ConstructionAnchorPoint,
-  ConstructionCornerStyle,
   ConstructionPath,
-  ConstructionPointType,
-  ConstructionSegmentType,
   FontGuideSettings,
   FontSet,
   FontTheme,
@@ -1095,85 +1091,6 @@ export default function GlyphEditor({
     return path?.points.find((point) => point.id === constructionSelection.pointId) ?? null;
   }
 
-  function patchSelectedConstructionPoint(patch: Partial<ConstructionAnchorPoint>) {
-    const selectedPath = getSelectedConstructionPath();
-    const selectedPoint = getSelectedConstructionPoint();
-
-    if (!selectedPath || !selectedPoint) {
-      return;
-    }
-
-    pushHistory();
-    updateDraftConstruction({
-      ...(draftGlyphRef.current.construction ?? { paths: [] }),
-      paths: (draftGlyphRef.current.construction?.paths ?? []).map((path) =>
-        path.id === selectedPath.id
-          ? {
-              ...path,
-              points: path.points.map((point) =>
-                point.id === selectedPoint.id
-                  ? {
-                      ...point,
-                      ...patch,
-                    }
-                  : point,
-              ),
-            }
-          : path,
-      ),
-    });
-  }
-
-  function patchSelectedConstructionPath(patch: Partial<ConstructionPath>) {
-    const selectedPath = getSelectedConstructionPath();
-
-    if (!selectedPath) {
-      return;
-    }
-
-    pushHistory();
-    updateDraftConstruction({
-      ...(draftGlyphRef.current.construction ?? { paths: [] }),
-      paths: (draftGlyphRef.current.construction?.paths ?? []).map((path) =>
-        path.id === selectedPath.id
-          ? {
-              ...path,
-              ...patch,
-            }
-          : path,
-      ),
-    });
-  }
-
-  function toggleConstructionSnap(key: keyof ConstructionSnapSettings) {
-    setConstructionSnapSettings((current) => ({
-      ...current,
-      [key]: !current[key],
-    }));
-  }
-
-  function handleLoadConstructionSample() {
-    pushHistory();
-    updateDraftGlyph({
-      ...draftGlyphRef.current,
-      construction: createSampleConstructionA(),
-    });
-    setConstructionSelection({ pathId: "construction_sample_a_outer", pointId: "construction_sample_a_top" });
-    setEditorMode("construction");
-    setSavedMessage("Loaded sample construction");
-  }
-
-  function handleLoadConstructionSampleB() {
-    pushHistory();
-    updateDraftGlyph({
-      ...draftGlyphRef.current,
-      construction: createSampleConstructionB(),
-    });
-    setConstructionSelection({ pathId: "construction_sample_b_top_bowl", pointId: "construction_sample_b_top_outer" });
-    setEditorMode("construction");
-    setSavedMessage("Loaded sample B construction");
-  }
-
   function handleDeleteSelectedConstructionTarget() {
     const selectedPath = getSelectedConstructionPath();
     const selectedPoint = getSelectedConstructionPoint();
@@ -1206,59 +1123,16 @@ export default function GlyphEditor({
     setConstructionSelection({ pathId: null });
   }
 
-  function handleConstructionPointType(type: ConstructionPointType) {
-    const point = getSelectedConstructionPoint();
-
-    if (!point) {
+  function handleClearConstruction() {
+    if (!(draftGlyphRef.current.construction?.paths.length)) {
       return;
     }
 
-    const curvePatch = type === "smooth" || type === "symmetric"
-      ? {
-          inHandle: point.inHandle ?? { x: clamp(point.x - 0.12), y: point.y },
-          outHandle: point.outHandle ?? { x: clamp(point.x + 0.12), y: point.y },
-          segmentType: "curve" as ConstructionSegmentType,
-        }
-      : {};
-    const cornerPatch = type === "rounded"
-      ? {
-          cornerRadius: point.cornerRadius ?? 0.05,
-          cornerStyle: "rounded" as ConstructionCornerStyle,
-        }
-      : {};
-
-    patchSelectedConstructionPoint({
-      ...curvePatch,
-      ...cornerPatch,
-      type,
-    });
-  }
-
-  function handleConstructionSegmentType(segmentType: ConstructionSegmentType) {
-    const point = getSelectedConstructionPoint();
-
-    if (!point) {
-      return;
-    }
-
-    patchSelectedConstructionPoint({
-      ...(segmentType === "curve"
-        ? {
-            inHandle: point.inHandle ?? { x: clamp(point.x - 0.12), y: point.y },
-            outHandle: point.outHandle ?? { x: clamp(point.x + 0.12), y: point.y },
-            type: point.type === "corner" ? "smooth" : point.type,
-          }
-        : {}),
-      segmentType,
-    });
-  }
-
-  function handleConstructionCornerStyle(cornerStyle: ConstructionCornerStyle) {
-    patchSelectedConstructionPoint({
-      cornerStyle,
-      ...(cornerStyle === "rounded" ? { cornerRadius: getSelectedConstructionPoint()?.cornerRadius ?? 0.05 } : {}),
-      ...(cornerStyle === "chamfered" ? { chamferDistance: getSelectedConstructionPoint()?.chamferDistance ?? 0.05 } : {}),
-    });
+    pushHistory();
+    updateDraftConstruction({ paths: [] });
+    setConstructionSelection({ pathId: null });
+    setConstructionTool("select");
+    setSavedMessage("Cleared construction paths");
   }
 
   function openConstructionMode() {
@@ -1734,25 +1608,26 @@ export default function GlyphEditor({
     const selectedPath = getSelectedConstructionPath();
     const selectedPoint = getSelectedConstructionPoint();
     const hasSnap = Object.values(constructionSnapSettings).some(Boolean);
-    const constructionPathCount = draftGlyph.construction?.paths.length ?? 0;
-    const constructionPointCount = draftGlyph.construction?.paths.reduce((total, path) => total + path.points.length, 0) ?? 0;
+    const constructionPaths = draftGlyph.construction?.paths ?? [];
+    const constructionPathCount = constructionPaths.length;
+    const constructionPointCount = constructionPaths.reduce((total, path) => total + path.points.length, 0);
+    const selectedPathIndex = selectedPath ? constructionPaths.findIndex((path) => path.id === selectedPath.id) : -1;
+    const selectedLabel = selectedPoint
+      ? "Point"
+      : selectedPath && selectedPathIndex >= 0
+        ? `Path ${selectedPathIndex + 1}`
+        : "None";
     const toolOptions: Array<{ id: ConstructionTool; label: string }> = [
       { id: "select", label: "Select" },
       { id: "addPoint", label: "Add Point" },
-      { id: "penPath", label: "Pen Path" },
-      { id: "handle", label: "Curve Handle" },
-      { id: "round", label: "Round Corner" },
-      { id: "delete", label: "Delete Point" },
+      { id: "delete", label: "Delete" },
     ];
-    const pointTypes: ConstructionPointType[] = ["corner", "smooth", "symmetric", "rounded"];
-    const segmentTypes: ConstructionSegmentType[] = ["line", "curve"];
-    const cornerStyles: ConstructionCornerStyle[] = ["sharp", "rounded", "chamfered"];
 
     return (
-      <div className="construction-editor-layout">
+      <div className="construction-editor-layout construction-editor-layout-simple">
         <aside className="construction-side-panel construction-viewer-panel" aria-label="Construction glyph viewer">
           <div className="construction-panel-heading">
-            <span>Glyph viewer</span>
+            <span>Anchor paths</span>
             <strong>{characterLabel}</strong>
           </div>
           <div className="construction-stat-grid">
@@ -1765,14 +1640,8 @@ export default function GlyphEditor({
               <strong>{constructionPointCount}</strong>
             </div>
           </div>
-          <EditorLivePreview
-            font={font}
-            draftGlyph={draftGlyph}
-            previewText={previewText}
-            onPreviewTextChange={onPreviewTextChange}
-          />
           <div className="construction-path-list" aria-label="Construction paths">
-            {(draftGlyph.construction?.paths ?? []).map((path, index) => (
+            {constructionPaths.map((path, index) => (
               <button
                 key={path.id}
                 className={`construction-path-chip ${constructionSelection.pathId === path.id ? "selected" : ""}`}
@@ -1817,11 +1686,11 @@ export default function GlyphEditor({
 
         <aside className="construction-side-panel construction-controls-panel" aria-label="Construction mode controls">
           <div className="construction-panel-heading">
-            <span>Letter Construction</span>
-            <strong>{constructionTool}</strong>
+            <span>Construction</span>
+            <strong>{selectedLabel}</strong>
           </div>
 
-          <div className="construction-tool-grid" aria-label="Construction tools">
+          <div className="construction-tool-grid three" aria-label="Construction tools">
             {toolOptions.map((option) => (
               <button
                 key={option.id}
@@ -1840,7 +1709,7 @@ export default function GlyphEditor({
               type="button"
               onClick={() => setConstructionShowGuides((current) => !current)}
             >
-              Toggle Guides
+              Guides
             </button>
             <button
               className={`secondary-button ${hasSnap ? "active-tool" : ""}`}
@@ -1857,150 +1726,49 @@ export default function GlyphEditor({
                 })
               }
             >
-              Toggle Snap
+              Snap
             </button>
-          </div>
-
-          <div className="construction-check-grid" aria-label="Snap options">
-            {([
-              ["grid", "Grid"],
-              ["guides", "Guides"],
-              ["anchors", "Anchors"],
-              ["centerline", "Center"],
-            ] as Array<[keyof ConstructionSnapSettings, string]>).map(([key, label]) => (
-              <label key={key}>
-                <input
-                  type="checkbox"
-                  checked={constructionSnapSettings[key]}
-                  onChange={() => toggleConstructionSnap(key)}
-                />
-                <span>{label}</span>
-              </label>
-            ))}
           </div>
 
           <div className="construction-section">
             <div className="construction-section-heading">
-              <span>Path</span>
-              <strong>{selectedPath ? `${selectedPath.points.length} points` : "None"}</strong>
+              <span>Selected</span>
+              <strong>
+                {selectedPoint
+                  ? `${Math.round(selectedPoint.x * 100)}, ${Math.round(selectedPoint.y * 100)}`
+                  : selectedPath
+                    ? `${selectedPath.points.length} points`
+                    : "Nothing"}
+              </strong>
             </div>
             <div className="construction-tool-grid two">
               <button
-                className={`secondary-button ${selectedPath?.closed ? "active-tool" : ""}`}
+                className={`secondary-button ${constructionSelection.pendingNewPath ? "active-tool" : ""}`}
                 type="button"
-                disabled={!selectedPath}
-                onClick={() => selectedPath && patchSelectedConstructionPath({ closed: !selectedPath.closed })}
+                onClick={() => {
+                  setConstructionSelection({ pathId: null, pendingNewPath: true });
+                  setConstructionTool("addPoint");
+                }}
               >
-                Close Path
+                New Path
               </button>
               <button
-                className={`secondary-button ${selectedPath?.filled ? "active-tool" : ""}`}
+                className="danger-button"
                 type="button"
                 disabled={!selectedPath}
-                onClick={() => selectedPath && patchSelectedConstructionPath({ filled: !selectedPath.filled })}
+                onClick={handleDeleteSelectedConstructionTarget}
               >
-                Filled Shape
+                Delete Selected
+              </button>
+              <button
+                className="danger-button"
+                type="button"
+                disabled={!constructionPathCount}
+                onClick={handleClearConstruction}
+              >
+                Clear All
               </button>
             </div>
-            <label className="range-control construction-range">
-              <span>Stroke</span>
-              <input
-                type="range"
-                min="1"
-                max="24"
-                value={Math.round((selectedPath?.strokeWidth ?? 0.06) * 200)}
-                disabled={!selectedPath}
-                onChange={(event) => patchSelectedConstructionPath({ strokeWidth: Number(event.target.value) / 200 })}
-              />
-              <output>{Math.round((selectedPath?.strokeWidth ?? 0.06) * 200)}</output>
-            </label>
-          </div>
-
-          <div className="construction-section">
-            <div className="construction-section-heading">
-              <span>Point</span>
-              <strong>{selectedPoint ? selectedPoint.type : "None"}</strong>
-            </div>
-            <div className="construction-tool-grid two">
-              {pointTypes.map((type) => (
-                <button
-                  key={type}
-                  className={`secondary-button ${selectedPoint?.type === type ? "active-tool" : ""}`}
-                  type="button"
-                  disabled={!selectedPoint}
-                  onClick={() => handleConstructionPointType(type)}
-                >
-                  {type}
-                </button>
-              ))}
-            </div>
-            <div className="construction-tool-grid two">
-              {segmentTypes.map((segmentType) => (
-                <button
-                  key={segmentType}
-                  className={`secondary-button ${selectedPoint?.segmentType === segmentType ? "active-tool" : ""}`}
-                  type="button"
-                  disabled={!selectedPoint}
-                  onClick={() => handleConstructionSegmentType(segmentType)}
-                >
-                  {segmentType}
-                </button>
-              ))}
-            </div>
-            <div className="construction-tool-grid three">
-              {cornerStyles.map((cornerStyle) => (
-                <button
-                  key={cornerStyle}
-                  className={`secondary-button ${selectedPoint?.cornerStyle === cornerStyle ? "active-tool" : ""}`}
-                  type="button"
-                  disabled={!selectedPoint}
-                  onClick={() => handleConstructionCornerStyle(cornerStyle)}
-                >
-                  {cornerStyle}
-                </button>
-              ))}
-            </div>
-            <label className="range-control construction-range">
-              <span>Radius</span>
-              <input
-                type="range"
-                min="0"
-                max="32"
-                value={Math.round((selectedPoint?.cornerRadius ?? 0.04) * 100)}
-                disabled={!selectedPoint}
-                onChange={(event) => patchSelectedConstructionPoint({ cornerRadius: Number(event.target.value) / 100 })}
-              />
-              <output>{Math.round((selectedPoint?.cornerRadius ?? 0.04) * 100)}</output>
-            </label>
-            <label className="range-control construction-range">
-              <span>Chamfer</span>
-              <input
-                type="range"
-                min="0"
-                max="32"
-                value={Math.round((selectedPoint?.chamferDistance ?? 0.04) * 100)}
-                disabled={!selectedPoint}
-                onChange={(event) => patchSelectedConstructionPoint({ chamferDistance: Number(event.target.value) / 100 })}
-              />
-              <output>{Math.round((selectedPoint?.chamferDistance ?? 0.04) * 100)}</output>
-            </label>
-          </div>
-
-          <div className="construction-tool-grid two">
-            <button className="secondary-button" type="button" onClick={handleLoadConstructionSample}>
-              Load sample A
-            </button>
-            <button className="secondary-button" type="button" onClick={handleLoadConstructionSampleB}>
-              Load sample B
-            </button>
-            <button
-              className="danger-button"
-              type="button"
-              disabled={!selectedPath}
-              onClick={handleDeleteSelectedConstructionTarget}
-            >
-              Delete Selected
-            </button>
           </div>
         </aside>
       </div>

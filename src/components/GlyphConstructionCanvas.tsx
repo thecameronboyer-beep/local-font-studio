@@ -5,21 +5,17 @@ import type {
   BackgroundStyle,
   BackgroundTexture,
   ConstructionAnchorPoint,
-  ConstructionHandle,
   ConstructionPath,
-  ConstructionPointType,
   FontGuideSettings,
   GlyphConstruction,
 } from "../types/fontTypes";
 
-export type ConstructionTool = "select" | "addPoint" | "penPath" | "handle" | "round" | "delete";
+export type ConstructionTool = "select" | "addPoint" | "delete";
 
 export type ConstructionSelection = {
-  handle?: "in" | "out";
   pathId: string | null;
   pointId?: string | null;
   pendingNewPath?: boolean;
-  segmentIndex?: number | null;
 };
 
 export type ConstructionSnapSettings = {
@@ -35,12 +31,6 @@ type DragState =
       pathId: string;
       pointId: string;
       startPoint: { x: number; y: number };
-    }
-  | {
-      handle: "in" | "out";
-      kind: "handle";
-      pathId: string;
-      pointId: string;
     }
   | {
       kind: "path";
@@ -99,12 +89,12 @@ function cloneConstruction(construction?: GlyphConstruction): GlyphConstruction 
   };
 }
 
-function makeAnchorPoint(x: number, y: number, type: ConstructionPointType = "corner"): ConstructionAnchorPoint {
+function makeAnchorPoint(x: number, y: number): ConstructionAnchorPoint {
   return {
-    cornerStyle: type === "rounded" ? "rounded" : "sharp",
+    cornerStyle: "sharp",
     id: makeConstructionId("anchor"),
     segmentType: "line",
-    type,
+    type: "corner",
     x,
     y,
   };
@@ -118,13 +108,6 @@ function makePath(point: ConstructionAnchorPoint): ConstructionPath {
     points: [point],
     strokeWidth: 0.06,
   };
-}
-
-function getPointBySelection(construction: GlyphConstruction | undefined, selection: ConstructionSelection) {
-  const path = construction?.paths.find((item) => item.id === selection.pathId);
-  const point = path?.points.find((item) => item.id === selection.pointId);
-
-  return { path, point };
 }
 
 function getThemeBackground(style: BackgroundStyle | undefined, color: string) {
@@ -309,35 +292,6 @@ export default function GlyphConstructionCanvas({
     onEditStart();
   }
 
-  function hitTestHandle(point: { x: number; y: number }) {
-    const { point: selectedPoint, path } = getPointBySelection(constructionRef.current, selection);
-
-    if (!selectedPoint || !path) {
-      return null;
-    }
-
-    for (const handleName of ["in", "out"] as const) {
-      const handle = selectedPoint[`${handleName}Handle`];
-
-      if (!handle) {
-        continue;
-      }
-
-      const handleCanvasPoint = toCanvasPoint(handle);
-      const pointerCanvasPoint = toCanvasPoint(point);
-
-      if (Math.hypot(handleCanvasPoint.x - pointerCanvasPoint.x, handleCanvasPoint.y - pointerCanvasPoint.y) <= HIT_RADIUS) {
-        return {
-          handle: handleName,
-          pathId: path.id,
-          pointId: selectedPoint.id,
-        };
-      }
-    }
-
-    return null;
-  }
-
   function hitTestPoint(point: { x: number; y: number }) {
     const pointerCanvasPoint = toCanvasPoint(point);
 
@@ -379,10 +333,10 @@ export default function GlyphConstructionCanvas({
     return null;
   }
 
-  function addPoint(point: { x: number; y: number }, type: ConstructionPointType = "corner") {
+  function addPoint(point: { x: number; y: number }) {
     maybeStartEdit();
     const snappedPoint = snapPoint(point);
-    const nextAnchor = makeAnchorPoint(snappedPoint.x, snappedPoint.y, type);
+    const nextAnchor = makeAnchorPoint(snappedPoint.x, snappedPoint.y);
     const nextConstruction = cloneConstruction(constructionRef.current);
     const targetPathId = selection.pendingNewPath ? null : selection.pathId;
 
@@ -448,26 +402,13 @@ export default function GlyphConstructionCanvas({
 
     event.currentTarget.setPointerCapture(event.pointerId);
 
-    if (tool === "addPoint" || tool === "penPath") {
-      addPoint(point, tool === "penPath" ? "smooth" : "corner");
+    if (tool === "addPoint") {
+      addPoint(point);
       return;
     }
 
     if (tool === "delete") {
       deleteHitTarget(point);
-      return;
-    }
-
-    const hitHandle = hitTestHandle(point);
-
-    if (hitHandle && (tool === "handle" || tool === "select")) {
-      dragRef.current = {
-        handle: hitHandle.handle,
-        kind: "handle",
-        pathId: hitHandle.pathId,
-        pointId: hitHandle.pointId,
-      };
-      onSelectionChange({ handle: hitHandle.handle, pathId: hitHandle.pathId, pointId: hitHandle.pointId });
       return;
     }
 
@@ -493,7 +434,7 @@ export default function GlyphConstructionCanvas({
         pathId: hitSegment.path.id,
         startPoint: point,
       };
-      onSelectionChange({ pathId: hitSegment.path.id, segmentIndex: hitSegment.segmentIndex });
+      onSelectionChange({ pathId: hitSegment.path.id });
       return;
     }
 
@@ -509,34 +450,6 @@ export default function GlyphConstructionCanvas({
 
     const point = getCanvasPoint(event.clientX, event.clientY);
     maybeStartEdit();
-
-    if (drag.kind === "handle") {
-      updatePoint(drag.pathId, drag.pointId, (anchor) => {
-        const handle = snapPoint(point);
-        const siblingHandle = drag.handle === "in" ? anchor.outHandle : anchor.inHandle;
-        const nextPoint = {
-          ...anchor,
-          [`${drag.handle}Handle`]: handle,
-          segmentType: "curve" as const,
-          type: anchor.type === "corner" ? "smooth" as const : anchor.type,
-        };
-
-        if (anchor.type === "symmetric" && siblingHandle) {
-          const mirrorHandle: ConstructionHandle = {
-            x: clamp(anchor.x * 2 - handle.x),
-            y: clamp(anchor.y * 2 - handle.y),
-          };
-
-          return {
-            ...nextPoint,
-            ...(drag.handle === "in" ? { outHandle: mirrorHandle } : { inHandle: mirrorHandle }),
-          };
-        }
-
-        return nextPoint;
-      });
-      return;
-    }
 
     if (drag.kind === "point") {
       updatePoint(drag.pathId, drag.pointId, (anchor) => {
@@ -693,27 +606,10 @@ export default function GlyphConstructionCanvas({
         if (selected) {
           ctx.save();
           ctx.strokeStyle = "#82d0bc";
-          ctx.lineWidth = 1.5;
-          ctx.fillStyle = "#f8f0df";
-
-          for (const handleName of ["in", "out"] as const) {
-            const handle = anchor[`${handleName}Handle`];
-
-            if (!handle) {
-              continue;
-            }
-
-            const handlePoint = toCanvasPoint(handle);
-            ctx.beginPath();
-            ctx.moveTo(point.x, point.y);
-            ctx.lineTo(handlePoint.x, handlePoint.y);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.arc(handlePoint.x, handlePoint.y, 5, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
-          }
-
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(point.x, point.y, 13, 0, Math.PI * 2);
+          ctx.stroke();
           ctx.restore();
         }
 
@@ -722,11 +618,7 @@ export default function GlyphConstructionCanvas({
         ctx.strokeStyle = selected ? "#f8f0df" : backgroundAccentColor;
         ctx.lineWidth = 2;
         ctx.beginPath();
-        if (anchor.type === "corner") {
-          ctx.rect(point.x - 5, point.y - 5, 10, 10);
-        } else {
-          ctx.arc(point.x, point.y, anchor.type === "rounded" ? 7 : 6, 0, Math.PI * 2);
-        }
+        ctx.rect(point.x - 5, point.y - 5, 10, 10);
         ctx.fill();
         ctx.stroke();
         ctx.restore();

@@ -1,5 +1,4 @@
 import { fontCharacters, spacebar } from "../data/characterSets";
-import { createSampleConstructionA } from "../data/constructionSamples";
 import type {
   BackgroundStyle,
   BackgroundTexture,
@@ -136,14 +135,6 @@ export function createFontSet(
     };
     return map;
   }, {});
-
-  if (glyphs.A) {
-    glyphs.A = {
-      ...glyphs.A,
-      construction: createSampleConstructionA(),
-      xAdvance: 0.82,
-    };
-  }
 
   const now = new Date().toISOString();
 
