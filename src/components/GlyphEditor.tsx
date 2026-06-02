@@ -98,7 +98,15 @@ type GlyphEditorProps = {
   onToggleFullScreen: () => void;
 };
 
-type FullscreenDrawer = "ink" | "background" | "guides" | "more" | null;
+type FullscreenDrawer =
+  | "ink"
+  | "background"
+  | "guides"
+  | "more"
+  | "constructionPaths"
+  | "constructionGuides"
+  | "constructionMore"
+  | null;
 type ActiveVariation = "base" | "new" | number;
 type EditorMode = "draw" | "construction";
 type InkTool = Extract<DrawingTool, "pen" | "quill" | "line">;
@@ -1135,6 +1143,28 @@ export default function GlyphEditor({
     setSavedMessage("Cleared construction paths");
   }
 
+  function armNewConstructionPath() {
+    setConstructionSelection({ pathId: null, pendingNewPath: true });
+    setConstructionTool("addPoint");
+  }
+
+  function chooseConstructionTool(nextTool: ConstructionTool) {
+    setConstructionTool(nextTool);
+    setActiveFullscreenDrawer(null);
+  }
+
+  function toggleConstructionSnapAll() {
+    setConstructionSnapSettings((current) => {
+      const nextValue = !Object.values(current).some(Boolean);
+      return {
+        anchors: nextValue,
+        centerline: nextValue,
+        grid: nextValue,
+        guides: nextValue,
+      };
+    });
+  }
+
   function openConstructionMode() {
     setEditorMode("construction");
     setActiveFullscreenDrawer(null);
@@ -1655,10 +1685,7 @@ export default function GlyphEditor({
             <button
               className={`construction-path-chip ${constructionSelection.pendingNewPath ? "selected" : ""}`}
               type="button"
-              onClick={() => {
-                setConstructionSelection({ pathId: null, pendingNewPath: true });
-                setConstructionTool("addPoint");
-              }}
+              onClick={armNewConstructionPath}
             >
               <span>New path</span>
               <strong>tap canvas</strong>
@@ -1714,17 +1741,7 @@ export default function GlyphEditor({
             <button
               className={`secondary-button ${hasSnap ? "active-tool" : ""}`}
               type="button"
-              onClick={() =>
-                setConstructionSnapSettings((current) => {
-                  const nextValue = !Object.values(current).some(Boolean);
-                  return {
-                    anchors: nextValue,
-                    centerline: nextValue,
-                    grid: nextValue,
-                    guides: nextValue,
-                  };
-                })
-              }
+              onClick={toggleConstructionSnapAll}
             >
               Snap
             </button>
@@ -1745,10 +1762,7 @@ export default function GlyphEditor({
               <button
                 className={`secondary-button ${constructionSelection.pendingNewPath ? "active-tool" : ""}`}
                 type="button"
-                onClick={() => {
-                  setConstructionSelection({ pathId: null, pendingNewPath: true });
-                  setConstructionTool("addPoint");
-                }}
+                onClick={armNewConstructionPath}
               >
                 New Path
               </button>
@@ -1817,6 +1831,344 @@ export default function GlyphEditor({
         </div>
       </div>
     );
+  }
+
+  function renderConstructionFullscreen() {
+    const selectedPath = getSelectedConstructionPath();
+    const selectedPoint = getSelectedConstructionPoint();
+    const constructionPaths = draftGlyph.construction?.paths ?? [];
+    const constructionPathCount = constructionPaths.length;
+    const constructionPointCount = constructionPaths.reduce((total, path) => total + path.points.length, 0);
+    const selectedPathIndex = selectedPath ? constructionPaths.findIndex((path) => path.id === selectedPath.id) : -1;
+    const selectedLabel = selectedPoint
+      ? "Point"
+      : selectedPath && selectedPathIndex >= 0
+        ? `Path ${selectedPathIndex + 1}`
+        : "None";
+    const hasSnap = Object.values(constructionSnapSettings).some(Boolean);
+
+    return (
+      <section className="studio-panel editor-panel fullscreen-editor fullscreen-construction-only" aria-label="Letter construction">
+        <div className="construction-fullscreen-canvas">
+          <GlyphConstructionCanvas
+            backgroundAccentColor={activeFontTheme.accentColor}
+            backgroundColor={activeFontTheme.backgroundColor}
+            backgroundStyle={activeFontTheme.backgroundStyle}
+            backgroundTexture={activeFontTheme.backgroundTexture}
+            construction={draftGlyph.construction}
+            guideSettings={font.guideSettings}
+            selection={constructionSelection}
+            showGuides={constructionShowGuides}
+            snapSettings={constructionSnapSettings}
+            tool={constructionTool}
+            onChange={updateDraftConstruction}
+            onEditStart={pushHistory}
+            onSelectionChange={setConstructionSelection}
+          />
+        </div>
+
+        <div className="draw-only-topbar construction-only-topbar" aria-label="Construction navigation">
+          <button
+            className="draw-glass-button draw-icon-button draw-top-icon"
+            type="button"
+            aria-label="Exit fullscreen construction"
+            title="Exit"
+            onClick={onToggleFullScreen}
+          >
+            <X aria-hidden="true" />
+          </button>
+          <button
+            className="draw-glass-button draw-icon-button draw-top-icon"
+            type="button"
+            aria-label="Previous glyph"
+            title="Previous"
+            onClick={onPreviousCharacter}
+          >
+            <ChevronLeft aria-hidden="true" />
+          </button>
+          <div className="draw-character-pill">
+            <strong>{characterLabel}</strong>
+            <span>
+              Build - {characterIndex + 1}/{characterTotal}
+            </span>
+          </div>
+          <button
+            className="draw-glass-button draw-top-construction-button"
+            type="button"
+            aria-label="Return to drawing mode"
+            title="Draw"
+            onClick={() => {
+              setEditorMode("draw");
+              setActiveFullscreenDrawer(null);
+            }}
+          >
+            Draw
+          </button>
+          <button
+            className="draw-glass-button draw-icon-button draw-top-icon"
+            type="button"
+            aria-label="Next glyph"
+            title="Next"
+            onClick={onNextCharacter}
+          >
+            <ChevronRight aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className="draw-fullscreen-controls construction-fullscreen-controls" ref={fullscreenControlsRef}>
+          {savedMessage && (
+            <div className="draw-save-status" aria-live="polite">
+              {savedMessage}
+            </div>
+          )}
+
+          {activeFullscreenDrawer === "constructionPaths" && (
+            <div id="construction-paths-drawer" className="draw-control-drawer construction-paths-drawer" aria-label="Construction paths drawer">
+              <div className="construction-stat-grid">
+                <div>
+                  <span>Paths</span>
+                  <strong>{constructionPathCount}</strong>
+                </div>
+                <div>
+                  <span>Points</span>
+                  <strong>{constructionPointCount}</strong>
+                </div>
+                <div>
+                  <span>Selected</span>
+                  <strong>{selectedLabel}</strong>
+                </div>
+              </div>
+              <div className="construction-path-list construction-path-list-horizontal" aria-label="Construction paths">
+                {constructionPaths.map((path, index) => (
+                  <button
+                    key={path.id}
+                    className={`construction-path-chip ${constructionSelection.pathId === path.id ? "selected" : ""}`}
+                    type="button"
+                    onClick={() => setConstructionSelection({ pathId: path.id })}
+                  >
+                    <span>Path {index + 1}</span>
+                    <strong>{path.points.length} pts</strong>
+                  </button>
+                ))}
+                <button
+                  className={`construction-path-chip ${constructionSelection.pendingNewPath ? "selected" : ""}`}
+                  type="button"
+                  onClick={armNewConstructionPath}
+                >
+                  <span>New path</span>
+                  <strong>tap canvas</strong>
+                </button>
+              </div>
+              <div className="draw-drawer-grid three" aria-label="Construction path actions">
+                <button className="draw-drawer-button" type="button" onClick={armNewConstructionPath}>
+                  <Plus aria-hidden="true" />
+                  <span>New Path</span>
+                </button>
+                <button
+                  className="draw-drawer-button danger-action"
+                  type="button"
+                  disabled={!selectedPath}
+                  onClick={handleDeleteSelectedConstructionTarget}
+                >
+                  <X aria-hidden="true" />
+                  <span>Delete Selected</span>
+                </button>
+                <button
+                  className="draw-drawer-button danger-action"
+                  type="button"
+                  disabled={!constructionPathCount}
+                  onClick={handleClearConstruction}
+                >
+                  <RotateCcw aria-hidden="true" />
+                  <span>Clear All</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {activeFullscreenDrawer === "constructionGuides" && (
+            <div id="construction-guides-drawer" className="draw-control-drawer draw-guide-drawer" aria-label="Construction guides drawer">
+              <div className="draw-drawer-grid three" aria-label="Construction guide actions">
+                <button
+                  className={`draw-drawer-button ${constructionShowGuides ? "active-tool" : ""}`}
+                  type="button"
+                  onClick={() => setConstructionShowGuides((current) => !current)}
+                >
+                  <Eye aria-hidden="true" />
+                  <span>Guides</span>
+                </button>
+                <button
+                  className={`draw-drawer-button ${hasSnap ? "active-tool" : ""}`}
+                  type="button"
+                  onClick={toggleConstructionSnapAll}
+                >
+                  <MousePointer2 aria-hidden="true" />
+                  <span>Snap</span>
+                </button>
+                <button className="draw-drawer-button" type="button" onClick={() => onUpdateFontGuideSettings({ ...defaultFontGuideSettings })}>
+                  <RotateCcw aria-hidden="true" />
+                  <span>Reset</span>
+                </button>
+              </div>
+              <div className="draw-guide-settings">
+                {fontGuideRows.map((guide) => (
+                  <label key={guide.key} className="draw-drawer-range draw-guide-range">
+                    <span>{guide.label}</span>
+                    <input
+                      type="range"
+                      min="0.02"
+                      max="0.98"
+                      step="0.01"
+                      value={font.guideSettings[guide.key]}
+                      onChange={(event) => handleGuideSettingChange(guide.key, Number(event.target.value))}
+                    />
+                    <output>{Math.round(font.guideSettings[guide.key] * 100)}%</output>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {activeFullscreenDrawer === "constructionMore" && (
+            <div id="construction-more-drawer" className="draw-control-drawer" aria-label="Construction save drawer">
+              {renderVariationControls("glyph-variation-strip draw-variation-strip")}
+              <div className="draw-drawer-grid three" aria-label="Construction save actions">
+                <button
+                  className="draw-drawer-button"
+                  type="button"
+                  onClick={() => {
+                    handleSave();
+                    setActiveFullscreenDrawer(null);
+                  }}
+                >
+                  <Save aria-hidden="true" />
+                  <span>Save base</span>
+                </button>
+                <button
+                  className="draw-drawer-button"
+                  type="button"
+                  onClick={() => {
+                    handleSaveVariant();
+                    setActiveFullscreenDrawer(null);
+                  }}
+                >
+                  <Save aria-hidden="true" />
+                  <span>Save var</span>
+                </button>
+                <button
+                  className="draw-drawer-button accent"
+                  type="button"
+                  onPointerUp={handleFullscreenSaveAndNext}
+                  onTouchEnd={handleFullscreenSaveAndNextTouch}
+                  onClick={handleSaveAndNextClick}
+                >
+                  <SkipForward aria-hidden="true" />
+                  <span>Save + next</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="draw-only-toolbar construction-only-toolbar" aria-label="Construction dock">
+            <button
+              className={`draw-glass-button draw-icon-button ${constructionTool === "select" ? "active-tool" : ""}`}
+              type="button"
+              aria-label="Use construction select"
+              title="Select"
+              onClick={() => chooseConstructionTool("select")}
+            >
+              <MousePointer2 aria-hidden="true" />
+            </button>
+            <button
+              className={`draw-glass-button draw-icon-button ${constructionTool === "addPoint" ? "active-tool" : ""}`}
+              type="button"
+              aria-label="Use add point"
+              title="Add Point"
+              onClick={() => chooseConstructionTool("addPoint")}
+            >
+              <Plus aria-hidden="true" />
+            </button>
+            <button
+              className={`draw-glass-button draw-icon-button ${constructionTool === "delete" ? "active-tool" : ""}`}
+              type="button"
+              aria-label="Use construction delete"
+              title="Delete"
+              onClick={() => chooseConstructionTool("delete")}
+            >
+              <X aria-hidden="true" />
+            </button>
+            <button
+              className={`draw-glass-button draw-icon-button ${activeFullscreenDrawer === "constructionPaths" ? "active-tool" : ""}`}
+              type="button"
+              aria-label="Open construction paths"
+              aria-expanded={activeFullscreenDrawer === "constructionPaths"}
+              aria-controls="construction-paths-drawer"
+              title="Paths"
+              onClick={() => toggleFullscreenDrawer("constructionPaths")}
+            >
+              <Layers aria-hidden="true" />
+            </button>
+            <button
+              className={`draw-glass-button draw-icon-button ${activeFullscreenDrawer === "constructionGuides" ? "active-tool" : ""}`}
+              type="button"
+              aria-label="Open construction guides"
+              aria-expanded={activeFullscreenDrawer === "constructionGuides"}
+              aria-controls="construction-guides-drawer"
+              title="Guides"
+              onClick={() => toggleFullscreenDrawer("constructionGuides")}
+            >
+              <Eye aria-hidden="true" />
+            </button>
+            <button
+              className="draw-glass-button draw-icon-button"
+              type="button"
+              aria-label="Undo"
+              title="Undo"
+              disabled={historyCounts.past === 0}
+              onClick={handleUndo}
+            >
+              <Undo2 aria-hidden="true" />
+            </button>
+            <button
+              className="draw-glass-button draw-icon-button"
+              type="button"
+              aria-label="Redo"
+              title="Redo"
+              disabled={historyCounts.future === 0}
+              onClick={handleRedo}
+            >
+              <Redo2 aria-hidden="true" />
+            </button>
+            <button
+              className={`draw-glass-button draw-icon-button ${activeFullscreenDrawer === "constructionMore" ? "active-tool" : ""}`}
+              type="button"
+              aria-label="Open construction save actions"
+              aria-expanded={activeFullscreenDrawer === "constructionMore"}
+              aria-controls="construction-more-drawer"
+              title="More"
+              onClick={() => toggleFullscreenDrawer("constructionMore")}
+            >
+              <Ellipsis aria-hidden="true" />
+            </button>
+            <button
+              className="draw-gold-button draw-icon-button draw-save-next-button"
+              type="button"
+              aria-label="Save and next glyph"
+              title="Save + next"
+              onPointerUp={handleFullscreenSaveAndNext}
+              onTouchEnd={handleFullscreenSaveAndNextTouch}
+              onClick={handleSaveAndNextClick}
+            >
+              <SkipForward aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (isFullScreen && editorMode === "construction") {
+    return renderConstructionFullscreen();
   }
 
   if (isFullScreen && editorMode === "draw") {
