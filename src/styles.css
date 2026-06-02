@@ -1143,6 +1143,10 @@ h3 {
   font-size: 0.72rem;
 }
 
+.construction-tool-grid .danger-button {
+  grid-column: 1 / -1;
+}
+
 .construction-check-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }

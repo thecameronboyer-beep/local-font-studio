@@ -49,7 +49,7 @@ import type {
   ConstructionTool,
 } from "./GlyphConstructionCanvas";
 import SpacingControls from "./SpacingControls";
-import { createSampleConstructionA } from "../data/constructionSamples";
+import { createSampleConstructionA, createSampleConstructionB } from "../data/constructionSamples";
 import { getCharacterLabel, getVisibleCharacters, spacebar } from "../data/characterSets";
 import {
   drawGlyph,
@@ -1163,6 +1163,17 @@ export default function GlyphEditor({
     setSavedMessage("Loaded sample construction");
   }
 
+  function handleLoadConstructionSampleB() {
+    pushHistory();
+    updateDraftGlyph({
+      ...draftGlyphRef.current,
+      construction: createSampleConstructionB(),
+    });
+    setConstructionSelection({ pathId: "construction_sample_b_top_bowl", pointId: "construction_sample_b_top_outer" });
+    setEditorMode("construction");
+    setSavedMessage("Loaded sample B construction");
+  }
+
   function handleDeleteSelectedConstructionTarget() {
     const selectedPath = getSelectedConstructionPath();
     const selectedPoint = getSelectedConstructionPoint();
@@ -1978,6 +1989,9 @@ export default function GlyphEditor({
           <div className="construction-tool-grid two">
             <button className="secondary-button" type="button" onClick={handleLoadConstructionSample}>
               Load sample A
+            </button>
+            <button className="secondary-button" type="button" onClick={handleLoadConstructionSampleB}>
+              Load sample B
             </button>
             <button
               className="danger-button"

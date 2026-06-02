@@ -70,3 +70,118 @@ export function createSampleConstructionA(): GlyphConstruction {
     strokeColor: "#17110b",
   };
 }
+
+export function createSampleConstructionB(): GlyphConstruction {
+  return {
+    paths: [
+      {
+        closed: false,
+        filled: false,
+        id: "construction_sample_b_stem",
+        points: [
+          {
+            cornerRadius: 0.05,
+            cornerStyle: "rounded",
+            id: "construction_sample_b_stem_top",
+            segmentType: "line",
+            type: "rounded",
+            x: 0.28,
+            y: 0.18,
+          },
+          {
+            cornerRadius: 0.05,
+            cornerStyle: "rounded",
+            id: "construction_sample_b_stem_bottom",
+            segmentType: "line",
+            type: "rounded",
+            x: 0.28,
+            y: 0.78,
+          },
+        ],
+        strokeColor: "#17110b",
+        strokeWidth: 0.085,
+      },
+      {
+        closed: false,
+        filled: false,
+        id: "construction_sample_b_top_bowl",
+        points: [
+          {
+            cornerRadius: 0.04,
+            cornerStyle: "rounded",
+            id: "construction_sample_b_top_join",
+            outHandle: { x: 0.42, y: 0.15 },
+            segmentType: "curve",
+            type: "rounded",
+            x: 0.29,
+            y: 0.2,
+          },
+          {
+            cornerRadius: 0.05,
+            cornerStyle: "rounded",
+            id: "construction_sample_b_top_outer",
+            inHandle: { x: 0.64, y: 0.16 },
+            outHandle: { x: 0.76, y: 0.31 },
+            segmentType: "curve",
+            type: "symmetric",
+            x: 0.68,
+            y: 0.31,
+          },
+          {
+            cornerRadius: 0.05,
+            cornerStyle: "rounded",
+            id: "construction_sample_b_middle_join",
+            inHandle: { x: 0.64, y: 0.47 },
+            segmentType: "curve",
+            type: "rounded",
+            x: 0.31,
+            y: 0.48,
+          },
+        ],
+        strokeColor: "#17110b",
+        strokeWidth: 0.08,
+      },
+      {
+        closed: false,
+        filled: false,
+        id: "construction_sample_b_bottom_bowl",
+        points: [
+          {
+            cornerRadius: 0.04,
+            cornerStyle: "rounded",
+            id: "construction_sample_b_middle_start",
+            outHandle: { x: 0.45, y: 0.48 },
+            segmentType: "curve",
+            type: "rounded",
+            x: 0.31,
+            y: 0.48,
+          },
+          {
+            cornerRadius: 0.06,
+            cornerStyle: "rounded",
+            id: "construction_sample_b_bottom_outer",
+            inHandle: { x: 0.72, y: 0.5 },
+            outHandle: { x: 0.78, y: 0.71 },
+            segmentType: "curve",
+            type: "symmetric",
+            x: 0.71,
+            y: 0.63,
+          },
+          {
+            cornerRadius: 0.05,
+            cornerStyle: "rounded",
+            id: "construction_sample_b_bottom_join",
+            inHandle: { x: 0.64, y: 0.79 },
+            segmentType: "curve",
+            type: "rounded",
+            x: 0.28,
+            y: 0.78,
+          },
+        ],
+        strokeColor: "#17110b",
+        strokeWidth: 0.085,
+      },
+    ],
+    strokeColor: "#17110b",
+  };
+}
