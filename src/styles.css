@@ -1517,6 +1517,17 @@ input[type="color"] {
   margin: 10px 18px 8px;
 }
 
+.phone-header-text-input {
+  min-height: 52px;
+  max-height: 96px;
+  border-color: rgba(130, 208, 188, 0.3);
+  background: #12211f;
+}
+
+.phone-header-text-input::placeholder {
+  color: rgba(248, 230, 194, 0.62);
+}
+
 .preview-tools {
   display: flex;
   flex-wrap: wrap;
@@ -2784,7 +2795,10 @@ h1 {
 
 .draw-ink-swatch.selected {
   border-color: #82d0bc;
-  background: #1b2c2b;
+  background: #12312d;
+  box-shadow:
+    0 0 0 2px rgba(130, 208, 188, 0.46),
+    0 0 18px rgba(130, 208, 188, 0.18);
 }
 
 .draw-ink-swatch span {
@@ -2794,6 +2808,13 @@ h1 {
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 6px;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+}
+
+.draw-ink-swatch.selected span {
+  border-color: rgba(248, 240, 223, 0.72);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.32),
+    0 0 0 1px rgba(130, 208, 188, 0.34);
 }
 
 .draw-background-presets {
@@ -2963,7 +2984,7 @@ h1 {
   z-index: 36;
   inset: 0 auto 0 50%;
   display: grid;
-  grid-template-rows: auto minmax(170px, 38dvh) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   width: min(var(--phone-shell-width), 100vw);
   height: 100dvh;
   max-height: 100dvh;
@@ -2976,32 +2997,386 @@ h1 {
 
 .phone-style-fullscreen .phone-style-heading {
   position: static;
+  z-index: 3;
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: center;
   gap: 10px;
+  border-bottom: 1px solid rgba(248, 230, 194, 0.12);
+  background: #151314;
   padding: max(10px, env(safe-area-inset-top)) 10px 10px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.42);
 }
 
 .phone-style-preview {
   min-height: 0;
   overflow: auto;
-  padding: 10px;
+  padding: 12px 10px calc(96px + max(14px, env(safe-area-inset-bottom)));
 }
 
 .phone-style-preview .phone-image-canvas {
-  max-height: 34dvh;
+  max-width: min(100%, 1080px);
+  max-height: none;
+  touch-action: auto;
 }
 
-.phone-style-content {
-  min-height: 0;
+.phone-style-preview .phone-image-canvas.drawing-enabled {
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.phone-style-preview .phone-image-canvas.moving-sticker-enabled {
+  cursor: grab;
+  touch-action: none;
+}
+
+.phone-style-preview .phone-image-canvas.moving-sticker-enabled:active {
+  cursor: grabbing;
+}
+
+.phone-style-dock {
+  position: absolute;
+  z-index: 4;
+  right: max(8px, env(safe-area-inset-right));
+  bottom: max(8px, env(safe-area-inset-bottom));
+  left: max(8px, env(safe-area-inset-left));
+  display: grid;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.phone-style-dock > * {
+  pointer-events: auto;
+}
+
+.phone-style-toolbar {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.style-dock-button {
+  min-height: 44px;
+  gap: 3px;
+}
+
+.style-dock-button span {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 0.58rem;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.style-select-dock-icon {
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  gap: 2px;
+  line-height: 1;
+}
+
+.style-select-dock-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.style-select-target-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  margin-left: -4px;
+  border-radius: 999px;
+  background: rgba(248, 230, 194, 0.13);
+  color: #f3dfb6;
+}
+
+.style-select-target-icon svg {
+  width: 11px;
+  height: 11px;
+  stroke-width: 3;
+}
+
+.style-select-popover {
+  justify-self: end;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+  width: min(100%, 330px);
+}
+
+.style-selection-action-row {
+  justify-self: start;
+  display: grid;
+  grid-template-columns: repeat(4, 52px);
+  gap: 7px;
+  width: auto;
+}
+
+.style-selection-action-row.sticker-actions {
+  grid-template-columns: repeat(8, 52px);
+}
+
+.style-selection-action-row.compact {
+  grid-template-columns: repeat(2, 52px);
+}
+
+.style-select-popover .draw-drawer-button,
+.style-selection-action-row .draw-drawer-button {
+  min-height: 42px;
+}
+
+.style-selection-action-row .draw-drawer-button {
+  grid-template-columns: 1fr;
+  place-items: center;
+  width: 52px;
+  min-width: 52px;
+  min-height: 52px;
+  aspect-ratio: 1;
+  padding: 0;
+}
+
+.style-selection-action-row .draw-drawer-button span {
+  display: none;
+}
+
+.style-selection-action-row .draw-drawer-button svg {
+  width: 22px;
+  height: 22px;
+}
+
+.style-sticker-sleepiness-panel,
+.style-sticker-redness-panel,
+.style-sticker-face-panel {
+  justify-self: start;
+  display: grid;
+  grid-template-columns: auto minmax(150px, 220px) auto;
+  align-items: center;
+  gap: 9px;
+  min-height: 46px;
+  border: 1px solid rgba(248, 230, 194, 0.16);
+  border-radius: 8px;
+  background: #191618;
+  color: #f8f0df;
+  padding: 0 10px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.34);
+}
+
+.style-sticker-sleepiness-panel svg,
+.style-sticker-redness-panel svg,
+.style-sticker-face-panel svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 2.7;
+}
+
+.style-sticker-sleepiness-panel input,
+.style-sticker-redness-panel input,
+.style-sticker-face-panel input {
+  width: 100%;
+}
+
+.style-sticker-sleepiness-panel output,
+.style-sticker-redness-panel output,
+.style-sticker-face-panel output {
+  min-width: 38px;
+  color: #f3dfb6;
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-align: right;
+}
+
+.style-sticker-face-panel output {
+  min-width: 76px;
+}
+
+.style-control-drawer {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  backdrop-filter: none;
+  box-shadow: none;
+  max-height: min(46dvh, 430px);
   overflow: auto;
-  padding: 12px 10px max(14px, env(safe-area-inset-bottom));
 }
 
-.phone-style-content .image-style-section {
-  padding-right: 0;
-  padding-left: 0;
+.phone-style-dock .draw-drawer-button,
+.phone-style-dock .style-dock-button {
+  background: #191618;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.34);
+}
+
+.phone-style-dock .draw-drawer-button.active-tool,
+.phone-style-dock .style-dock-button.active-tool {
+  background: #1b2c2b;
+}
+
+.phone-style-dock .draw-drawer-button.danger-action {
+  background: #4e1f21;
+}
+
+.phone-style-dock .draw-drawer-button.accent {
+  background: #c8a45d;
+}
+
+.style-color-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.style-color-card {
+  display: grid;
+  gap: 7px;
+  min-height: 62px;
+  border: 1px solid rgba(248, 230, 194, 0.16);
+  border-radius: 8px;
+  background: rgba(25, 22, 24, 0.9);
+  color: #f3dfb6;
+  padding: 8px;
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.style-color-card input[type="color"] {
+  width: 100%;
+  height: 28px;
+  min-height: 28px;
+  border: 1px solid rgba(248, 230, 194, 0.16);
+  border-radius: 6px;
+  background: transparent;
+  padding: 0;
+}
+
+.style-toggle-control {
+  min-height: 42px;
+  border: 1px solid rgba(248, 230, 194, 0.16);
+  border-radius: 8px;
+  background: rgba(25, 22, 24, 0.9);
+  color: #f3dfb6;
+  padding: 0 10px;
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.style-ink-swatches {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.style-background-presets {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.style-texture-presets {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.style-sticker-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.style-sticker-button {
+  grid-template-columns: auto minmax(0, 1fr);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.style-sticker-button:active {
+  cursor: grabbing;
+}
+
+.style-sticker-button canvas {
+  pointer-events: none;
+}
+
+.style-eyes-button {
+  grid-column: 1;
+  grid-template-columns: 1fr;
+  place-items: center;
+  width: 56px;
+  min-width: 56px;
+  min-height: 56px;
+  aspect-ratio: 1;
+  padding: 0;
+}
+
+.style-sticker-drag-preview {
+  position: fixed;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  width: 76px;
+  height: 54px;
+  border: 1px solid rgba(248, 230, 194, 0.22);
+  border-radius: 12px;
+  background: #151314;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.42);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.style-drawer-empty {
+  margin: 0;
+  border: 1px dashed rgba(248, 230, 194, 0.18);
+  border-radius: 8px;
+  background: rgba(25, 22, 24, 0.72);
+  color: rgba(248, 240, 223, 0.78);
+  padding: 10px;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.style-text-layer-list {
+  display: grid;
+  gap: 8px;
+}
+
+.style-text-layer-card {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(248, 230, 194, 0.16);
+  border-radius: 8px;
+  background: rgba(25, 22, 24, 0.9);
+  padding: 10px;
+}
+
+.style-text-layer-heading,
+.style-text-layer-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.style-text-layer-heading strong,
+.style-text-layer-field span {
+  color: #f3dfb6;
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.style-text-layer-field select {
+  width: min(220px, 52vw);
+  min-height: 38px;
+  font-size: 0.78rem;
+}
+
+.style-text-layer-input {
+  min-height: 72px;
+  resize: vertical;
+  font-size: 0.82rem;
+}
+
+.style-select-edit-panel {
+  display: grid;
+  gap: 8px;
 }
 
 .phone-image-fullscreen {
@@ -3022,11 +3397,15 @@ h1 {
 
 .phone-image-fullscreen-heading {
   position: static;
+  z-index: 3;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
+  border-bottom: 1px solid rgba(248, 230, 194, 0.12);
+  background: #151314;
   padding: max(10px, env(safe-area-inset-top)) 10px 10px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.42);
 }
 
 .phone-image-menu-wrap {
@@ -3079,6 +3458,12 @@ h1 {
   padding: 0 7px;
   font-size: 0.82rem;
   line-height: 1;
+}
+
+.phone-letter-heading-settings .header-letter-chip {
+  border-color: rgba(240, 197, 110, 0.48);
+  background: #2b2418;
+  color: #f8df9c;
 }
 
 .phone-letter-heading-settings .compact-button {
@@ -3510,16 +3895,76 @@ h1 {
     font-size: 0.72rem;
   }
 
-  .phone-style-fullscreen {
-    grid-template-rows: auto minmax(240px, 44dvh) minmax(0, 1fr);
+  .phone-style-preview {
+    padding: 16px 18px calc(118px + max(18px, env(safe-area-inset-bottom)));
   }
 
-  .phone-style-content {
-    padding: 14px 18px max(18px, env(safe-area-inset-bottom));
+  .phone-style-dock {
+    right: max(16px, env(safe-area-inset-right));
+    bottom: max(16px, env(safe-area-inset-bottom));
+    left: max(16px, env(safe-area-inset-left));
+    gap: 10px;
   }
 
-  .phone-style-content .background-preset-grid,
-  .phone-style-content .ink-swatch-row {
+  .phone-style-toolbar,
+  .style-control-drawer,
+  .style-selection-action-row {
+    justify-self: center;
+    width: min(100%, 760px);
+  }
+
+  .style-selection-action-row {
+    grid-template-columns: repeat(4, 56px);
+    justify-self: start;
+    width: auto;
+  }
+
+  .style-selection-action-row.sticker-actions {
+    grid-template-columns: repeat(8, 56px);
+  }
+
+  .style-selection-action-row.compact {
+    grid-template-columns: repeat(2, 56px);
+  }
+
+  .style-selection-action-row .draw-drawer-button {
+    width: 56px;
+    min-width: 56px;
+    min-height: 56px;
+  }
+
+  .style-sticker-sleepiness-panel,
+  .style-sticker-redness-panel,
+  .style-sticker-face-panel {
+    grid-template-columns: auto minmax(180px, 260px) auto;
+  }
+
+  .style-select-popover {
+    width: min(100%, 360px);
+  }
+
+  .phone-style-toolbar {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .style-dock-button {
+    min-height: 56px;
+  }
+
+  .style-dock-button span {
+    font-size: 0.66rem;
+  }
+
+  .style-ink-swatches {
+    grid-template-columns: repeat(9, minmax(0, 1fr));
+  }
+
+  .style-background-presets {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .style-sticker-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
@@ -3616,6 +4061,10 @@ h1 {
     width: min(100%, 760px);
     gap: 10px;
     padding: 12px;
+  }
+
+  .phone-style-dock .style-control-drawer {
+    padding: 0;
   }
 
   .draw-glass-button,

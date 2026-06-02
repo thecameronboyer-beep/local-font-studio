@@ -74,6 +74,7 @@ export type FontTheme = {
 
 export type FontCharacterSettings = {
   showForgotten: boolean;
+  showHeaderLetters: boolean;
   showSpacebar: boolean;
 };
 

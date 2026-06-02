@@ -5,7 +5,7 @@ import GlyphEditor from "./components/GlyphEditor";
 import GlyphGrid from "./components/GlyphGrid";
 import SavedImagesPanel from "./components/SavedImagesPanel";
 import TextPreview from "./components/TextPreview";
-import { getVisibleCharacters, spacebar } from "./data/characterSets";
+import { getVisibleCharacters, isHeaderLetter, spacebar } from "./data/characterSets";
 import { hasDrawnGlyph } from "./render/glyphRenderer";
 import {
   cloneFontSet,
@@ -52,6 +52,7 @@ export default function App() {
   const [savedImagesOpen, setSavedImagesOpen] = useState(false);
   const [savedImages, setSavedImages] = useState<SavedImage[]>(() => loadSavedImages());
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [headerPreviewText, setHeaderPreviewText] = useState("");
   const [previewText, setPreviewText] = useState("the ducks know about the blue canoe.");
 
   const activeFont = useMemo(
@@ -80,7 +81,7 @@ export default function App() {
   }, [editorFullScreen, gridFullScreen, savedImagesOpen]);
 
   useEffect(() => {
-    if (!activeCharacters.includes(selectedCharacter)) {
+    if (!activeCharacters.includes(selectedCharacter) && !isHeaderLetter(selectedCharacter)) {
       setSelectedCharacter(activeCharacters[0] ?? "A");
     }
   }, [activeCharacters, selectedCharacter]);
@@ -410,52 +411,6 @@ export default function App() {
     });
   }
 
-  function handleUpdatePreviewFontMetrics(updates: {
-    glyphMetrics?: Partial<Pick<Glyph, "baselineOffset" | "leftBearing" | "rightBearing" | "xAdvance">>;
-    guideSettings?: FontGuideSettings;
-    shapeSettings?: FontShapeSettings;
-  }) {
-    const now = new Date().toISOString();
-    const nextData: FontStudioData = {
-      ...studioData,
-      fonts: studioData.fonts.map((font) => {
-        if (font.id !== activeFont.id) {
-          return font;
-        }
-
-        const nextGlyphs = updates.glyphMetrics
-          ? Object.fromEntries(
-              Object.entries(font.glyphs).map(([character, glyph]) => [
-                character,
-                character === spacebar
-                  ? glyph
-                  : {
-                      ...glyph,
-                      ...updates.glyphMetrics,
-                      variants: glyph.variants?.map((variant) => ({
-                        ...variant,
-                        ...updates.glyphMetrics,
-                        updatedAt: now,
-                      })),
-                      updatedAt: now,
-                    },
-              ]),
-            )
-          : font.glyphs;
-
-        return {
-          ...font,
-          glyphs: nextGlyphs,
-          guideSettings: updates.guideSettings ?? font.guideSettings,
-          shapeSettings: updates.shapeSettings ?? font.shapeSettings,
-          updatedAt: now,
-        };
-      }),
-    };
-
-    persist(nextData);
-  }
-
   function handleRecordPreviewExport(message: string) {
     persist(studioData, {
       fontId: activeFont.id,
@@ -584,11 +539,12 @@ export default function App() {
           />
           <TextPreview
             font={activeFont}
-            onUpdateFontMetrics={handleUpdatePreviewFontMetrics}
+            fonts={studioData.fonts}
             onRecordExport={handleRecordPreviewExport}
             onSaveImage={handleSaveImage}
-            onUpdateSelectedGlyph={handleSaveGlyph}
             onSelectCharacter={handleSelectCharacter}
+            headerPreviewText={headerPreviewText}
+            onHeaderPreviewTextChange={setHeaderPreviewText}
             previewText={previewText}
             onPreviewTextChange={setPreviewText}
             selectedGlyph={selectedGlyph}
@@ -631,7 +587,7 @@ export default function App() {
           onSaveGlyphVariant={handleSaveGlyphVariant}
           onUpdateFontGuideSettings={(guideSettings) => handleUpdateFontSettings(activeFont.id, { guideSettings })}
           onUpdateFontTheme={(theme) => handleUpdateFontSettings(activeFont.id, { theme })}
-          previewText={previewText}
+          previewText={headerPreviewText.trim() || previewText}
           onPreviewTextChange={setPreviewText}
           characterIndex={Math.max(0, selectedCharacterIndex)}
           characterTotal={activeCharacters.length}

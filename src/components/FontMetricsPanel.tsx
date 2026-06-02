@@ -1,9 +1,18 @@
 import { useMemo } from "react";
-import { forgotten, getCharacterLabel, lowercase, numbers, punctuation, spacebar, uppercase } from "../data/characterSets";
+import {
+  forgotten,
+  getCharacterLabel,
+  headerLetters,
+  lowercase,
+  numbers,
+  punctuation,
+  spacebar,
+  uppercase,
+} from "../data/characterSets";
 import { findPreviewGlyph, hasDrawnGlyph } from "../render/glyphRenderer";
 import type { FontSet } from "../types/fontTypes";
 
-type MetricGroupId = "uppercase" | "lowercase" | "numbers" | "punctuation" | "forgotten" | "spacebar";
+type MetricGroupId = "uppercase" | "lowercase" | "numbers" | "punctuation" | "header" | "forgotten" | "spacebar";
 
 type FontMetricsPanelProps = {
   font: FontSet;
@@ -32,6 +41,9 @@ export default function FontMetricsPanel({
   const groupDefinitions = useMemo(
     () => [
       ...baseGroupDefinitions,
+      ...(font.characterSettings.showHeaderLetters
+        ? [{ id: "header" as const, label: "Header Letters", characters: headerLetters }]
+        : []),
       ...(font.characterSettings.showForgotten
         ? [{ id: "forgotten" as const, label: "Forgotten", characters: forgotten }]
         : []),
@@ -39,7 +51,11 @@ export default function FontMetricsPanel({
         ? [{ id: "spacebar" as const, label: "Space Bar", characters: [spacebar] }]
         : []),
     ],
-    [font.characterSettings.showForgotten, font.characterSettings.showSpacebar],
+    [
+      font.characterSettings.showForgotten,
+      font.characterSettings.showHeaderLetters,
+      font.characterSettings.showSpacebar,
+    ],
   );
 
   const missingGroups = useMemo(

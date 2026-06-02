@@ -73,6 +73,7 @@ export const quillParchmentTheme: FontTheme = {
 
 export const defaultFontCharacterSettings: FontCharacterSettings = {
   showForgotten: false,
+  showHeaderLetters: false,
   showSpacebar: false,
 };
 
@@ -92,6 +93,7 @@ export const defaultFontGuideSettings: FontGuideSettings = {
 
 const legacyFontCharacterSettings: FontCharacterSettings = {
   showForgotten: true,
+  showHeaderLetters: false,
   showSpacebar: false,
 };
 
@@ -231,6 +233,8 @@ function normalizeCharacterSettings(value: unknown, fallback: FontCharacterSetti
 
   return {
     showForgotten: typeof value.showForgotten === "boolean" ? value.showForgotten : fallback.showForgotten,
+    showHeaderLetters:
+      typeof value.showHeaderLetters === "boolean" ? value.showHeaderLetters : fallback.showHeaderLetters,
     showSpacebar: typeof value.showSpacebar === "boolean" ? value.showSpacebar : fallback.showSpacebar,
   };
 }

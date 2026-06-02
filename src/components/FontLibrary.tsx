@@ -576,6 +576,14 @@ export default function FontLibrary({
                         <label className="font-option-check">
                           <input
                             type="checkbox"
+                            checked={(activeFont.characterSettings ?? defaultFontCharacterSettings).showHeaderLetters}
+                            onChange={(event) => updateActiveFontCharacterSetting("showHeaderLetters", event.target.checked)}
+                          />
+                          <span>Header Letters</span>
+                        </label>
+                        <label className="font-option-check">
+                          <input
+                            type="checkbox"
                             checked={(activeFont.characterSettings ?? defaultFontCharacterSettings).showSpacebar}
                             onChange={(event) => updateActiveFontCharacterSetting("showSpacebar", event.target.checked)}
                           />
@@ -699,6 +707,14 @@ export default function FontLibrary({
                     onChange={(event) => updateNewFontCharacterSetting("showForgotten", event.target.checked)}
                   />
                   <span>Forgotten</span>
+                </label>
+                <label className="font-option-check">
+                  <input
+                    type="checkbox"
+                    checked={newFontCharacterSettings.showHeaderLetters}
+                    onChange={(event) => updateNewFontCharacterSetting("showHeaderLetters", event.target.checked)}
+                  />
+                  <span>Header Letters</span>
                 </label>
                 <label className="font-option-check">
                   <input
