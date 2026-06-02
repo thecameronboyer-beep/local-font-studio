@@ -2741,7 +2741,9 @@ export default function GlyphEditor({
 
   return (
     <section
-      className={`studio-panel editor-panel ${isFullScreen ? "fullscreen-editor" : ""}`}
+      className={`studio-panel editor-panel ${isFullScreen ? "fullscreen-editor" : ""} ${
+        editorMode === "construction" ? "construction-mode-editor" : ""
+      }`}
       aria-label="Glyph editor"
     >
       <div className="panel-heading">

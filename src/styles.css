@@ -2625,6 +2625,34 @@ h1 {
   font-size: 0.72rem;
 }
 
+.fullscreen-editor.construction-mode-editor {
+  display: block;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: max(18px, env(safe-area-inset-bottom));
+}
+
+.fullscreen-editor.construction-mode-editor .panel-heading,
+.fullscreen-editor.construction-mode-editor .glyph-nav {
+  position: sticky;
+  z-index: 3;
+}
+
+.fullscreen-editor.construction-mode-editor .panel-heading {
+  top: 0;
+}
+
+.fullscreen-editor.construction-mode-editor .glyph-nav {
+  top: 52px;
+}
+
+.fullscreen-editor.construction-mode-editor .quick-save-row {
+  position: static;
+}
+
 /* Full-screen draw mode: keep the drawing surface dominant and float compact controls over it. */
 .fullscreen-draw-only {
   position: fixed;
