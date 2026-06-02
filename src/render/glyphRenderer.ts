@@ -9,6 +9,7 @@ import type {
   GlyphStrokeTool,
   BackgroundTexture,
 } from "../types/fontTypes";
+import { drawConstructionPaths, hasConstructionMarks } from "./constructionRenderer";
 
 export type GlyphDrawOptions = {
   x: number;
@@ -30,6 +31,7 @@ type StrokeDrawOptions = {
 
 function hasGlyphMarks(glyph: Glyph | GlyphVariant | undefined) {
   return Boolean(
+    hasConstructionMarks(glyph?.construction) ||
     glyph?.decorations?.length ||
       glyph?.strokes?.some((stroke) => stroke.points.length > 0),
   );
@@ -258,6 +260,109 @@ function drawPointDot(
   ctx.beginPath();
   ctx.ellipse(px, py, radius * stretchX, radius, 0, 0, Math.PI * 2);
   ctx.fill();
+  ctx.restore();
+}
+
+const BUBBLE_HIGHLIGHT_FALLBACK = "#ffd6f0";
+
+function getBubbleHighlightColor(stroke: GlyphStroke) {
+  return typeof stroke.highlightColor === "string" && stroke.highlightColor.trim()
+    ? stroke.highlightColor
+    : BUBBLE_HIGHLIGHT_FALLBACK;
+}
+
+function offsetGlyphPoint(
+  point: GlyphStroke["points"][number],
+  offsetX: number,
+  offsetY: number,
+  sizeX: number,
+  sizeY: number,
+) {
+  return {
+    ...point,
+    x: point.x + offsetX / Math.max(1, sizeX),
+    y: point.y + offsetY / Math.max(1, sizeY),
+  };
+}
+
+function drawBubblePointHighlight(
+  ctx: CanvasRenderingContext2D,
+  point: GlyphStroke["points"][number],
+  x: number,
+  y: number,
+  baseWidth: number,
+  sizeX: number,
+  sizeY: number,
+  highlightColor: string,
+  alpha: number,
+) {
+  const { x: px, y: py } = getCanvasPoint(point, x, y, sizeX, sizeY);
+  const radius = getLineWidth(baseWidth, point) / 2;
+  const stretchX = sizeX / Math.max(1, sizeY);
+
+  ctx.save();
+  ctx.fillStyle = highlightColor;
+  ctx.globalAlpha = alpha * 0.82;
+  ctx.beginPath();
+  ctx.ellipse(
+    px - radius * 0.32 * stretchX,
+    py - radius * 0.32,
+    Math.max(1, radius * 0.26 * stretchX),
+    Math.max(1, radius * 0.22),
+    -0.3,
+    0,
+    Math.PI * 2,
+  );
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawBubbleStrokeHighlight(
+  ctx: CanvasRenderingContext2D,
+  stroke: GlyphStroke,
+  x: number,
+  y: number,
+  baseWidth: number,
+  sizeX: number,
+  sizeY: number,
+  highlightColor: string,
+  alpha: number,
+) {
+  const points = stroke.points;
+
+  if (points.length <= 1) {
+    drawBubblePointHighlight(ctx, points[0], x, y, baseWidth, sizeX, sizeY, highlightColor, alpha);
+    return;
+  }
+
+  const highlightOffset = Math.max(1.1, baseWidth * 0.3);
+
+  ctx.save();
+  ctx.strokeStyle = highlightColor;
+  ctx.globalAlpha = alpha * 0.74;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  for (let index = 1; index < points.length; index += 1) {
+    const previousPreviousPoint = points[index - 2];
+    const previousPoint = points[index - 1];
+    const point = points[index];
+    const startPoint = previousPreviousPoint ? getMidpoint(previousPreviousPoint, previousPoint) : previousPoint;
+    const endPoint = index < points.length - 1 ? getMidpoint(previousPoint, point) : point;
+
+    ctx.lineWidth = Math.max(1, ((getLineWidth(baseWidth, previousPoint) + getLineWidth(baseWidth, point)) / 2) * 0.3);
+    drawCurveSegment(
+      ctx,
+      offsetGlyphPoint(startPoint, -highlightOffset, -highlightOffset, sizeX, sizeY),
+      offsetGlyphPoint(previousPoint, -highlightOffset, -highlightOffset, sizeX, sizeY),
+      offsetGlyphPoint(endPoint, -highlightOffset, -highlightOffset, sizeX, sizeY),
+      x,
+      y,
+      sizeX,
+      sizeY,
+    );
+  }
+
   ctx.restore();
 }
 
@@ -670,8 +775,9 @@ export function drawStrokePath(
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   const baseWidth = Math.max(1.5, stroke.size * size);
+  const bubbleHighlightColor = getBubbleHighlightColor(stroke);
 
-  if (strokeTool === "quill") {
+  if (strokeTool === "quill" && inkEffect !== "bubbleHighlight") {
     drawQuillStrokePath(ctx, stroke, x, y, size, sizeX, sizeY);
     if (drawSubtleSpread) {
       drawSubtleInkSpreadEffect(ctx, stroke, strokeColor, x, y, size, sizeX, sizeY, options.backgroundTexture);
@@ -687,6 +793,9 @@ export function drawStrokePath(
 
   if (rest.length === 0) {
     drawPointDot(ctx, firstPoint, x, y, baseWidth, sizeX, sizeY);
+    if (inkEffect === "bubbleHighlight") {
+      drawBubblePointHighlight(ctx, firstPoint, x, y, baseWidth, sizeX, sizeY, bubbleHighlightColor, previousAlpha);
+    }
     if (drawSubtleSpread) {
       drawSubtleInkSpreadEffect(ctx, stroke, strokeColor, x, y, size, sizeX, sizeY, options.backgroundTexture);
     }
@@ -711,6 +820,10 @@ export function drawStrokePath(
 
     ctx.lineWidth = (getLineWidth(baseWidth, previousPoint) + getLineWidth(baseWidth, point)) / 2;
     drawCurveSegment(ctx, startPoint, previousPoint, endPoint, x, y, sizeX, sizeY);
+  }
+
+  if (inkEffect === "bubbleHighlight") {
+    drawBubbleStrokeHighlight(ctx, stroke, x, y, baseWidth, sizeX, sizeY, bubbleHighlightColor, previousAlpha);
   }
 
   if (!options.skipInkEffect && inkEffect === "dramaticPooling") {
@@ -922,6 +1035,15 @@ export function drawGlyph(
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.strokeStyle = color;
+
+  drawConstructionPaths(ctx, glyph.construction, {
+    color,
+    heightScale,
+    size,
+    widthScale,
+    x,
+    y,
+  });
 
   for (const stroke of glyph.strokes) {
     drawStrokePath(ctx, stroke, x, y, size, size * widthScale, size * heightScale, color, { backgroundTexture, renderProfile });

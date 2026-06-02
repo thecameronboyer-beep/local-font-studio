@@ -23,6 +23,7 @@ import {
   RotateCcw,
   Save,
   SkipForward,
+  Sparkles,
   Sticker,
   SlidersHorizontal,
   Layers,
@@ -41,7 +42,14 @@ import type {
   SmoothingMode,
   StickerDropRequest,
 } from "./GlyphCanvas";
+import GlyphConstructionCanvas from "./GlyphConstructionCanvas";
+import type {
+  ConstructionSelection,
+  ConstructionSnapSettings,
+  ConstructionTool,
+} from "./GlyphConstructionCanvas";
 import SpacingControls from "./SpacingControls";
+import { createSampleConstructionA } from "../data/constructionSamples";
 import { getCharacterLabel, getVisibleCharacters, spacebar } from "../data/characterSets";
 import {
   drawGlyph,
@@ -59,10 +67,16 @@ import { defaultFontGuideSettings } from "../storage/fontStorage";
 import type {
   BackgroundStyle,
   BackgroundTexture,
+  ConstructionAnchorPoint,
+  ConstructionCornerStyle,
+  ConstructionPath,
+  ConstructionPointType,
+  ConstructionSegmentType,
   FontGuideSettings,
   FontSet,
   FontTheme,
   Glyph,
+  GlyphConstruction,
   GlyphDecoration,
   GlyphInkEffect,
   GlyphVariant,
@@ -90,19 +104,25 @@ type GlyphEditorProps = {
 
 type FullscreenDrawer = "ink" | "background" | "guides" | "more" | null;
 type ActiveVariation = "base" | "new" | number;
+type EditorMode = "draw" | "construction";
 type InkTool = Extract<DrawingTool, "pen" | "quill" | "line">;
 const inkPresetIds = ["primary", "secondary", "tertiary"] as const;
 type InkPresetId = (typeof inkPresetIds)[number];
 type InkPreset = {
   brushSize: number;
+  highlightColor: string;
   inkColor: string;
   inkEffect: GlyphInkEffect;
   smoothingMode: SmoothingMode;
   tool: InkTool;
 };
 
+const DEFAULT_HIGHLIGHT_COLOR = "#ffd6f0";
+
 const glyphInkSwatches = [
   { color: "#19140f", label: "Lamp Black" },
+  { color: "#ff6fb2", label: "Bubble Pink" },
+  { color: "#ffd1dc", label: "Blush Pink" },
   { color: "#d93434", label: "Modern Red" },
   { color: "#f0a934", label: "Modern Amber" },
   { color: "#16815f", label: "Modern Green" },
@@ -120,6 +140,15 @@ const glyphInkSwatches = [
   { color: "#493424", label: "Umber Brown" },
   { color: "#e5ddc8", label: "Bone White" },
   { color: "#a88943", label: "Aged Gold" },
+];
+
+const bubbleHighlightSwatches = [
+  { color: "#fff7f2", label: "Pearl shine" },
+  { color: "#ffd6f0", label: "Pink shine" },
+  { color: "#ffe6f4", label: "Cotton candy shine" },
+  { color: "#f2dcff", label: "Lavender shine" },
+  { color: "#dff4ff", label: "Sky shine" },
+  { color: "#fff1a8", label: "Gold shine" },
 ];
 const editorBackgroundPresets: Array<{
   accentColor: string;
@@ -255,6 +284,7 @@ function getDefaultInkPresets(font: FontSet): Record<InkPresetId, InkPreset> {
   return {
     primary: {
       brushSize: DEFAULT_BRUSH_SIZE,
+      highlightColor: DEFAULT_HIGHLIGHT_COLOR,
       inkColor: primaryColor,
       inkEffect: getDefaultInkEffect(font),
       smoothingMode: "strong",
@@ -262,6 +292,7 @@ function getDefaultInkPresets(font: FontSet): Record<InkPresetId, InkPreset> {
     },
     secondary: {
       brushSize: DEFAULT_BRUSH_SIZE,
+      highlightColor: DEFAULT_HIGHLIGHT_COLOR,
       inkColor: primaryColor.toLowerCase() === "#e34234" ? "#19140f" : "#e34234",
       inkEffect: "none",
       smoothingMode: "strong",
@@ -269,6 +300,7 @@ function getDefaultInkPresets(font: FontSet): Record<InkPresetId, InkPreset> {
     },
     tertiary: {
       brushSize: DEFAULT_BRUSH_SIZE,
+      highlightColor: DEFAULT_HIGHLIGHT_COLOR,
       inkColor: primaryColor.toLowerCase() === "#3d6f8f" ? "#493424" : "#3d6f8f",
       inkEffect: "none",
       smoothingMode: "strong",
@@ -319,17 +351,50 @@ function cloneDecorations(decorations: GlyphDecoration[] = []) {
   return decorations.map((decoration) => ({ ...decoration }));
 }
 
+function cloneConstructionPoint(point: ConstructionAnchorPoint): ConstructionAnchorPoint {
+  return {
+    ...point,
+    ...(point.inHandle ? { inHandle: { ...point.inHandle } } : {}),
+    ...(point.outHandle ? { outHandle: { ...point.outHandle } } : {}),
+  };
+}
+
+function cloneConstructionPath(path: ConstructionPath): ConstructionPath {
+  return {
+    ...path,
+    points: path.points.map(cloneConstructionPoint),
+  };
+}
+
+function cloneConstruction(construction?: GlyphConstruction): GlyphConstruction | undefined {
+  if (!construction) {
+    return undefined;
+  }
+
+  return {
+    ...(construction.fillColor ? { fillColor: construction.fillColor } : {}),
+    paths: construction.paths.map(cloneConstructionPath),
+    ...(construction.strokeColor ? { strokeColor: construction.strokeColor } : {}),
+  };
+}
+
 function cloneGlyphVariant(variant: GlyphVariant): GlyphVariant {
+  const construction = cloneConstruction(variant.construction);
+
   return {
     ...variant,
+    ...(construction ? { construction } : {}),
     decorations: cloneDecorations(variant.decorations),
     strokes: cloneStrokes(variant.strokes),
   };
 }
 
 function cloneGlyph(glyph: Glyph): Glyph {
+  const construction = cloneConstruction(glyph.construction);
+
   return {
     ...glyph,
+    ...(construction ? { construction } : {}),
     decorations: cloneDecorations(glyph.decorations),
     strokes: cloneStrokes(glyph.strokes),
     variants: glyph.variants?.map(cloneGlyphVariant) ?? [],
@@ -346,6 +411,7 @@ function createGlyphDraftFromVariant(glyph: Glyph, variant: GlyphVariant): Glyph
 function createEmptyVariationDraft(glyph: Glyph): Glyph {
   return {
     ...cloneGlyph(glyph),
+    construction: undefined,
     decorations: [],
     strokes: [],
   };
@@ -367,7 +433,21 @@ function getDecorationInset(decoration: GlyphDecoration) {
   return decoration.size * 3.2;
 }
 
-function getGlyphElementBounds(strokes: GlyphStroke[], decorations: GlyphDecoration[] = []) {
+function getConstructionPoints(construction?: GlyphConstruction) {
+  return construction?.paths.flatMap((path) =>
+    path.points.flatMap((point) => [
+      point,
+      ...(point.inHandle ? [point.inHandle] : []),
+      ...(point.outHandle ? [point.outHandle] : []),
+    ]),
+  ) ?? [];
+}
+
+function getGlyphElementBounds(
+  strokes: GlyphStroke[],
+  decorations: GlyphDecoration[] = [],
+  construction?: GlyphConstruction,
+) {
   const strokePoints = strokes.flatMap((stroke) => stroke.points);
   const decorationPoints = decorations.flatMap((decoration) => {
     const inset = getDecorationInset(decoration);
@@ -377,7 +457,7 @@ function getGlyphElementBounds(strokes: GlyphStroke[], decorations: GlyphDecorat
       { x: decoration.x + inset, y: decoration.y + inset },
     ];
   });
-  const points = [...strokePoints, ...decorationPoints];
+  const points = [...strokePoints, ...decorationPoints, ...getConstructionPoints(construction)];
 
   if (points.length === 0) {
     return undefined;
@@ -422,8 +502,28 @@ function translateDecorations(decorations: GlyphDecoration[], dx: number, dy: nu
   }));
 }
 
+function translateConstruction(construction: GlyphConstruction | undefined, dx: number, dy: number) {
+  if (!construction) {
+    return undefined;
+  }
+
+  return {
+    ...construction,
+    paths: construction.paths.map((path) => ({
+      ...path,
+      points: path.points.map((point) => ({
+        ...point,
+        ...(point.inHandle ? { inHandle: { x: clamp(point.inHandle.x + dx), y: clamp(point.inHandle.y + dy) } } : {}),
+        ...(point.outHandle ? { outHandle: { x: clamp(point.outHandle.x + dx), y: clamp(point.outHandle.y + dy) } } : {}),
+        x: clamp(point.x + dx),
+        y: clamp(point.y + dy),
+      })),
+    })),
+  };
+}
+
 function centerGlyphElements(glyph: Glyph, axis: "x" | "y" | "both") {
-  const bounds = getGlyphElementBounds(glyph.strokes, glyph.decorations);
+  const bounds = getGlyphElementBounds(glyph.strokes, glyph.decorations, glyph.construction);
 
   if (!bounds) {
     return glyph;
@@ -438,6 +538,7 @@ function centerGlyphElements(glyph: Glyph, axis: "x" | "y" | "both") {
 
   return {
     ...glyph,
+    construction: translateConstruction(glyph.construction, safeDx, safeDy),
     decorations: translateDecorations(glyph.decorations, safeDx, safeDy),
     strokes: translateStrokes(glyph.strokes, safeDx, safeDy),
   };
@@ -446,6 +547,7 @@ function centerGlyphElements(glyph: Glyph, axis: "x" | "y" | "both") {
 function nudgeGlyphElements(glyph: Glyph, dx: number, dy: number) {
   return {
     ...glyph,
+    construction: translateConstruction(glyph.construction, dx, dy),
     decorations: translateDecorations(glyph.decorations, dx, dy),
     strokes: translateStrokes(glyph.strokes, dx, dy),
   };
@@ -769,6 +871,7 @@ export default function GlyphEditor({
 }: GlyphEditorProps) {
   const [draftGlyph, setDraftGlyph] = useState<Glyph>(() => cloneGlyph(glyph));
   const [activeVariation, setActiveVariation] = useState<ActiveVariation>("base");
+  const [editorMode, setEditorMode] = useState<EditorMode>("draw");
   const draftGlyphRef = useRef<Glyph>(draftGlyph);
   const pastRef = useRef<Glyph[]>([]);
   const futureRef = useRef<Glyph[]>([]);
@@ -778,6 +881,7 @@ export default function GlyphEditor({
   const [eyeExpression, setEyeExpression] = useState<NonNullable<GlyphDecoration["expression"]>>("googly");
   const [inkEffect, setInkEffect] = useState<GlyphInkEffect>(() => getDefaultInkEffect(font));
   const [inkColor, setInkColor] = useState(font.theme?.inkColor ?? "#19140f");
+  const [highlightColor, setHighlightColor] = useState(DEFAULT_HIGHLIGHT_COLOR);
   const [inkPresets, setInkPresets] = useState<Record<InkPresetId, InkPreset>>(() => getDefaultInkPresets(font));
   const [activeInkPresetId, setActiveInkPresetId] = useState<InkPresetId>("primary");
   const [referenceCharacter, setReferenceCharacter] = useState("");
@@ -796,6 +900,15 @@ export default function GlyphEditor({
   const [savedMessage, setSavedMessage] = useState("");
   const [historyCounts, setHistoryCounts] = useState({ past: 0, future: 0 });
   const [activeFullscreenDrawer, setActiveFullscreenDrawer] = useState<FullscreenDrawer>(null);
+  const [constructionTool, setConstructionTool] = useState<ConstructionTool>("select");
+  const [constructionSelection, setConstructionSelection] = useState<ConstructionSelection>({ pathId: null });
+  const [constructionShowGuides, setConstructionShowGuides] = useState(true);
+  const [constructionSnapSettings, setConstructionSnapSettings] = useState<ConstructionSnapSettings>({
+    anchors: true,
+    centerline: true,
+    grid: true,
+    guides: true,
+  });
   const [draggingEyeSticker, setDraggingEyeSticker] = useState<{
     expression: NonNullable<GlyphDecoration["expression"]>;
     x: number;
@@ -828,6 +941,7 @@ export default function GlyphEditor({
     setReferenceCharacter((current) => (current === glyph.character ? "" : current));
     setSelectedDecorationId(null);
     setSelectedStrokeId(null);
+    setConstructionSelection({ pathId: null });
     setActiveFullscreenDrawer(null);
     setStickerDropRequest(null);
     setStickerEyesOpen(false);
@@ -848,6 +962,7 @@ export default function GlyphEditor({
     setBrushSize(primaryPreset.brushSize);
     setInkEffect(primaryPreset.inkEffect);
     setInkColor(primaryPreset.inkColor);
+    setHighlightColor(primaryPreset.highlightColor);
     setSmoothingMode(primaryPreset.smoothingMode);
   }, [font.id, font.renderProfile]);
 
@@ -963,6 +1078,178 @@ export default function GlyphEditor({
     });
   }
 
+  function updateDraftConstruction(construction: GlyphConstruction) {
+    updateDraftGlyph({
+      ...draftGlyphRef.current,
+      construction,
+    });
+  }
+
+  function getSelectedConstructionPath() {
+    return draftGlyph.construction?.paths.find((path) => path.id === constructionSelection.pathId) ?? null;
+  }
+
+  function getSelectedConstructionPoint() {
+    const path = getSelectedConstructionPath();
+
+    return path?.points.find((point) => point.id === constructionSelection.pointId) ?? null;
+  }
+
+  function patchSelectedConstructionPoint(patch: Partial<ConstructionAnchorPoint>) {
+    const selectedPath = getSelectedConstructionPath();
+    const selectedPoint = getSelectedConstructionPoint();
+
+    if (!selectedPath || !selectedPoint) {
+      return;
+    }
+
+    pushHistory();
+    updateDraftConstruction({
+      ...(draftGlyphRef.current.construction ?? { paths: [] }),
+      paths: (draftGlyphRef.current.construction?.paths ?? []).map((path) =>
+        path.id === selectedPath.id
+          ? {
+              ...path,
+              points: path.points.map((point) =>
+                point.id === selectedPoint.id
+                  ? {
+                      ...point,
+                      ...patch,
+                    }
+                  : point,
+              ),
+            }
+          : path,
+      ),
+    });
+  }
+
+  function patchSelectedConstructionPath(patch: Partial<ConstructionPath>) {
+    const selectedPath = getSelectedConstructionPath();
+
+    if (!selectedPath) {
+      return;
+    }
+
+    pushHistory();
+    updateDraftConstruction({
+      ...(draftGlyphRef.current.construction ?? { paths: [] }),
+      paths: (draftGlyphRef.current.construction?.paths ?? []).map((path) =>
+        path.id === selectedPath.id
+          ? {
+              ...path,
+              ...patch,
+            }
+          : path,
+      ),
+    });
+  }
+
+  function toggleConstructionSnap(key: keyof ConstructionSnapSettings) {
+    setConstructionSnapSettings((current) => ({
+      ...current,
+      [key]: !current[key],
+    }));
+  }
+
+  function handleLoadConstructionSample() {
+    pushHistory();
+    updateDraftGlyph({
+      ...draftGlyphRef.current,
+      construction: createSampleConstructionA(),
+    });
+    setConstructionSelection({ pathId: "construction_sample_a_outer", pointId: "construction_sample_a_top" });
+    setEditorMode("construction");
+    setSavedMessage("Loaded sample construction");
+  }
+
+  function handleDeleteSelectedConstructionTarget() {
+    const selectedPath = getSelectedConstructionPath();
+    const selectedPoint = getSelectedConstructionPoint();
+
+    if (!selectedPath) {
+      return;
+    }
+
+    pushHistory();
+
+    if (selectedPoint) {
+      updateDraftConstruction({
+        ...(draftGlyphRef.current.construction ?? { paths: [] }),
+        paths: (draftGlyphRef.current.construction?.paths ?? [])
+          .map((path) =>
+            path.id === selectedPath.id
+              ? { ...path, points: path.points.filter((point) => point.id !== selectedPoint.id) }
+              : path,
+          )
+          .filter((path) => path.points.length > 0),
+      });
+      setConstructionSelection({ pathId: null });
+      return;
+    }
+
+    updateDraftConstruction({
+      ...(draftGlyphRef.current.construction ?? { paths: [] }),
+      paths: (draftGlyphRef.current.construction?.paths ?? []).filter((path) => path.id !== selectedPath.id),
+    });
+    setConstructionSelection({ pathId: null });
+  }
+
+  function handleConstructionPointType(type: ConstructionPointType) {
+    const point = getSelectedConstructionPoint();
+
+    if (!point) {
+      return;
+    }
+
+    const curvePatch = type === "smooth" || type === "symmetric"
+      ? {
+          inHandle: point.inHandle ?? { x: clamp(point.x - 0.12), y: point.y },
+          outHandle: point.outHandle ?? { x: clamp(point.x + 0.12), y: point.y },
+          segmentType: "curve" as ConstructionSegmentType,
+        }
+      : {};
+    const cornerPatch = type === "rounded"
+      ? {
+          cornerRadius: point.cornerRadius ?? 0.05,
+          cornerStyle: "rounded" as ConstructionCornerStyle,
+        }
+      : {};
+
+    patchSelectedConstructionPoint({
+      ...curvePatch,
+      ...cornerPatch,
+      type,
+    });
+  }
+
+  function handleConstructionSegmentType(segmentType: ConstructionSegmentType) {
+    const point = getSelectedConstructionPoint();
+
+    if (!point) {
+      return;
+    }
+
+    patchSelectedConstructionPoint({
+      ...(segmentType === "curve"
+        ? {
+            inHandle: point.inHandle ?? { x: clamp(point.x - 0.12), y: point.y },
+            outHandle: point.outHandle ?? { x: clamp(point.x + 0.12), y: point.y },
+            type: point.type === "corner" ? "smooth" : point.type,
+          }
+        : {}),
+      segmentType,
+    });
+  }
+
+  function handleConstructionCornerStyle(cornerStyle: ConstructionCornerStyle) {
+    patchSelectedConstructionPoint({
+      cornerStyle,
+      ...(cornerStyle === "rounded" ? { cornerRadius: getSelectedConstructionPoint()?.cornerRadius ?? 0.05 } : {}),
+      ...(cornerStyle === "chamfered" ? { chamferDistance: getSelectedConstructionPoint()?.chamferDistance ?? 0.05 } : {}),
+    });
+  }
+
   function updateActiveInkPreset(patch: Partial<InkPreset>) {
     setInkPresets((current) => ({
       ...current,
@@ -983,6 +1270,11 @@ export default function GlyphEditor({
     updateActiveInkPreset({ inkColor: value });
   }
 
+  function updateHighlightColor(value: string) {
+    setHighlightColor(value);
+    updateActiveInkPreset({ highlightColor: value });
+  }
+
   function updateInkEffect(value: GlyphInkEffect) {
     setInkEffect(value);
     updateActiveInkPreset({ inkEffect: value });
@@ -996,6 +1288,18 @@ export default function GlyphEditor({
     updateInkEffect(inkEffect === "dramaticPooling" ? "none" : "dramaticPooling");
   }
 
+  function toggleBubbleInk() {
+    const isTurningOn = inkEffect !== "bubbleHighlight";
+
+    updateInkEffect(isTurningOn ? "bubbleHighlight" : "none");
+
+    if (isTurningOn) {
+      setLastInkTool("pen");
+      setTool("pen");
+      updateActiveInkPreset({ tool: "pen" });
+    }
+  }
+
   function updateSmoothingMode(value: SmoothingMode) {
     setSmoothingMode(value);
     updateActiveInkPreset({ smoothingMode: value });
@@ -1007,6 +1311,7 @@ export default function GlyphEditor({
     setActiveInkPresetId(presetId);
     setBrushSize(preset.brushSize);
     setInkColor(preset.inkColor);
+    setHighlightColor(preset.highlightColor);
     setInkEffect(preset.inkEffect);
     setSmoothingMode(preset.smoothingMode);
     setLastInkTool(preset.tool);
@@ -1359,9 +1664,11 @@ export default function GlyphEditor({
     pushHistory();
     updateDraftGlyph({
       ...draftGlyphRef.current,
+      construction: undefined,
       decorations: [],
       strokes: [],
     });
+    setConstructionSelection({ pathId: null });
     setSavedMessage("");
   }
 
@@ -1405,6 +1712,280 @@ export default function GlyphEditor({
     pastRef.current = [...pastRef.current.slice(-29), cloneGlyph(draftGlyphRef.current)];
     updateDraftGlyph(cloneGlyph(nextGlyph));
     syncHistoryCounts();
+  }
+
+  function renderConstructionMode() {
+    const selectedPath = getSelectedConstructionPath();
+    const selectedPoint = getSelectedConstructionPoint();
+    const hasSnap = Object.values(constructionSnapSettings).some(Boolean);
+    const constructionPathCount = draftGlyph.construction?.paths.length ?? 0;
+    const constructionPointCount = draftGlyph.construction?.paths.reduce((total, path) => total + path.points.length, 0) ?? 0;
+    const toolOptions: Array<{ id: ConstructionTool; label: string }> = [
+      { id: "select", label: "Select" },
+      { id: "addPoint", label: "Add Point" },
+      { id: "penPath", label: "Pen Path" },
+      { id: "handle", label: "Curve Handle" },
+      { id: "round", label: "Round Corner" },
+      { id: "delete", label: "Delete Point" },
+    ];
+    const pointTypes: ConstructionPointType[] = ["corner", "smooth", "symmetric", "rounded"];
+    const segmentTypes: ConstructionSegmentType[] = ["line", "curve"];
+    const cornerStyles: ConstructionCornerStyle[] = ["sharp", "rounded", "chamfered"];
+
+    return (
+      <div className="construction-editor-layout">
+        <aside className="construction-side-panel construction-viewer-panel" aria-label="Construction glyph viewer">
+          <div className="construction-panel-heading">
+            <span>Glyph viewer</span>
+            <strong>{characterLabel}</strong>
+          </div>
+          <div className="construction-stat-grid">
+            <div>
+              <span>Paths</span>
+              <strong>{constructionPathCount}</strong>
+            </div>
+            <div>
+              <span>Points</span>
+              <strong>{constructionPointCount}</strong>
+            </div>
+          </div>
+          <EditorLivePreview
+            font={font}
+            draftGlyph={draftGlyph}
+            previewText={previewText}
+            onPreviewTextChange={onPreviewTextChange}
+          />
+          <div className="construction-path-list" aria-label="Construction paths">
+            {(draftGlyph.construction?.paths ?? []).map((path, index) => (
+              <button
+                key={path.id}
+                className={`construction-path-chip ${constructionSelection.pathId === path.id ? "selected" : ""}`}
+                type="button"
+                onClick={() => setConstructionSelection({ pathId: path.id })}
+              >
+                <span>Path {index + 1}</span>
+                <strong>{path.points.length} pts</strong>
+              </button>
+            ))}
+            <button
+              className="construction-path-chip"
+              type="button"
+              onClick={() => {
+                setConstructionSelection({ pathId: null });
+                setConstructionTool("addPoint");
+              }}
+            >
+              <span>New path</span>
+              <strong>tap canvas</strong>
+            </button>
+          </div>
+        </aside>
+
+        <div className="construction-center-panel">
+          <GlyphConstructionCanvas
+            backgroundAccentColor={activeFontTheme.accentColor}
+            backgroundColor={activeFontTheme.backgroundColor}
+            backgroundStyle={activeFontTheme.backgroundStyle}
+            backgroundTexture={activeFontTheme.backgroundTexture}
+            construction={draftGlyph.construction}
+            guideSettings={font.guideSettings}
+            selection={constructionSelection}
+            showGuides={constructionShowGuides}
+            snapSettings={constructionSnapSettings}
+            tool={constructionTool}
+            onChange={updateDraftConstruction}
+            onEditStart={pushHistory}
+            onSelectionChange={setConstructionSelection}
+          />
+        </div>
+
+        <aside className="construction-side-panel construction-controls-panel" aria-label="Construction mode controls">
+          <div className="construction-panel-heading">
+            <span>Letter Construction</span>
+            <strong>{constructionTool}</strong>
+          </div>
+
+          <div className="construction-tool-grid" aria-label="Construction tools">
+            {toolOptions.map((option) => (
+              <button
+                key={option.id}
+                className={`secondary-button ${constructionTool === option.id ? "active-tool" : ""}`}
+                type="button"
+                onClick={() => setConstructionTool(option.id)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="construction-tool-grid two" aria-label="Construction toggles">
+            <button
+              className={`secondary-button ${constructionShowGuides ? "active-tool" : ""}`}
+              type="button"
+              onClick={() => setConstructionShowGuides((current) => !current)}
+            >
+              Toggle Guides
+            </button>
+            <button
+              className={`secondary-button ${hasSnap ? "active-tool" : ""}`}
+              type="button"
+              onClick={() =>
+                setConstructionSnapSettings((current) => {
+                  const nextValue = !Object.values(current).some(Boolean);
+                  return {
+                    anchors: nextValue,
+                    centerline: nextValue,
+                    grid: nextValue,
+                    guides: nextValue,
+                  };
+                })
+              }
+            >
+              Toggle Snap
+            </button>
+          </div>
+
+          <div className="construction-check-grid" aria-label="Snap options">
+            {([
+              ["grid", "Grid"],
+              ["guides", "Guides"],
+              ["anchors", "Anchors"],
+              ["centerline", "Center"],
+            ] as Array<[keyof ConstructionSnapSettings, string]>).map(([key, label]) => (
+              <label key={key}>
+                <input
+                  type="checkbox"
+                  checked={constructionSnapSettings[key]}
+                  onChange={() => toggleConstructionSnap(key)}
+                />
+                <span>{label}</span>
+              </label>
+            ))}
+          </div>
+
+          <div className="construction-section">
+            <div className="construction-section-heading">
+              <span>Path</span>
+              <strong>{selectedPath ? `${selectedPath.points.length} points` : "None"}</strong>
+            </div>
+            <div className="construction-tool-grid two">
+              <button
+                className={`secondary-button ${selectedPath?.closed ? "active-tool" : ""}`}
+                type="button"
+                disabled={!selectedPath}
+                onClick={() => selectedPath && patchSelectedConstructionPath({ closed: !selectedPath.closed })}
+              >
+                Close Path
+              </button>
+              <button
+                className={`secondary-button ${selectedPath?.filled ? "active-tool" : ""}`}
+                type="button"
+                disabled={!selectedPath}
+                onClick={() => selectedPath && patchSelectedConstructionPath({ filled: !selectedPath.filled })}
+              >
+                Filled Shape
+              </button>
+            </div>
+            <label className="range-control construction-range">
+              <span>Stroke</span>
+              <input
+                type="range"
+                min="1"
+                max="24"
+                value={Math.round((selectedPath?.strokeWidth ?? 0.06) * 200)}
+                disabled={!selectedPath}
+                onChange={(event) => patchSelectedConstructionPath({ strokeWidth: Number(event.target.value) / 200 })}
+              />
+              <output>{Math.round((selectedPath?.strokeWidth ?? 0.06) * 200)}</output>
+            </label>
+          </div>
+
+          <div className="construction-section">
+            <div className="construction-section-heading">
+              <span>Point</span>
+              <strong>{selectedPoint ? selectedPoint.type : "None"}</strong>
+            </div>
+            <div className="construction-tool-grid two">
+              {pointTypes.map((type) => (
+                <button
+                  key={type}
+                  className={`secondary-button ${selectedPoint?.type === type ? "active-tool" : ""}`}
+                  type="button"
+                  disabled={!selectedPoint}
+                  onClick={() => handleConstructionPointType(type)}
+                >
+                  {type}
+                </button>
+              ))}
+            </div>
+            <div className="construction-tool-grid two">
+              {segmentTypes.map((segmentType) => (
+                <button
+                  key={segmentType}
+                  className={`secondary-button ${selectedPoint?.segmentType === segmentType ? "active-tool" : ""}`}
+                  type="button"
+                  disabled={!selectedPoint}
+                  onClick={() => handleConstructionSegmentType(segmentType)}
+                >
+                  {segmentType}
+                </button>
+              ))}
+            </div>
+            <div className="construction-tool-grid three">
+              {cornerStyles.map((cornerStyle) => (
+                <button
+                  key={cornerStyle}
+                  className={`secondary-button ${selectedPoint?.cornerStyle === cornerStyle ? "active-tool" : ""}`}
+                  type="button"
+                  disabled={!selectedPoint}
+                  onClick={() => handleConstructionCornerStyle(cornerStyle)}
+                >
+                  {cornerStyle}
+                </button>
+              ))}
+            </div>
+            <label className="range-control construction-range">
+              <span>Radius</span>
+              <input
+                type="range"
+                min="0"
+                max="32"
+                value={Math.round((selectedPoint?.cornerRadius ?? 0.04) * 100)}
+                disabled={!selectedPoint}
+                onChange={(event) => patchSelectedConstructionPoint({ cornerRadius: Number(event.target.value) / 100 })}
+              />
+              <output>{Math.round((selectedPoint?.cornerRadius ?? 0.04) * 100)}</output>
+            </label>
+            <label className="range-control construction-range">
+              <span>Chamfer</span>
+              <input
+                type="range"
+                min="0"
+                max="32"
+                value={Math.round((selectedPoint?.chamferDistance ?? 0.04) * 100)}
+                disabled={!selectedPoint}
+                onChange={(event) => patchSelectedConstructionPoint({ chamferDistance: Number(event.target.value) / 100 })}
+              />
+              <output>{Math.round((selectedPoint?.chamferDistance ?? 0.04) * 100)}</output>
+            </label>
+          </div>
+
+          <div className="construction-tool-grid two">
+            <button className="secondary-button" type="button" onClick={handleLoadConstructionSample}>
+              Load sample A
+            </button>
+            <button
+              className="danger-button"
+              type="button"
+              disabled={!selectedPath}
+              onClick={handleDeleteSelectedConstructionTarget}
+            >
+              Delete Selected
+            </button>
+          </div>
+        </aside>
+      </div>
+    );
   }
 
   function renderVariationControls(className = "glyph-variation-strip") {
@@ -1466,6 +2047,7 @@ export default function GlyphEditor({
           eraserMode={eraserMode}
           guideEditMode={activeFullscreenDrawer === "guides"}
           guideSettings={font.guideSettings}
+          highlightColor={highlightColor}
           inkEffect={inkEffect}
           inkColor={inkColor}
           referenceGlyph={referenceGlyph}
@@ -1627,6 +2209,35 @@ export default function GlyphEditor({
                 <Droplets aria-hidden="true" />
                 <span>Dramatic ink</span>
               </button>
+
+              <button
+                className={`draw-drawer-button full ${inkEffect === "bubbleHighlight" ? "active-tool" : ""}`}
+                type="button"
+                onClick={toggleBubbleInk}
+              >
+                <Sparkles aria-hidden="true" />
+                <span>Bubble ink</span>
+              </button>
+
+              {inkEffect === "bubbleHighlight" && (
+                <div className="draw-ink-highlight-row" aria-label="Bubble shine colors">
+                  <span>Shine</span>
+                  <div className="draw-ink-swatches">
+                    {bubbleHighlightSwatches.map((swatch) => (
+                      <button
+                        key={swatch.label}
+                        className={`draw-ink-swatch ${highlightColor === swatch.color ? "selected" : ""}`}
+                        type="button"
+                        onClick={() => updateHighlightColor(swatch.color)}
+                        aria-label={`Use ${swatch.label}`}
+                        title={swatch.label}
+                      >
+                        <span style={{ backgroundColor: swatch.color }} />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="draw-drawer-grid three" aria-label="Stroke smoothing">
                 {smoothingOptions.map((option) => (
@@ -2125,7 +2736,9 @@ export default function GlyphEditor({
           <h2>{characterLabel}</h2>
         </div>
         <div className="editor-heading-actions">
-          <div className="glyph-pill">{draftGlyph.strokes.length} strokes</div>
+          <div className="glyph-pill">
+            {draftGlyph.strokes.length} strokes / {draftGlyph.construction?.paths.length ?? 0} paths
+          </div>
           <button className="secondary-button compact-button" type="button" onClick={onToggleFullScreen}>
             {isFullScreen ? "Exit" : "Full screen"}
           </button>
@@ -2149,6 +2762,27 @@ export default function GlyphEditor({
 
       {renderVariationControls()}
 
+      <div className="editor-mode-switch" role="group" aria-label="Editor mode">
+        <button
+          className={`secondary-button ${editorMode === "draw" ? "active-tool" : ""}`}
+          type="button"
+          onClick={() => setEditorMode("draw")}
+        >
+          Draw
+        </button>
+        <button
+          className={`secondary-button ${editorMode === "construction" ? "active-tool" : ""}`}
+          type="button"
+          onClick={() => setEditorMode("construction")}
+        >
+          Letter Construction
+        </button>
+      </div>
+
+      {editorMode === "construction" ? (
+        renderConstructionMode()
+      ) : (
+        <>
       <GlyphCanvas
         strokes={draftGlyph.strokes}
         decorations={draftGlyph.decorations}
@@ -2160,6 +2794,7 @@ export default function GlyphEditor({
         eyeExpression={eyeExpression}
         eraserMode={eraserMode}
         guideSettings={font.guideSettings}
+        highlightColor={highlightColor}
         inkEffect={inkEffect}
         inkColor={inkColor}
         referenceGlyph={referenceGlyph}
@@ -2191,6 +2826,8 @@ export default function GlyphEditor({
         previewText={previewText}
         onPreviewTextChange={onPreviewTextChange}
       />
+        </>
+      )}
 
       <div className="quick-save-row" aria-label="Primary glyph actions">
         <button className="secondary-button" type="button" onClick={handleSave}>
@@ -2204,6 +2841,7 @@ export default function GlyphEditor({
         </button>
       </div>
 
+      {editorMode === "draw" && (
       <div className="editor-controls">
         <div className="tool-row" aria-label="Drawing tools">
           <button
@@ -2334,7 +2972,34 @@ export default function GlyphEditor({
           >
             Dramatic ink
           </button>
+          <button
+            className={`secondary-button ${inkEffect === "bubbleHighlight" ? "active-tool" : ""}`}
+            type="button"
+            onClick={toggleBubbleInk}
+          >
+            Bubble ink
+          </button>
         </div>
+
+        {inkEffect === "bubbleHighlight" && (
+          <div className="draw-ink-highlight-row editor-highlight-row" aria-label="Bubble shine colors">
+            <span>Shine</span>
+            <div className="draw-ink-swatches">
+              {bubbleHighlightSwatches.map((swatch) => (
+                <button
+                  key={swatch.label}
+                  className={`draw-ink-swatch ${highlightColor === swatch.color ? "selected" : ""}`}
+                  type="button"
+                  onClick={() => updateHighlightColor(swatch.color)}
+                  aria-label={`Use ${swatch.label}`}
+                  title={swatch.label}
+                >
+                  <span style={{ backgroundColor: swatch.color }} />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="engine-option-row canvas-view-row" aria-label="Canvas view">
           <button className="secondary-button" type="button" onClick={() => handleZoom(-0.15)}>
@@ -2424,6 +3089,7 @@ export default function GlyphEditor({
         </div>
 
       </div>
+      )}
 
       <div className="save-status" aria-live="polite">
         {savedMessage}

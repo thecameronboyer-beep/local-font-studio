@@ -58,6 +58,7 @@ type GlyphCanvasProps = {
   guideSettings?: FontGuideSettings;
   inkEffect: GlyphInkEffect;
   inkColor: string;
+  highlightColor: string;
   referenceGlyph?: Glyph | null;
   renderProfile?: FontRenderProfile;
   selectMode: SelectMode;
@@ -280,6 +281,7 @@ export default function GlyphCanvas({
   guideSettings = defaultFontGuideSettings,
   inkEffect,
   inkColor,
+  highlightColor,
   referenceGlyph,
   renderProfile = "plain",
   selectMode,
@@ -1412,6 +1414,7 @@ export default function GlyphCanvas({
     };
     const stroke: GlyphStroke = {
       color: inkColor,
+      ...(inkEffect === "bubbleHighlight" ? { highlightColor } : {}),
       id: makeStrokeId(),
       inkEffect,
       points: tool === "line" ? [startPoint, { ...startPoint }] : [startPoint],

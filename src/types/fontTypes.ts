@@ -8,6 +8,7 @@ export type GlyphPoint = {
 
 export type GlyphStroke = {
   color?: string;
+  highlightColor?: string;
   id: string;
   inkEffect?: GlyphInkEffect;
   points: GlyphPoint[];
@@ -17,7 +18,45 @@ export type GlyphStroke = {
 
 export type GlyphStrokeTool = "pen" | "quill";
 
-export type GlyphInkEffect = "none" | "dramaticPooling" | "subtleSpread";
+export type GlyphInkEffect = "none" | "dramaticPooling" | "subtleSpread" | "bubbleHighlight";
+
+export type ConstructionPointType = "corner" | "smooth" | "symmetric" | "rounded";
+export type ConstructionSegmentType = "line" | "curve";
+export type ConstructionCornerStyle = "sharp" | "rounded" | "chamfered";
+
+export type ConstructionHandle = {
+  x: number;
+  y: number;
+};
+
+export type ConstructionAnchorPoint = {
+  chamferDistance?: number;
+  cornerRadius?: number;
+  cornerStyle?: ConstructionCornerStyle;
+  id: string;
+  inHandle?: ConstructionHandle;
+  outHandle?: ConstructionHandle;
+  segmentType?: ConstructionSegmentType;
+  type: ConstructionPointType;
+  x: number;
+  y: number;
+};
+
+export type ConstructionPath = {
+  closed: boolean;
+  fillColor?: string;
+  filled: boolean;
+  id: string;
+  points: ConstructionAnchorPoint[];
+  strokeColor?: string;
+  strokeWidth: number;
+};
+
+export type GlyphConstruction = {
+  fillColor?: string;
+  paths: ConstructionPath[];
+  strokeColor?: string;
+};
 
 export type GlyphDecoration = {
   expression?: "googly" | "happy" | "angry" | "sad" | "tired" | "stoned";
@@ -30,6 +69,7 @@ export type GlyphDecoration = {
 
 export type GlyphShape = {
   character: string;
+  construction?: GlyphConstruction;
   decorations: GlyphDecoration[];
   strokes: GlyphStroke[];
   width: number;
@@ -51,6 +91,7 @@ export type BackgroundStyle =
   | "solid"
   | "paper"
   | "parchment"
+  | "manuscript"
   | "midnight"
   | "rage"
   | "blush"

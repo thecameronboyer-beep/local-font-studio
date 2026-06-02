@@ -84,6 +84,7 @@ type FontGlyphMetricKey = Exclude<FontMetricKey, "width">;
 type LetterMetricKey = "baselineOffset" | "height" | "leftBearing" | "rightBearing" | "width" | "xAdvance";
 type LetterMetricOverrides = Partial<Pick<Glyph, LetterMetricKey>>;
 type ImageMetricKey = "canvasHeight" | "canvasWidth" | "letterSpacing" | "lineSpacing" | "pagePadding";
+type ManuscriptMetricKey = "manuscriptAge" | "manuscriptEdges" | "manuscriptFibers" | "manuscriptInkSoak" | "manuscriptRuling" | "manuscriptStains";
 type SettingsPanel = "font" | "headerLetter" | "image" | "letter" | "position";
 type StyleDrawer = "doodle" | "page" | "select" | "stickers" | "text" | null;
 type StyleDoodleSmoothing = "gentle" | "raw" | "strong";
@@ -109,6 +110,12 @@ type PreviewImageSettings = PreviewSettings & {
   canvasHeight: number;
   canvasWidth: number;
   exportPreset: ExportPresetId;
+  manuscriptAge: number;
+  manuscriptEdges: number;
+  manuscriptFibers: number;
+  manuscriptInkSoak: number;
+  manuscriptRuling: number;
+  manuscriptStains: number;
   transparent: boolean;
 };
 
@@ -207,6 +214,7 @@ const MIN_IMAGE_CANVAS_HEIGHT = 480;
 const MAX_IMAGE_CANVAS_HEIGHT = 3600;
 const HEADER_FONT_SIZE_MULTIPLIER = 3;
 const STYLE_CANVAS_MAX_PIXELS = 850_000;
+const MANUSCRIPT_PARCHMENT_SRC = "/assets/parchment-clean-vellum.png";
 
 const exportPresets: Array<{
   id: ExportPresetId;
@@ -265,6 +273,12 @@ const defaultPhoneImageSettings: PreviewImageSettings = {
   inkColor: "#17110b",
   letterSpacing: 0,
   lineSpacing: 1.18,
+  manuscriptAge: 0.18,
+  manuscriptEdges: 0.38,
+  manuscriptFibers: 0.34,
+  manuscriptInkSoak: 0.42,
+  manuscriptRuling: 0,
+  manuscriptStains: 0.16,
   pagePadding: 92,
   transparent: false,
 };
@@ -439,6 +453,14 @@ const backgroundPresets: Array<{
     preview: "linear-gradient(135deg, #f6eccd, #d6b97c 58%, #8f5f30)",
   },
   {
+    id: "manuscript",
+    label: "Manuscript",
+    backgroundColor: "#efe0bd",
+    inkColor: "#2a160d",
+    accentColor: "#9b6f3b",
+    preview: "linear-gradient(135deg, #f8edcb, #ecd59b 58%, #9b6f3b)",
+  },
+  {
     id: "midnight",
     label: "Midnight",
     backgroundColor: "#111827",
@@ -529,16 +551,31 @@ function tokenizeParagraph(paragraph: string) {
   return paragraph.match(/\S+\s*|\s+/g) ?? [];
 }
 
+function clampUnit(value: unknown, fallback: number) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.min(1, Math.max(0, value))
+    : fallback;
+}
+
 function normalizePreviewSettings(settings?: Partial<PreviewImageSettings>): PreviewImageSettings {
   const normalized = {
     ...defaultPhoneImageSettings,
     ...settings,
   };
+  const safeSettings = {
+    ...normalized,
+    manuscriptAge: clampUnit(normalized.manuscriptAge, defaultPhoneImageSettings.manuscriptAge),
+    manuscriptEdges: clampUnit(normalized.manuscriptEdges, defaultPhoneImageSettings.manuscriptEdges),
+    manuscriptFibers: clampUnit(normalized.manuscriptFibers, defaultPhoneImageSettings.manuscriptFibers),
+    manuscriptInkSoak: clampUnit(normalized.manuscriptInkSoak, defaultPhoneImageSettings.manuscriptInkSoak),
+    manuscriptRuling: clampUnit(normalized.manuscriptRuling, defaultPhoneImageSettings.manuscriptRuling),
+    manuscriptStains: clampUnit(normalized.manuscriptStains, defaultPhoneImageSettings.manuscriptStains),
+  };
 
-  return exportPresets.some((preset) => preset.id === normalized.exportPreset)
-    ? normalized
+  return exportPresets.some((preset) => preset.id === safeSettings.exportPreset)
+    ? safeSettings
     : {
-        ...normalized,
+        ...safeSettings,
         exportPreset: "phone",
       };
 }
@@ -604,6 +641,7 @@ export default function TextPreview({
   const styleStickerDragRef = useRef<StyleStickerDrag | null>(null);
   const styleMovingStickerRef = useRef<string | null>(null);
   const styleCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const manuscriptParchmentRef = useRef<HTMLImageElement | null>(null);
   const viewerCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [activeDocumentId, setActiveDocumentId] = useState<string | null>(null);
   const [activeSettingsPanel, setActiveSettingsPanel] = useState<SettingsPanel>("image");
@@ -611,6 +649,7 @@ export default function TextPreview({
   const [documentName, setDocumentName] = useState("Untitled preview");
   const [fullscreenSettingsMenuOpen, setFullscreenSettingsMenuOpen] = useState(false);
   const [imageViewerOpen, setImageViewerOpen] = useState(false);
+  const [manuscriptParchmentReady, setManuscriptParchmentReady] = useState(false);
   const [previewMenuRoot, setPreviewMenuRoot] = useState<HTMLElement | null>(null);
   const [previewDoodles, setPreviewDoodles] = useState<PreviewDoodleStroke[]>([]);
   const [previewStickers, setPreviewStickers] = useState<PreviewSticker[]>([]);
@@ -719,9 +758,31 @@ export default function TextPreview({
   const selectedPreviewTextLayer = selectedPreviewTextLayerId
     ? previewTextLayers.find((layer) => layer.id === selectedPreviewTextLayerId) ?? null
     : null;
+  const headerEditorSourceCharacter = (() => {
+    const firstTypedHeaderLetter = headerPreviewText.match(/[A-Za-z]/)?.[0];
+    const preferredCharacter = firstTypedHeaderLetter ?? selectedSourceCharacter;
+    const uppercaseCharacter = preferredCharacter.toUpperCase();
+
+    return canUseHeaderLetter(uppercaseCharacter) ? uppercaseCharacter : "A";
+  })();
+  const headerEditorCharacter = getHeaderLetter(headerEditorSourceCharacter);
+  const headerEditorLabel = getCharacterLabel(headerEditorCharacter);
 
   useEffect(() => {
     setPreviewMenuRoot(document.getElementById("preview-text-menu-slot"));
+  }, []);
+
+  useEffect(() => {
+    const image = new Image();
+    image.onload = () => {
+      manuscriptParchmentRef.current = image;
+      setManuscriptParchmentReady(true);
+    };
+    image.src = MANUSCRIPT_PARCHMENT_SRC;
+
+    return () => {
+      image.onload = null;
+    };
   }, []);
 
   useEffect(() => {
@@ -731,6 +792,7 @@ export default function TextPreview({
     headerPreviewText,
     imageSettings,
     imageViewerOpen,
+    manuscriptParchmentReady,
     previewFont,
     previewDoodles,
     previewStickers,
@@ -1769,6 +1831,183 @@ export default function TextPreview({
     ctx.restore();
   }
 
+  function drawImageCover(
+    ctx: CanvasRenderingContext2D,
+    image: HTMLImageElement,
+    width: number,
+    height: number,
+  ) {
+    const scale = Math.max(width / image.naturalWidth, height / image.naturalHeight);
+    const sourceWidth = width / scale;
+    const sourceHeight = height / scale;
+    const sourceX = (image.naturalWidth - sourceWidth) / 2;
+    const sourceY = (image.naturalHeight - sourceHeight) / 2;
+
+    ctx.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, width, height);
+  }
+
+  function drawManuscriptFibers(ctx: CanvasRenderingContext2D, renderSettings: PreviewImageSettings) {
+    const imageWidth = renderSettings.canvasWidth;
+    const imageHeight = renderSettings.canvasHeight;
+    const fiberStrength = renderSettings.manuscriptFibers;
+
+    if (fiberStrength <= 0) {
+      return;
+    }
+
+    ctx.save();
+    ctx.strokeStyle = "#7a5229";
+    ctx.lineWidth = Math.max(0.8, imageWidth / 1900);
+    ctx.lineCap = "round";
+
+    const fiberCount = Math.ceil((36 + imageHeight / 18) * fiberStrength);
+
+    for (let index = 0; index < fiberCount; index += 1) {
+      const y = (index * 47) % imageHeight;
+      const x = (index * 113) % imageWidth;
+      const length = imageWidth * (0.12 + ((index * 17) % 38) / 100);
+      const drift = Math.sin(index * 1.4) * imageWidth * 0.018;
+
+      ctx.globalAlpha = 0.035 + fiberStrength * 0.08 + (index % 3) * 0.012;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.bezierCurveTo(
+        x + length * 0.35,
+        y - drift,
+        x + length * 0.7,
+        y + drift,
+        Math.min(imageWidth, x + length),
+        y + Math.sin(index) * imageWidth * 0.006,
+      );
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = "#fff4d6";
+    for (let index = 0; index < fiberCount * 0.42; index += 1) {
+      const y = (index * 73) % imageHeight;
+      const x = (index * 59) % imageWidth;
+      const length = imageWidth * (0.08 + ((index * 11) % 22) / 100);
+
+      ctx.globalAlpha = 0.035 + fiberStrength * 0.05;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(Math.min(imageWidth, x + length), y + Math.sin(index * 0.8) * imageWidth * 0.004);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  function drawManuscriptStains(ctx: CanvasRenderingContext2D, renderSettings: PreviewImageSettings) {
+    const stainStrength = renderSettings.manuscriptStains;
+
+    if (stainStrength <= 0) {
+      return;
+    }
+
+    const imageWidth = renderSettings.canvasWidth;
+    const imageHeight = renderSettings.canvasHeight;
+    const stainCount = Math.ceil(4 + stainStrength * 12);
+
+    ctx.save();
+    ctx.globalCompositeOperation = "multiply";
+
+    for (let index = 0; index < stainCount; index += 1) {
+      const edgeBias = index % 4;
+      const x = edgeBias === 0
+        ? imageWidth * (0.08 + ((index * 17) % 18) / 100)
+        : edgeBias === 1
+          ? imageWidth * (0.72 + ((index * 13) % 18) / 100)
+          : imageWidth * (0.2 + ((index * 31) % 60) / 100);
+      const y = edgeBias === 2
+        ? imageHeight * (0.08 + ((index * 23) % 16) / 100)
+        : edgeBias === 3
+          ? imageHeight * (0.72 + ((index * 19) % 18) / 100)
+          : imageHeight * (0.16 + ((index * 29) % 68) / 100);
+      const radiusX = imageWidth * (0.035 + ((index * 7) % 16) / 100) * (0.7 + stainStrength);
+      const radiusY = imageHeight * (0.02 + ((index * 5) % 11) / 100) * (0.7 + stainStrength);
+      const gradient = ctx.createRadialGradient(x, y, 0, x, y, Math.max(radiusX, radiusY));
+
+      gradient.addColorStop(0, `rgba(116, 66, 23, ${0.06 + stainStrength * 0.14})`);
+      gradient.addColorStop(0.65, `rgba(116, 66, 23, ${0.025 + stainStrength * 0.06})`);
+      gradient.addColorStop(1, "rgba(116, 66, 23, 0)");
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.ellipse(x, y, radiusX, radiusY, Math.sin(index) * 1.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  function drawManuscriptRuling(ctx: CanvasRenderingContext2D, renderSettings: PreviewImageSettings) {
+    const rulingStrength = renderSettings.manuscriptRuling;
+
+    if (rulingStrength <= 0) {
+      return;
+    }
+
+    const imageWidth = renderSettings.canvasWidth;
+    const imageHeight = renderSettings.canvasHeight;
+    const lineGap = renderSettings.fontSize * renderSettings.lineSpacing * 0.92;
+
+    ctx.save();
+    ctx.strokeStyle = "#6e8b92";
+    ctx.globalAlpha = 0.08 + rulingStrength * 0.18;
+    ctx.lineWidth = Math.max(1, imageWidth / 1700);
+
+    for (let y = renderSettings.pagePadding + renderSettings.fontSize * 0.86; y < imageHeight - renderSettings.pagePadding * 0.5; y += lineGap) {
+      ctx.beginPath();
+      ctx.moveTo(renderSettings.pagePadding * 0.72, y);
+      ctx.lineTo(imageWidth - renderSettings.pagePadding * 0.72, y + Math.sin(y * 0.008) * imageWidth * 0.003);
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = "#9b6f3b";
+    ctx.globalAlpha = rulingStrength * 0.16;
+    ctx.beginPath();
+    ctx.moveTo(renderSettings.pagePadding * 0.58, renderSettings.pagePadding * 0.62);
+    ctx.lineTo(renderSettings.pagePadding * 0.58, imageHeight - renderSettings.pagePadding * 0.62);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawManuscriptPage(ctx: CanvasRenderingContext2D, renderSettings: PreviewImageSettings) {
+    const imageWidth = renderSettings.canvasWidth;
+    const imageHeight = renderSettings.canvasHeight;
+    const image = manuscriptParchmentRef.current;
+
+    ctx.save();
+    if (image?.complete && image.naturalWidth > 0) {
+      drawImageCover(ctx, image, imageWidth, imageHeight);
+    } else {
+      drawParchmentTexture(ctx, renderSettings);
+    }
+
+    ctx.globalCompositeOperation = "multiply";
+    ctx.fillStyle = `rgba(118, 70, 24, ${renderSettings.manuscriptAge * 0.18})`;
+    ctx.fillRect(0, 0, imageWidth, imageHeight);
+
+    const edgeGradient = ctx.createRadialGradient(
+      imageWidth / 2,
+      imageHeight / 2,
+      Math.min(imageWidth, imageHeight) * 0.24,
+      imageWidth / 2,
+      imageHeight / 2,
+      Math.max(imageWidth, imageHeight) * 0.74,
+    );
+    edgeGradient.addColorStop(0, "rgba(80, 42, 14, 0)");
+    edgeGradient.addColorStop(0.72, `rgba(80, 42, 14, ${renderSettings.manuscriptEdges * 0.12})`);
+    edgeGradient.addColorStop(1, `rgba(45, 23, 9, ${renderSettings.manuscriptEdges * 0.34})`);
+    ctx.fillStyle = edgeGradient;
+    ctx.fillRect(0, 0, imageWidth, imageHeight);
+    ctx.restore();
+
+    drawManuscriptStains(ctx, renderSettings);
+    drawManuscriptFibers(ctx, renderSettings);
+    drawManuscriptRuling(ctx, renderSettings);
+  }
+
   function drawPreviewBackground(ctx: CanvasRenderingContext2D, renderSettings: PreviewImageSettings) {
     const imageWidth = renderSettings.canvasWidth;
     const imageHeight = renderSettings.canvasHeight;
@@ -1776,6 +2015,11 @@ export default function TextPreview({
     ctx.clearRect(0, 0, imageWidth, imageHeight);
 
     if (renderSettings.transparent) {
+      return;
+    }
+
+    if (renderSettings.backgroundStyle === "manuscript") {
+      drawManuscriptPage(ctx, renderSettings);
       return;
     }
 
@@ -2744,6 +2988,105 @@ export default function TextPreview({
     ctx.restore();
   }
 
+  function drawPreviewContentToCanvas(
+    ctx: CanvasRenderingContext2D,
+    layout: PhoneImageLayout,
+    options: {
+      doodleStrokes?: PreviewDoodleStroke[];
+      stickers?: PreviewSticker[];
+    } = {},
+  ) {
+    drawTextToCanvas(ctx, layout.headerLines, layout.settings, {
+      font: previewFont,
+      fontSize: layout.headerFontSize,
+      sourceText: headerPreviewText,
+      startY: layout.settings.pagePadding,
+      useHeaderLetters: true,
+    });
+    drawTextToCanvas(ctx, layout.lines, layout.settings, {
+      font: previewFont,
+      sourceText: previewText,
+      startY: layout.bodyStartY,
+    });
+    drawPreviewTextLayers(ctx, layout.settings, layout.bodyEndY + layout.settings.fontSize * 0.35);
+    drawPreviewDecorations(ctx, layout.settings, {
+      doodleStrokes: options.doodleStrokes,
+      stickers: options.stickers,
+    });
+  }
+
+  function drawManuscriptInkInterruption(
+    ctx: CanvasRenderingContext2D,
+    layer: HTMLCanvasElement,
+    renderSettings: PreviewImageSettings,
+  ) {
+    const soak = renderSettings.manuscriptInkSoak;
+
+    if (soak <= 0.02) {
+      return;
+    }
+
+    const fleckCanvas = document.createElement("canvas");
+    fleckCanvas.width = layer.width;
+    fleckCanvas.height = layer.height;
+    const fleckCtx = fleckCanvas.getContext("2d");
+
+    if (!fleckCtx) {
+      return;
+    }
+
+    const fleckCount = Math.ceil((layer.width * layer.height) / 1800);
+    fleckCtx.fillStyle = "#f6e8bf";
+
+    for (let index = 0; index < fleckCount; index += 1) {
+      const x = (index * 157) % layer.width;
+      const y = (index * 89) % layer.height;
+      const radius = Math.max(0.8, layer.width / 1800) * (0.45 + (index % 5) * 0.25);
+
+      fleckCtx.globalAlpha = 0.05 + soak * 0.18 + (index % 3) * 0.02;
+      fleckCtx.beginPath();
+      fleckCtx.arc(x, y, radius, 0, Math.PI * 2);
+      fleckCtx.fill();
+    }
+
+    fleckCtx.globalCompositeOperation = "destination-in";
+    fleckCtx.drawImage(layer, 0, 0);
+
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+    ctx.globalAlpha = 0.16 * soak;
+    ctx.drawImage(fleckCanvas, 0, 0);
+    ctx.restore();
+  }
+
+  function drawManuscriptInkLayer(
+    ctx: CanvasRenderingContext2D,
+    layer: HTMLCanvasElement,
+    renderSettings: PreviewImageSettings,
+  ) {
+    const soak = renderSettings.manuscriptInkSoak;
+
+    if (renderSettings.backgroundStyle !== "manuscript" || renderSettings.transparent) {
+      ctx.drawImage(layer, 0, 0);
+      return;
+    }
+
+    ctx.save();
+    ctx.globalCompositeOperation = "multiply";
+    ctx.globalAlpha = 0.16 + soak * 0.28;
+    ctx.filter = `blur(${Math.max(0.25, renderSettings.canvasWidth / 2400) * (0.5 + soak)}px)`;
+    ctx.drawImage(layer, -Math.max(1, soak * 2), 0);
+    ctx.drawImage(layer, Math.max(1, soak * 1.5), 0);
+    ctx.drawImage(layer, 0, Math.max(1, soak * 1.3));
+
+    ctx.filter = "none";
+    ctx.globalAlpha = 0.72 + (1 - soak) * 0.18;
+    ctx.drawImage(layer, 0, 0);
+    ctx.restore();
+
+    drawManuscriptInkInterruption(ctx, layer, renderSettings);
+  }
+
   function renderPhoneImageToCanvas(
     canvas: HTMLCanvasElement,
     options: {
@@ -2764,23 +3107,31 @@ export default function TextPreview({
     canvas.height = fittedLayout.settings.canvasHeight;
 
     drawPreviewBackground(ctx, fittedLayout.settings);
-    drawTextToCanvas(ctx, fittedLayout.headerLines, fittedLayout.settings, {
-      font: previewFont,
-      fontSize: fittedLayout.headerFontSize,
-      sourceText: headerPreviewText,
-      startY: fittedLayout.settings.pagePadding,
-      useHeaderLetters: true,
-    });
-    drawTextToCanvas(ctx, fittedLayout.lines, fittedLayout.settings, {
-      font: previewFont,
-      sourceText: previewText,
-      startY: fittedLayout.bodyStartY,
-    });
-    drawPreviewTextLayers(ctx, fittedLayout.settings, fittedLayout.bodyEndY + fittedLayout.settings.fontSize * 0.35);
-    drawPreviewDecorations(ctx, fittedLayout.settings, {
-      doodleStrokes: options.doodleStrokes,
-      stickers: options.stickers,
-    });
+    if (fittedLayout.settings.backgroundStyle === "manuscript" && !fittedLayout.settings.transparent) {
+      const contentCanvas = document.createElement("canvas");
+      contentCanvas.width = fittedLayout.settings.canvasWidth;
+      contentCanvas.height = fittedLayout.settings.canvasHeight;
+      const contentCtx = contentCanvas.getContext("2d");
+
+      if (contentCtx) {
+        drawPreviewContentToCanvas(contentCtx, fittedLayout, {
+          doodleStrokes: options.doodleStrokes,
+          stickers: options.stickers,
+        });
+        drawManuscriptInkLayer(ctx, contentCanvas, fittedLayout.settings);
+      } else {
+        drawPreviewContentToCanvas(ctx, fittedLayout, {
+          doodleStrokes: options.doodleStrokes,
+          stickers: options.stickers,
+        });
+      }
+    } else {
+      drawPreviewContentToCanvas(ctx, fittedLayout, {
+        doodleStrokes: options.doodleStrokes,
+        stickers: options.stickers,
+      });
+    }
+
     if (options.showSelection) {
       drawPreviewSelectionOutlines(ctx, fittedLayout.settings);
     }
@@ -3760,7 +4111,18 @@ export default function TextPreview({
                     accentColor: preset.accentColor,
                     backgroundColor: preset.backgroundColor,
                     backgroundStyle: preset.id,
+                    backgroundTexture: preset.id === "manuscript" ? "clean" : current.backgroundTexture,
                     inkColor: preset.inkColor,
+                    ...(preset.id === "manuscript"
+                      ? {
+                          manuscriptAge: 0.18,
+                          manuscriptEdges: 0.38,
+                          manuscriptFibers: 0.34,
+                          manuscriptInkSoak: 0.42,
+                          manuscriptRuling: 0,
+                          manuscriptStains: 0.16,
+                        }
+                      : {}),
                     transparent: false,
                   }))
                 }
@@ -3771,6 +4133,16 @@ export default function TextPreview({
               </button>
             ))}
           </div>
+          {imageSettings.backgroundStyle === "manuscript" && !imageSettings.transparent && (
+            <div className="manuscript-slider-grid" aria-label="Manuscript page controls">
+              {renderManuscriptRange("Age", "manuscriptAge")}
+              {renderManuscriptRange("Edges", "manuscriptEdges")}
+              {renderManuscriptRange("Fiber", "manuscriptFibers")}
+              {renderManuscriptRange("Stains", "manuscriptStains")}
+              {renderManuscriptRange("Lines", "manuscriptRuling")}
+              {renderManuscriptRange("Soak", "manuscriptInkSoak")}
+            </div>
+          )}
           <p className="style-label">Textures</p>
           <div className="draw-background-textures style-texture-presets" aria-label="Paper textures">
             {texturePresets.map((preset) => (
@@ -4114,6 +4486,13 @@ export default function TextPreview({
     }));
   }
 
+  function updateManuscriptMetric(metric: ManuscriptMetricKey, value: number) {
+    setImageSettings((current) => ({
+      ...current,
+      [metric]: Math.min(1, Math.max(0, value)),
+    }));
+  }
+
   function updateImageCanvasSize(deltaWidth: number) {
     setImageSettings((current) => {
       const requestedWidth = current.canvasWidth + deltaWidth;
@@ -4227,6 +4606,14 @@ export default function TextPreview({
     setImageViewerOpen(false);
     onSelectCharacter(settingsGlyph.character);
     setShareStatus(`Editing "${settingsGlyphLabel}".`);
+  }
+
+  function openHeaderLetterEditor() {
+    setFullscreenSettingsMenuOpen(false);
+    setImageViewerOpen(false);
+    setActiveSettingsPanel("headerLetter");
+    onSelectCharacter(headerEditorCharacter);
+    setShareStatus(`Editing "${headerEditorLabel}".`);
   }
 
   function openStyleEditor() {
@@ -4547,6 +4934,23 @@ export default function TextPreview({
           </button>
         </div>
       </div>
+    );
+  }
+
+  function renderManuscriptRange(label: string, metric: ManuscriptMetricKey) {
+    return (
+      <label className="draw-drawer-range manuscript-range">
+        <span>{label}</span>
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.01"
+          value={imageSettings[metric]}
+          onChange={(event) => updateManuscriptMetric(metric, Number(event.target.value))}
+        />
+        <output>{Math.round(imageSettings[metric] * 100)}%</output>
+      </label>
     );
   }
 
@@ -5087,7 +5491,18 @@ export default function TextPreview({
           Export PNG
         </button>
       </div>
-      {renderHeaderPreviewTextBox("preview-input phone-text-input phone-image-text-input phone-header-text-input")}
+      <div className="header-letter-input-group">
+        {renderHeaderPreviewTextBox("preview-input phone-text-input phone-image-text-input phone-header-text-input")}
+        <button
+          className="secondary-button compact-button header-letter-draw-button"
+          type="button"
+          onClick={openHeaderLetterEditor}
+          aria-label={`Draw ${headerEditorLabel}`}
+        >
+          <PenLine aria-hidden="true" />
+          <span>Draw {headerEditorLabel}</span>
+        </button>
+      </div>
       {renderPreviewTextBox("preview-input phone-text-input phone-image-text-input")}
       <div className="share-status" aria-live="polite">
         {shareStatus}

@@ -1,7 +1,13 @@
 import { fontCharacters, spacebar } from "../data/characterSets";
+import { createSampleConstructionA } from "../data/constructionSamples";
 import type {
   BackgroundStyle,
   BackgroundTexture,
+  ConstructionAnchorPoint,
+  ConstructionCornerStyle,
+  ConstructionPath,
+  ConstructionPointType,
+  ConstructionSegmentType,
   FontCharacterSettings,
   FontGuideSettings,
   FontRenderProfile,
@@ -20,6 +26,7 @@ import type {
   ProjectActivityDraft,
   ProjectBackup,
   FontExportFile,
+  GlyphConstruction,
   ProjectExportFile,
   StorageHealthCheck,
 } from "../types/fontTypes";
@@ -126,9 +133,17 @@ export function createFontSet(
       : {
           ...glyph,
           baselineOffset: safeGuideSettings.baseline,
-        };
+    };
     return map;
   }, {});
+
+  if (glyphs.A) {
+    glyphs.A = {
+      ...glyphs.A,
+      construction: createSampleConstructionA(),
+      xAdvance: 0.82,
+    };
+  }
 
   const now = new Date().toISOString();
 
@@ -223,7 +238,7 @@ function normalizeStrokeTool(value: unknown): GlyphStrokeTool | undefined {
 }
 
 function normalizeGlyphInkEffect(value: unknown): GlyphInkEffect | undefined {
-  return value === "dramaticPooling" || value === "subtleSpread" ? value : undefined;
+  return value === "dramaticPooling" || value === "subtleSpread" || value === "bubbleHighlight" ? value : undefined;
 }
 
 function normalizeCharacterSettings(value: unknown, fallback: FontCharacterSettings): FontCharacterSettings {
@@ -319,11 +334,109 @@ function normalizeStroke(stroke: unknown): GlyphStroke | null {
 
   return {
     ...(typeof stroke.color === "string" ? { color: stroke.color } : {}),
+    ...(typeof stroke.highlightColor === "string" ? { highlightColor: stroke.highlightColor } : {}),
     ...(inkEffect ? { inkEffect } : {}),
     id: safeString(stroke.id, createId("stroke")),
     points,
     size: normalizeStrokeSize(stroke.size),
     ...(normalizeStrokeTool(stroke.strokeTool) ? { strokeTool: "quill" as const } : {}),
+  };
+}
+
+function normalizeConstructionPointType(value: unknown): ConstructionPointType {
+  return value === "smooth" || value === "symmetric" || value === "rounded" ? value : "corner";
+}
+
+function normalizeConstructionSegmentType(value: unknown): ConstructionSegmentType {
+  return value === "curve" ? "curve" : "line";
+}
+
+function normalizeConstructionCornerStyle(value: unknown): ConstructionCornerStyle {
+  return value === "rounded" || value === "chamfered" ? value : "sharp";
+}
+
+function normalizeConstructionHandle(value: unknown) {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  return {
+    x: safeNumber(value.x, 0.5, -1, 2),
+    y: safeNumber(value.y, 0.5, -1, 2),
+  };
+}
+
+function normalizeConstructionPoint(point: unknown): ConstructionAnchorPoint | null {
+  if (!isRecord(point) || typeof point.x !== "number" || typeof point.y !== "number") {
+    return null;
+  }
+
+  const cornerStyle = normalizeConstructionCornerStyle(point.cornerStyle);
+  const normalizedPoint: ConstructionAnchorPoint = {
+    ...(typeof point.chamferDistance === "number"
+      ? { chamferDistance: safeNumber(point.chamferDistance, 0.04, 0, 0.32) }
+      : {}),
+    ...(typeof point.cornerRadius === "number"
+      ? { cornerRadius: safeNumber(point.cornerRadius, 0.04, 0, 0.32) }
+      : {}),
+    cornerStyle,
+    id: safeString(point.id, createId("anchor")),
+    ...(normalizeConstructionHandle(point.inHandle) ? { inHandle: normalizeConstructionHandle(point.inHandle) } : {}),
+    ...(normalizeConstructionHandle(point.outHandle) ? { outHandle: normalizeConstructionHandle(point.outHandle) } : {}),
+    segmentType: normalizeConstructionSegmentType(point.segmentType),
+    type: normalizeConstructionPointType(point.type),
+    x: safeNumber(point.x, 0.5, -1, 2),
+    y: safeNumber(point.y, 0.5, -1, 2),
+  };
+
+  return normalizedPoint;
+}
+
+function normalizeConstructionPath(path: unknown): ConstructionPath | null {
+  if (!isRecord(path)) {
+    return null;
+  }
+
+  const points = Array.isArray(path.points)
+    ? path.points
+        .map(normalizeConstructionPoint)
+        .filter((point): point is ConstructionAnchorPoint => Boolean(point))
+    : [];
+
+  if (points.length === 0) {
+    return null;
+  }
+
+  return {
+    closed: typeof path.closed === "boolean" ? path.closed : false,
+    ...(typeof path.fillColor === "string" ? { fillColor: path.fillColor } : {}),
+    filled: typeof path.filled === "boolean" ? path.filled : false,
+    id: safeString(path.id, createId("path")),
+    points,
+    ...(typeof path.strokeColor === "string" ? { strokeColor: path.strokeColor } : {}),
+    strokeWidth: safeNumber(path.strokeWidth, 0.05, 0.004, 0.4),
+  };
+}
+
+function normalizeConstruction(value: unknown): GlyphConstruction | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const paths = Array.isArray(value.paths)
+    ? value.paths
+        .map(normalizeConstructionPath)
+        .filter((path): path is ConstructionPath => Boolean(path))
+    : [];
+
+  if (paths.length === 0) {
+    return undefined;
+  }
+
+  return {
+    ...(typeof value.fillColor === "string" ? { fillColor: value.fillColor } : {}),
+    paths,
+    ...(typeof value.strokeColor === "string" ? { strokeColor: value.strokeColor } : {}),
   };
 }
 
@@ -351,8 +464,11 @@ function normalizeGlyphVariant(rawGlyph: unknown, character: string): GlyphVaria
     return null;
   }
 
+  const construction = normalizeConstruction(rawGlyph.construction);
+
   return {
     character,
+    ...(construction ? { construction } : {}),
     decorations: Array.isArray(rawGlyph.decorations)
       ? rawGlyph.decorations
           .map(normalizeDecoration)
@@ -378,6 +494,7 @@ function normalizeGlyph(rawGlyph: unknown, character: string): Glyph {
     return emptyGlyph;
   }
 
+  const construction = normalizeConstruction(rawGlyph.construction);
   const normalizedGlyph = {
     ...emptyGlyph,
     width: safeNumber(rawGlyph.width, emptyGlyph.width, 0.1, 3),
@@ -387,6 +504,7 @@ function normalizeGlyph(rawGlyph: unknown, character: string): Glyph {
     leftBearing: safeNumber(rawGlyph.leftBearing, emptyGlyph.leftBearing, -1, 1),
     rightBearing: safeNumber(rawGlyph.rightBearing, emptyGlyph.rightBearing, -1, 1),
     character,
+    ...(construction ? { construction } : {}),
     decorations: Array.isArray(rawGlyph.decorations)
       ? rawGlyph.decorations
           .map(normalizeDecoration)
