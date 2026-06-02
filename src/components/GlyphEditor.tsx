@@ -25,6 +25,8 @@ import {
   SkipForward,
   Sticker,
   SlidersHorizontal,
+  Layers,
+  Plus,
   Undo2,
   X,
   ZoomIn,
@@ -73,7 +75,7 @@ type GlyphEditorProps = {
   glyph: Glyph;
   onSaveGlyph: (glyph: Glyph) => void;
   onSaveGlyphAndNext: (glyph: Glyph) => void;
-  onSaveGlyphVariant: (glyph: Glyph) => void;
+  onSaveGlyphVariant: (glyph: Glyph, variantIndex?: number) => void;
   onUpdateFontGuideSettings: (guideSettings: FontGuideSettings) => void;
   onUpdateFontTheme: (theme: FontTheme) => void;
   previewText: string;
@@ -87,6 +89,7 @@ type GlyphEditorProps = {
 };
 
 type FullscreenDrawer = "ink" | "background" | "guides" | "more" | null;
+type ActiveVariation = "base" | "new" | number;
 type InkTool = Extract<DrawingTool, "pen" | "quill" | "line">;
 const inkPresetIds = ["primary", "secondary", "tertiary"] as const;
 type InkPresetId = (typeof inkPresetIds)[number];
@@ -331,6 +334,33 @@ function cloneGlyph(glyph: Glyph): Glyph {
     strokes: cloneStrokes(glyph.strokes),
     variants: glyph.variants?.map(cloneGlyphVariant) ?? [],
   };
+}
+
+function createGlyphDraftFromVariant(glyph: Glyph, variant: GlyphVariant): Glyph {
+  return {
+    ...cloneGlyphVariant(variant),
+    variants: glyph.variants?.map(cloneGlyphVariant) ?? [],
+  };
+}
+
+function createEmptyVariationDraft(glyph: Glyph): Glyph {
+  return {
+    ...cloneGlyph(glyph),
+    decorations: [],
+    strokes: [],
+  };
+}
+
+function getVariationLabel(variation: ActiveVariation) {
+  if (variation === "base") {
+    return "Base";
+  }
+
+  if (variation === "new") {
+    return "New variation";
+  }
+
+  return `Var ${variation + 1}`;
 }
 
 function getDecorationInset(decoration: GlyphDecoration) {
@@ -738,6 +768,7 @@ export default function GlyphEditor({
   onToggleFullScreen,
 }: GlyphEditorProps) {
   const [draftGlyph, setDraftGlyph] = useState<Glyph>(() => cloneGlyph(glyph));
+  const [activeVariation, setActiveVariation] = useState<ActiveVariation>("base");
   const draftGlyphRef = useRef<Glyph>(draftGlyph);
   const pastRef = useRef<Glyph[]>([]);
   const futureRef = useRef<Glyph[]>([]);
@@ -777,6 +808,7 @@ export default function GlyphEditor({
   const referenceGlyph = activeReferenceCharacter ? font.glyphs[activeReferenceCharacter] : null;
   const selectedSticker = draftGlyph.decorations.find((decoration) => decoration.id === selectedDecorationId) ?? null;
   const variantCount = glyph.variants?.length ?? 0;
+  const activeVariationLabel = getVariationLabel(activeVariation);
   const activeFontTheme: FontTheme = font.theme ?? {
     accentColor: "#d3bf97",
     backgroundColor: "#f4ead7",
@@ -791,6 +823,7 @@ export default function GlyphEditor({
     pastRef.current = [];
     futureRef.current = [];
     setDraftGlyph(nextGlyph);
+    setActiveVariation("base");
     setHistoryCounts({ past: 0, future: 0 });
     setReferenceCharacter((current) => (current === glyph.character ? "" : current));
     setSelectedDecorationId(null);
@@ -880,6 +913,40 @@ export default function GlyphEditor({
   function updateDraftGlyph(glyphDraft: Glyph) {
     draftGlyphRef.current = glyphDraft;
     setDraftGlyph(glyphDraft);
+  }
+
+  function replaceDraftGlyph(glyphDraft: Glyph) {
+    draftGlyphRef.current = glyphDraft;
+    pastRef.current = [];
+    futureRef.current = [];
+    setSelectedDecorationId(null);
+    setSelectedStrokeId(null);
+    setDraftGlyph(glyphDraft);
+    setHistoryCounts({ past: 0, future: 0 });
+  }
+
+  function getGlyphDraftForVariation(variation: ActiveVariation) {
+    if (variation === "base") {
+      return cloneGlyph(glyph);
+    }
+
+    if (variation === "new") {
+      return createEmptyVariationDraft(glyph);
+    }
+
+    const variant = glyph.variants?.[variation];
+    return variant ? createGlyphDraftFromVariant(glyph, variant) : cloneGlyph(glyph);
+  }
+
+  function handleSelectVariation(variation: ActiveVariation) {
+    setActiveVariation(variation);
+    replaceDraftGlyph(getGlyphDraftForVariation(variation));
+    setSavedMessage("");
+  }
+
+  function handleNewVariation() {
+    handleSelectVariation("new");
+    setSavedMessage(`New ${getCharacterLabel(glyph.character)} variation draft`);
   }
 
   function updateDraftStrokes(strokes: GlyphStroke[]) {
@@ -1198,21 +1265,49 @@ export default function GlyphEditor({
     };
   }
 
+  function saveActiveVariation(savedGlyph: Glyph) {
+    if (activeVariation === "base") {
+      onSaveGlyph(savedGlyph);
+      setSavedMessage(`Saved ${getCharacterLabel(glyph.character)} base`);
+      return;
+    }
+
+    const variantIndex = activeVariation === "new" ? undefined : activeVariation;
+
+    onSaveGlyphVariant(savedGlyph, variantIndex);
+
+    if (activeVariation === "new") {
+      setActiveVariation(variantCount);
+      setSavedMessage(`Saved Var ${variantCount + 1} for ${getCharacterLabel(glyph.character)}`);
+      return;
+    }
+
+    setSavedMessage(`Saved ${getVariationLabel(activeVariation)} for ${getCharacterLabel(glyph.character)}`);
+  }
+
   function handleSave() {
     const savedGlyph = getSavedGlyphDraft();
 
-    onSaveGlyph(savedGlyph);
-
-    setSavedMessage(`Saved ${getCharacterLabel(glyph.character)}`);
+    saveActiveVariation(savedGlyph);
   }
 
   function handleSaveAndNext() {
     const savedGlyph = getSavedGlyphDraft();
 
+    if (activeVariation === "base") {
+      flushSync(() => {
+        onSaveGlyphAndNext(savedGlyph);
+      });
+      setSavedMessage(`Saved ${getCharacterLabel(glyph.character)} base`);
+      return;
+    }
+
     flushSync(() => {
-      onSaveGlyphAndNext(savedGlyph);
+      onSaveGlyphVariant(savedGlyph, activeVariation === "new" ? undefined : activeVariation);
+      onNextCharacter();
     });
-    setSavedMessage(`Saved ${getCharacterLabel(glyph.character)}`);
+    setActiveVariation("base");
+    setSavedMessage(`Saved ${getCharacterLabel(glyph.character)} variation`);
   }
 
   function runFullscreenSaveAndNext() {
@@ -1256,6 +1351,7 @@ export default function GlyphEditor({
       character: glyph.character,
     });
 
+    setActiveVariation(variantCount);
     setSavedMessage(`Saved variant ${variantCount + 1} for ${getCharacterLabel(glyph.character)}`);
   }
 
@@ -1309,6 +1405,50 @@ export default function GlyphEditor({
     pastRef.current = [...pastRef.current.slice(-29), cloneGlyph(draftGlyphRef.current)];
     updateDraftGlyph(cloneGlyph(nextGlyph));
     syncHistoryCounts();
+  }
+
+  function renderVariationControls(className = "glyph-variation-strip") {
+    const variants = glyph.variants ?? [];
+
+    return (
+      <div className={className} aria-label={`${getCharacterLabel(glyph.character)} variations`}>
+        <div className="variation-summary">
+          <Layers aria-hidden="true" />
+          <span>{activeVariationLabel}</span>
+          <strong>{variants.length + 1} forms</strong>
+        </div>
+        <div className="variation-buttons" role="group" aria-label="Choose variation to edit">
+          <button
+            className={`variation-button ${activeVariation === "base" ? "selected" : ""}`}
+            type="button"
+            aria-pressed={activeVariation === "base"}
+            onClick={() => handleSelectVariation("base")}
+          >
+            Base
+          </button>
+          {variants.map((variant, index) => (
+            <button
+              key={`${variant.updatedAt}-${index}`}
+              className={`variation-button ${activeVariation === index ? "selected" : ""}`}
+              type="button"
+              aria-pressed={activeVariation === index}
+              onClick={() => handleSelectVariation(index)}
+            >
+              Var {index + 1}
+            </button>
+          ))}
+          <button
+            className={`variation-button new-variation-button ${activeVariation === "new" ? "selected" : ""}`}
+            type="button"
+            aria-pressed={activeVariation === "new"}
+            onClick={handleNewVariation}
+          >
+            <Plus aria-hidden="true" />
+            New
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (isFullScreen) {
@@ -1373,7 +1513,7 @@ export default function GlyphEditor({
           <div className="draw-character-pill">
             <strong>{characterLabel}</strong>
             <span>
-              {characterIndex + 1}/{characterTotal}
+              {activeVariationLabel} - {characterIndex + 1}/{characterTotal}
             </span>
           </div>
           <button
@@ -1540,6 +1680,8 @@ export default function GlyphEditor({
 
           {activeFullscreenDrawer === "more" && (
             <div id="draw-more-drawer" className="draw-control-drawer" aria-label="More drawing controls">
+              {renderVariationControls("glyph-variation-strip draw-variation-strip")}
+
               <div className="draw-drawer-grid three" aria-label="Save actions">
                 <button
                   className="draw-drawer-button"
@@ -1550,7 +1692,7 @@ export default function GlyphEditor({
                   }}
                 >
                   <Save aria-hidden="true" />
-                  <span>Save</span>
+                  <span>Save {activeVariation === "base" ? "base" : "var"}</span>
                 </button>
                 <button
                   className="draw-drawer-button"
@@ -1561,7 +1703,7 @@ export default function GlyphEditor({
                   }}
                 >
                   <Save aria-hidden="true" />
-                  <span>Save variant</span>
+                  <span>Save as var</span>
                 </button>
                 <button
                   className="draw-drawer-button accent"
@@ -1997,13 +2139,15 @@ export default function GlyphEditor({
         <div className="glyph-progress">
           <strong>{characterLabel}</strong>
           <span>
-            {characterIndex + 1} / {characterTotal}
+            {activeVariationLabel} - {characterIndex + 1} / {characterTotal}
           </span>
         </div>
         <button className="secondary-button" type="button" onClick={onNextCharacter}>
           Next
         </button>
       </div>
+
+      {renderVariationControls()}
 
       <GlyphCanvas
         strokes={draftGlyph.strokes}
@@ -2050,10 +2194,10 @@ export default function GlyphEditor({
 
       <div className="quick-save-row" aria-label="Primary glyph actions">
         <button className="secondary-button" type="button" onClick={handleSave}>
-          Save
+          Save {activeVariation === "base" ? "base" : "variation"}
         </button>
         <button className="secondary-button" type="button" onClick={handleSaveVariant}>
-          Save variant
+          Save as new variation
         </button>
         <button className="primary-button" type="button" onClick={handleSaveAndNext}>
           Save and next

@@ -144,7 +144,7 @@ export default function SavedImagesPanel({ images, onClose, onDeleteImage }: Sav
         {images.length === 0 ? (
           <div className="saved-images-empty">
             <h3>No saved images yet</h3>
-            <p>Use Save PNG on the home screen to keep a message here.</p>
+            <p>Use Export PNG on the home screen to keep a message here.</p>
           </div>
         ) : (
           images.map((image) => (

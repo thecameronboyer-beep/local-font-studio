@@ -188,6 +188,7 @@ export type SavedImageDraft = Omit<SavedImage, "createdAt" | "id">;
 
 export type PreviewSettings = {
   fontSize: number;
+  letterSpacing: number;
   lineSpacing: number;
   inkColor: string;
   backgroundColor: string;

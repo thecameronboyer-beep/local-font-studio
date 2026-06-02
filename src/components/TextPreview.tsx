@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { spacebar } from "../data/characterSets";
 import type {
@@ -43,6 +44,7 @@ type TextPreviewProps = {
   onRecordExport?: (message: string) => void;
   onSaveImage?: (image: SavedPreviewImage) => boolean;
   onUpdateSelectedGlyph: (glyph: Glyph) => void;
+  onSelectCharacter: (character: string) => void;
   previewText: string;
   onPreviewTextChange: (text: string) => void;
   selectedGlyph: Glyph;
@@ -52,13 +54,15 @@ type TextPreviewProps = {
 type ExportPresetId = "phone" | "social" | "transparent";
 type FontMetricKey = "baselineOffset" | "leftBearing" | "rightBearing" | "width" | "xAdvance";
 type FontGlyphMetricKey = Exclude<FontMetricKey, "width">;
-type ImageMetricKey = "canvasHeight" | "canvasWidth" | "lineSpacing" | "pagePadding";
-type SettingsPanel = "font" | "image" | "position";
+type LetterMetricKey = "baselineOffset" | "height" | "leftBearing" | "rightBearing" | "width" | "xAdvance";
+type ImageMetricKey = "canvasHeight" | "canvasWidth" | "letterSpacing" | "lineSpacing" | "pagePadding";
+type SettingsPanel = "font" | "image" | "letter" | "position";
 type TextAlignment = "left" | "center" | "right";
 
 const settingsPanelLabels: Record<SettingsPanel, string> = {
   font: "Font settings",
   image: "Image settings",
+  letter: "Letter settings",
   position: "Position settings",
 };
 
@@ -77,6 +81,15 @@ type PreviewImageSettings = PreviewSettings & {
 type PhoneImageLayout = {
   lines: string[];
   settings: PreviewImageSettings;
+};
+
+type PreviewGlyphHitTarget = {
+  character: string;
+  editableCharacter: string;
+  height: number;
+  width: number;
+  x: number;
+  y: number;
 };
 
 type PreviewDocument = {
@@ -148,6 +161,7 @@ const defaultPhoneImageSettings: PreviewImageSettings = {
   exportPreset: "phone",
   fontSize: 118,
   inkColor: "#17110b",
+  letterSpacing: 0,
   lineSpacing: 1.18,
   pagePadding: 92,
   transparent: false,
@@ -355,12 +369,14 @@ export default function TextPreview({
   onRecordExport,
   onSaveImage,
   onUpdateSelectedGlyph,
+  onSelectCharacter,
   previewText,
   onPreviewTextChange,
   selectedGlyph,
   spacebarGlyph,
 }: TextPreviewProps) {
   const imageCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const previewPointerStartRef = useRef<{ id: number; x: number; y: number } | null>(null);
   const styleCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const viewerCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [activeDocumentId, setActiveDocumentId] = useState<string | null>(null);
@@ -431,8 +447,25 @@ export default function TextPreview({
     return ctx.measureText(character).width;
   }
 
-  function measureTextRun(ctx: CanvasRenderingContext2D, text: string, fontSize: number) {
-    return [...text].reduce((width, character) => width + measureCharacter(ctx, character, fontSize), 0);
+  function getTrackedCharacterAdvance(characterWidth: number, renderSettings: Pick<PreviewImageSettings, "letterSpacing">) {
+    return Math.max(1, characterWidth + renderSettings.letterSpacing);
+  }
+
+  function measureTextRun(
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    fontSize: number,
+    letterSpacing = imageSettings.letterSpacing,
+  ) {
+    const characters = [...text];
+
+    return characters.reduce(
+      (width, character, index) =>
+        width +
+        measureCharacter(ctx, character, fontSize) +
+        (index < characters.length - 1 ? letterSpacing : 0),
+      0,
+    );
   }
 
   function buildWordWrappedLines(
@@ -440,6 +473,7 @@ export default function TextPreview({
     text: string,
     maxLineWidth: number,
     fontSize: number,
+    letterSpacing = imageSettings.letterSpacing,
   ) {
     const paragraphs = text.split("\n");
     const lines: string[] = [];
@@ -460,18 +494,18 @@ export default function TextPreview({
           continue;
         }
 
-        const tokenWidth = measureTextRun(ctx, token, fontSize);
+        const tokenWidth = measureTextRun(ctx, token, fontSize, letterSpacing);
 
         if (line.length > 0 && lineWidth + tokenWidth > maxLineWidth) {
           lines.push(line.trimEnd());
           line = token.replace(/^\s+/, "");
-          lineWidth = measureTextRun(ctx, line, fontSize);
+          lineWidth = measureTextRun(ctx, line, fontSize, letterSpacing);
         } else {
           line += token;
           lineWidth += tokenWidth;
         }
 
-        lineWidth = Math.max(lineWidth, measureTextRun(ctx, line, fontSize));
+        lineWidth = Math.max(lineWidth, measureTextRun(ctx, line, fontSize, letterSpacing));
       }
 
       lines.push(line.trimEnd());
@@ -485,6 +519,7 @@ export default function TextPreview({
     text: string,
     maxLineWidth: number,
     fontSize: number,
+    letterSpacing = imageSettings.letterSpacing,
   ) {
     const paragraphs = text.split("\n");
     const lines: string[] = [];
@@ -500,16 +535,19 @@ export default function TextPreview({
 
       for (const character of paragraph) {
         const characterWidth = measureCharacter(ctx, character, fontSize);
+        const trackedWidth = line.length > 0
+          ? getTrackedCharacterAdvance(characterWidth, { letterSpacing })
+          : characterWidth;
 
-        if (line.length > 0 && lineWidth + characterWidth > maxLineWidth) {
+        if (line.length > 0 && lineWidth + trackedWidth > maxLineWidth) {
           lines.push(line);
           line = character.trimStart();
-          lineWidth = measureTextRun(ctx, line, fontSize);
+          lineWidth = measureTextRun(ctx, line, fontSize, letterSpacing);
           continue;
         }
 
         line += character;
-        lineWidth += characterWidth;
+        lineWidth += trackedWidth;
       }
 
       lines.push(line.trimEnd());
@@ -519,7 +557,7 @@ export default function TextPreview({
   }
 
   function getLineX(ctx: CanvasRenderingContext2D, line: string, renderSettings: PreviewImageSettings) {
-    const lineWidth = measureTextRun(ctx, line, renderSettings.fontSize);
+    const lineWidth = measureTextRun(ctx, line, renderSettings.fontSize, renderSettings.letterSpacing);
 
     if (renderSettings.alignment === "center") {
       return Math.max(renderSettings.pagePadding, (renderSettings.canvasWidth - lineWidth) / 2);
@@ -570,12 +608,18 @@ export default function TextPreview({
             widthScale: scales.widthScale,
             backgroundTexture: renderSettings.backgroundTexture,
           });
-          x += getGlyphAdvance(glyph, renderSettings.fontSize, fontWidthScale);
+          x += getTrackedCharacterAdvance(
+            getGlyphAdvance(glyph, renderSettings.fontSize, fontWidthScale),
+            renderSettings,
+          );
           return;
         }
 
         if (character === spacebar) {
-          x += measureCharacter(ctx, character, renderSettings.fontSize);
+          x += getTrackedCharacterAdvance(
+            measureCharacter(ctx, character, renderSettings.fontSize),
+            renderSettings,
+          );
           return;
         }
 
@@ -586,9 +630,107 @@ export default function TextPreview({
         ctx.restore();
         ctx.fillStyle = renderSettings.inkColor;
         ctx.fillText(character, x, y + renderSettings.fontSize * 0.04);
-        x += fallbackWidth;
+        x += getTrackedCharacterAdvance(fallbackWidth, renderSettings);
       });
     });
+  }
+
+  function getPreviewGlyphHitTargets(
+    ctx: CanvasRenderingContext2D,
+    lines: string[],
+    renderSettings: PreviewImageSettings,
+  ): PreviewGlyphHitTarget[] {
+    const fontHeightScale = getFontHeightScale(font);
+    const fontWidthScale = getFontWidthScale(font);
+    const lineHeight = renderSettings.fontSize * renderSettings.lineSpacing * Math.max(0.72, fontHeightScale);
+    const targetHeight = Math.max(lineHeight, renderSettings.fontSize * 1.08 * fontHeightScale);
+    ctx.font = getFallbackFont(renderSettings.fontSize);
+
+    return lines.flatMap((line, lineIndex) => {
+      let x = getLineX(ctx, line, renderSettings);
+      const y = renderSettings.pagePadding + lineIndex * lineHeight - renderSettings.fontSize * 0.08;
+
+      return [...line].flatMap((character, characterIndex) => {
+        const glyph = selectPreviewGlyph(
+          font.glyphs,
+          character,
+          `${previewText}|${lineIndex}|${characterIndex}|${character}`,
+        );
+        const characterWidth = glyph
+          ? getGlyphAdvance(glyph, renderSettings.fontSize, fontWidthScale)
+          : measureCharacter(ctx, character, renderSettings.fontSize);
+        const target: PreviewGlyphHitTarget = {
+          character,
+          editableCharacter: glyph?.character ?? character,
+          height: targetHeight,
+          width: Math.max(1, characterWidth),
+          x,
+          y,
+        };
+
+        x += getTrackedCharacterAdvance(characterWidth, renderSettings);
+
+        if (character.trim().length === 0 || !font.glyphs[target.editableCharacter]) {
+          return [];
+        }
+
+        return [target];
+      });
+    });
+  }
+
+  function findPreviewGlyphHitTarget(canvas: HTMLCanvasElement, clientX: number, clientY: number) {
+    const ctx = canvas.getContext("2d");
+
+    if (!ctx) {
+      return null;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    const x = (clientX - rect.left) * (canvas.width / rect.width);
+    const y = (clientY - rect.top) * (canvas.height / rect.height);
+    const layout = getPhoneImageLayout(ctx);
+
+    return getPreviewGlyphHitTargets(ctx, layout.lines, layout.settings).find(
+      (target) =>
+        x >= target.x &&
+        x <= target.x + target.width &&
+        y >= target.y &&
+        y <= target.y + target.height,
+    ) ?? null;
+  }
+
+  function handleFullscreenPreviewPointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
+    previewPointerStartRef.current = {
+      id: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+    };
+  }
+
+  function handleFullscreenPreviewPointerUp(event: ReactPointerEvent<HTMLCanvasElement>) {
+    const pointerStart = previewPointerStartRef.current;
+    previewPointerStartRef.current = null;
+
+    if (
+      pointerStart &&
+      pointerStart.id === event.pointerId &&
+      Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 8
+    ) {
+      return;
+    }
+
+    const hitTarget = findPreviewGlyphHitTarget(event.currentTarget, event.clientX, event.clientY);
+
+    if (!hitTarget) {
+      return;
+    }
+
+    event.preventDefault();
+    setFullscreenSettingsMenuOpen(false);
+    onSelectCharacter(hitTarget.editableCharacter);
+    setActiveSettingsPanel("letter");
+    setShareStatus(`Selected "${hitTarget.editableCharacter}".`);
   }
 
   function drawPaperTexture(ctx: CanvasRenderingContext2D, color: string, imageWidth: number, imageHeight: number) {
@@ -920,8 +1062,8 @@ export default function TextPreview({
     const maxLineWidth = Math.max(1, imageSettings.canvasWidth - imageSettings.pagePadding * 2);
     ctx.font = getFallbackFont(imageSettings.fontSize);
     const wrappedLines = imageSettings.autoFit
-      ? buildWordWrappedLines(ctx, previewText, maxLineWidth, imageSettings.fontSize)
-      : buildCharacterWrappedLines(ctx, previewText, maxLineWidth, imageSettings.fontSize);
+      ? buildWordWrappedLines(ctx, previewText, maxLineWidth, imageSettings.fontSize, imageSettings.letterSpacing)
+      : buildCharacterWrappedLines(ctx, previewText, maxLineWidth, imageSettings.fontSize, imageSettings.letterSpacing);
 
     return {
       settings: imageSettings,
@@ -1369,6 +1511,35 @@ export default function TextPreview({
     });
   }
 
+  function updateSelectedLetterMetric(
+    metric: LetterMetricKey,
+    delta: number,
+    min: number,
+    max: number,
+    precision = 2,
+  ) {
+    const now = new Date().toISOString();
+    const nextValue = getSteppedValue(selectedGlyph[metric], delta, min, max, precision);
+
+    onUpdateSelectedGlyph({
+      ...selectedGlyph,
+      [metric]: nextValue,
+      variants: selectedGlyph.variants?.map((variant) => ({
+        ...variant,
+        [metric]: nextValue,
+        updatedAt: now,
+      })),
+      updatedAt: now,
+    });
+  }
+
+  function openSelectedLetterEditor() {
+    setFullscreenSettingsMenuOpen(false);
+    setImageViewerOpen(false);
+    onSelectCharacter(selectedGlyph.character);
+    setShareStatus(`Editing "${selectedGlyph.character}".`);
+  }
+
   function openStyleEditor() {
     setStyleEditorOpen(true);
     setFullscreenSettingsMenuOpen(false);
@@ -1444,6 +1615,53 @@ export default function TextPreview({
             type="button"
             onClick={() => updateImageCanvasSize(80)}
             aria-label="Increase Size"
+          >
+            Up
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  function renderLetterMetricControl({
+    label,
+    max,
+    metric,
+    min,
+    precision = 2,
+    step,
+    value,
+  }: {
+    label: string;
+    max: number;
+    metric: LetterMetricKey;
+    min: number;
+    precision?: number;
+    step: number;
+    value: number;
+  }) {
+    const displayValue = precision > 0 ? value.toFixed(precision) : value.toString();
+
+    return (
+      <div className="phone-metric-stepper">
+        <div className="phone-metric-readout">
+          <span>{label}</span>
+          <strong>{displayValue}</strong>
+        </div>
+        <div className="phone-metric-buttons">
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => updateSelectedLetterMetric(metric, -step, min, max, precision)}
+            aria-label={`Decrease ${label} for ${selectedGlyph.character}`}
+          >
+            Down
+          </button>
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => updateSelectedLetterMetric(metric, step, min, max, precision)}
+            aria-label={`Increase ${label} for ${selectedGlyph.character}`}
           >
             Up
           </button>
@@ -1567,6 +1785,13 @@ export default function TextPreview({
           Font settings
         </button>
         <button
+          className={`secondary-button compact-button ${activeSettingsPanel === "letter" ? "active-tool" : ""}`}
+          type="button"
+          onClick={() => setFullscreenSettings("letter")}
+        >
+          Letter settings
+        </button>
+        <button
           className={`secondary-button compact-button ${activeSettingsPanel === "image" ? "active-tool" : ""}`}
           type="button"
           onClick={() => setFullscreenSettings("image")}
@@ -1631,10 +1856,18 @@ export default function TextPreview({
           label: "Spacing",
           max: 2,
           metric: "lineSpacing",
-          min: 0.85,
+          min: 0.45,
           precision: 2,
-          step: 0.05,
+          step: 0.03,
           value: imageSettings.lineSpacing,
+        })}
+        {renderImageMetricControl({
+          label: "Letters",
+          max: 96,
+          metric: "letterSpacing",
+          min: -48,
+          step: 2,
+          value: imageSettings.letterSpacing,
         })}
         {renderImageMetricControl({
           label: "Padding",
@@ -1675,6 +1908,61 @@ export default function TextPreview({
     );
   }
 
+  function renderLetterSettingsControls(className = "phone-image-tools preview-layout-tools letter-settings-tools") {
+    return (
+      <div className={className} aria-label="Letter settings">
+        {renderLetterMetricControl({
+          label: "Baseline",
+          max: 1.2,
+          metric: "baselineOffset",
+          min: 0,
+          step: 0.02,
+          value: selectedGlyph.baselineOffset,
+        })}
+        {renderLetterMetricControl({
+          label: "Width",
+          max: 1.8,
+          metric: "width",
+          min: 0.35,
+          step: 0.02,
+          value: selectedGlyph.width,
+        })}
+        {renderLetterMetricControl({
+          label: "Height",
+          max: 1.8,
+          metric: "height",
+          min: 0.35,
+          step: 0.02,
+          value: selectedGlyph.height,
+        })}
+        {renderLetterMetricControl({
+          label: "Advance",
+          max: 2,
+          metric: "xAdvance",
+          min: 0.12,
+          step: 0.02,
+          value: selectedGlyph.xAdvance,
+        })}
+        {renderLetterMetricControl({
+          label: "Left",
+          max: 0.6,
+          metric: "leftBearing",
+          min: -0.5,
+          step: 0.02,
+          value: selectedGlyph.leftBearing,
+        })}
+        {renderLetterMetricControl({
+          label: "Right",
+          max: 0.6,
+          metric: "rightBearing",
+          min: -0.5,
+          step: 0.02,
+          value: selectedGlyph.rightBearing,
+        })}
+      </div>
+    );
+  }
+
   function renderFontSettingsControls(className = "phone-image-tools preview-layout-tools font-settings-tools") {
     return (
       <div className={className}>
@@ -1699,7 +1987,7 @@ export default function TextPreview({
           max: 2,
           metric: "xAdvance",
           min: 0.18,
-          step: 0.05,
+          step: 0.02,
           value: getAverageGlyphMetric("xAdvance"),
         })}
         {renderFontMetricControl({
@@ -1813,7 +2101,21 @@ export default function TextPreview({
     <>
       {previewMenuRoot ? createPortal(renderPreviewTextMenu(), previewMenuRoot) : null}
 
-      <section className="studio-panel preview-panel phone-generator-panel" aria-label="Preview image">
+      <section
+        id="preview-panel"
+        className="studio-panel preview-panel phone-generator-panel"
+        aria-label="Preview image"
+      >
+        <div className="panel-heading preview-dashboard-heading">
+          <div>
+            <p className="eyebrow">Export</p>
+            <h2>Preview image</h2>
+          </div>
+          <div className="preview-summary-pill">
+            {imageSettings.canvasWidth}x{imageSettings.canvasHeight}
+          </div>
+        </div>
+
       <div className="export-preset-grid" aria-label="Export presets">
         {exportPresets.map((preset) => (
           <button
@@ -1910,8 +2212,23 @@ export default function TextPreview({
               </button>
               {fullscreenSettingsMenuOpen && renderFullscreenSettingsMenu()}
             </div>
-            <div className="phone-image-active-settings" aria-live="polite">
-              {settingsPanelLabels[activeSettingsPanel]}
+            <div
+              className={`phone-image-active-settings ${
+                activeSettingsPanel === "letter" ? "phone-letter-heading-settings" : ""
+              }`}
+              aria-live="polite"
+            >
+              {activeSettingsPanel === "letter" ? (
+                <>
+                  <span>Letter settings</span>
+                  <strong>{selectedGlyph.character === spacebar ? "spacebar" : selectedGlyph.character}</strong>
+                  <button className="secondary-button compact-button" type="button" onClick={openSelectedLetterEditor}>
+                    Draw letter
+                  </button>
+                </>
+              ) : (
+                settingsPanelLabels[activeSettingsPanel]
+              )}
             </div>
             <button className="secondary-button compact-button" type="button" onClick={closeFullscreenPreview}>
               Close
@@ -1923,12 +2240,16 @@ export default function TextPreview({
               ref={viewerCanvasRef}
               className="phone-image-canvas phone-image-fullscreen-canvas"
               aria-label="Full screen generated preview image"
+              onPointerDown={handleFullscreenPreviewPointerDown}
+              onPointerUp={handleFullscreenPreviewPointerUp}
             />
           </div>
 
           <div className="phone-image-fullscreen-settings">
             {activeSettingsPanel === "font" &&
               renderFontSettingsControls("phone-image-fullscreen-tools preview-layout-tools font-settings-tools")}
+            {activeSettingsPanel === "letter" &&
+              renderLetterSettingsControls("phone-image-fullscreen-tools preview-layout-tools letter-settings-tools")}
             {activeSettingsPanel === "image" &&
               renderImageLayoutControls("phone-image-fullscreen-tools preview-layout-tools")}
             {activeSettingsPanel === "position" &&

@@ -77,14 +77,18 @@ export default function FontMetricsPanel({
   }, [font, previewText]);
 
   const totalMissing = missingGroups.reduce((sum, group) => sum + group.missingCharacters.length, 0);
+  const totalGlyphs = missingGroups.reduce((sum, group) => sum + group.characters.length, 0);
+  const totalDrawn = totalGlyphs - totalMissing;
+  const totalProgress = totalGlyphs > 0 ? Math.round((totalDrawn / totalGlyphs) * 100) : 0;
 
   return (
     <section className="studio-panel metrics-panel" aria-label="Missing glyphs">
       <div className="panel-heading compact-heading">
         <div>
-          <h2>Missing</h2>
+          <p className="eyebrow">Progress</p>
+          <h2>Glyph queue</h2>
         </div>
-        <div className="glyph-pill">{totalMissing} left</div>
+        <div className="glyph-pill">{totalProgress}% done</div>
       </div>
 
       <div className="metrics-content missing-content">
@@ -95,6 +99,9 @@ export default function FontMetricsPanel({
               <em>
                 {group.drawnCount}/{group.characters.length}
               </em>
+            </div>
+            <div className="missing-progress-track" aria-hidden="true">
+              <span style={{ width: `${Math.round((group.drawnCount / group.characters.length) * 100)}%` }} />
             </div>
             {group.missingCharacters.length > 0 ? (
               <div className="missing-character-grid" aria-label={`Missing ${group.label}`}>

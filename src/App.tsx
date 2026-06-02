@@ -65,6 +65,7 @@ export default function App() {
   const spacebarGlyph = activeFont.glyphs[spacebar] ?? createEmptyGlyph(spacebar);
   const activeCharacters = useMemo(() => getVisibleCharacters(activeFont), [activeFont]);
   const selectedCharacterIndex = activeCharacters.indexOf(selectedCharacter);
+  const activeSavedGlyphCount = useMemo(() => getSavedGlyphCount(activeFont), [activeFont]);
 
   function getSavedGlyphCount(font: FontSet) {
     return Object.values(font.glyphs).filter((glyph) => hasDrawnGlyph(glyph)).length;
@@ -125,6 +126,17 @@ export default function App() {
     setSavedImagesOpen(false);
     setSidebarOpen(false);
     setEditorFullScreen(true);
+  }
+
+  function handleOpenHome() {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function handleOpenExport() {
+    document.getElementById("preview-panel")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
   }
 
   function selectCharacterByOffset(offset: number) {
@@ -259,6 +271,16 @@ export default function App() {
     });
   }
 
+  function mergeGlyphWithExistingVariants(font: FontSet, glyph: Glyph, updatedAt: string): Glyph {
+    const existingGlyph = font.glyphs[glyph.character] ?? createEmptyGlyph(glyph.character);
+
+    return {
+      ...glyph,
+      variants: glyph.variants ?? existingGlyph.variants ?? [],
+      updatedAt,
+    };
+  }
+
   function handleSaveGlyph(glyph: Glyph) {
     const now = new Date().toISOString();
     const nextData: FontStudioData = {
@@ -269,7 +291,7 @@ export default function App() {
               ...font,
               glyphs: {
                 ...font.glyphs,
-                [glyph.character]: glyph,
+                [glyph.character]: mergeGlyphWithExistingVariants(font, glyph, now),
               },
               updatedAt: now,
             }
@@ -313,10 +335,7 @@ export default function App() {
 
   function handleSaveGlyphAndNext(glyph: Glyph) {
     const now = new Date().toISOString();
-    const savedGlyph = {
-      ...glyph,
-      updatedAt: glyph.updatedAt ?? now,
-    };
+    const savedGlyph = mergeGlyphWithExistingVariants(activeFont, glyph, glyph.updatedAt ?? now);
     const nextCharacter = getNextCharacterAfterSave(savedGlyph);
     const nextData: FontStudioData = {
       ...studioData,
@@ -346,7 +365,7 @@ export default function App() {
     deferProjectSave(dataWithActivity, activity);
   }
 
-  function handleSaveGlyphVariant(glyph: Glyph) {
+  function handleSaveGlyphVariant(glyph: Glyph, variantIndex?: number) {
     const now = new Date().toISOString();
     const { variants: _discardedVariants, ...variantDraft } = glyph;
     const variant: GlyphVariant = {
@@ -355,7 +374,13 @@ export default function App() {
       updatedAt: now,
     };
     const existingGlyph = activeFont.glyphs[glyph.character] ?? createEmptyGlyph(glyph.character);
-    const nextVariants = [...(existingGlyph.variants ?? []), variant];
+    const existingVariants = existingGlyph.variants ?? [];
+    const isUpdatingVariant =
+      typeof variantIndex === "number" && variantIndex >= 0 && variantIndex < existingVariants.length;
+    const nextVariants = isUpdatingVariant
+      ? existingVariants.map((existingVariant, index) => (index === variantIndex ? variant : existingVariant))
+      : [...existingVariants, variant];
+    const savedVariantNumber = isUpdatingVariant ? variantIndex + 1 : nextVariants.length;
     const nextData: FontStudioData = {
       ...studioData,
       fonts: studioData.fonts.map((font) =>
@@ -378,9 +403,9 @@ export default function App() {
 
     persist(nextData, {
       character: glyph.character,
-      details: { variantCount: nextVariants.length },
+      details: { variantCount: nextVariants.length, variantIndex: savedVariantNumber },
       fontId: activeFont.id,
-      message: `Saved variant ${nextVariants.length} for "${glyph.character}" in "${activeFont.name}".`,
+      message: `Saved variant ${savedVariantNumber} for "${glyph.character}" in "${activeFont.name}".`,
       type: "glyph_edit",
     });
   }
@@ -518,7 +543,29 @@ export default function App() {
       </aside>
 
       <header className="app-header">
-        <h1>Font Studio</h1>
+        <div className="app-title-block">
+          <p className="eyebrow">Tablet drawing desk</p>
+          <h1>Font Studio</h1>
+        </div>
+        <div className="app-header-actions" aria-label="Studio modes">
+          <div className="app-status-pill">
+            <span>{activeFont.name}</span>
+            <strong>
+              {activeSavedGlyphCount}/{activeCharacters.length} drawn
+            </strong>
+          </div>
+          <nav className="mode-switcher" aria-label="Primary workspace modes">
+            <button className="mode-button active" type="button" onClick={handleOpenHome}>
+              Home
+            </button>
+            <button className="mode-button" type="button" onClick={handleStartDrawing}>
+              Draw
+            </button>
+            <button className="mode-button" type="button" onClick={handleOpenExport}>
+              Export
+            </button>
+          </nav>
+        </div>
       </header>
 
       <div className="workspace">
@@ -541,6 +588,7 @@ export default function App() {
             onRecordExport={handleRecordPreviewExport}
             onSaveImage={handleSaveImage}
             onUpdateSelectedGlyph={handleSaveGlyph}
+            onSelectCharacter={handleSelectCharacter}
             previewText={previewText}
             onPreviewTextChange={setPreviewText}
             selectedGlyph={selectedGlyph}
