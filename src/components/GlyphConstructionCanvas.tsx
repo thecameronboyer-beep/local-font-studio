@@ -18,6 +18,7 @@ export type ConstructionSelection = {
   handle?: "in" | "out";
   pathId: string | null;
   pointId?: string | null;
+  pendingNewPath?: boolean;
   segmentIndex?: number | null;
 };
 
@@ -383,7 +384,7 @@ export default function GlyphConstructionCanvas({
     const snappedPoint = snapPoint(point);
     const nextAnchor = makeAnchorPoint(snappedPoint.x, snappedPoint.y, type);
     const nextConstruction = cloneConstruction(constructionRef.current);
-    const targetPathId = selection.pathId ?? nextConstruction.paths.at(-1)?.id ?? null;
+    const targetPathId = selection.pendingNewPath ? null : selection.pathId;
 
     if (!targetPathId) {
       const path = makePath(nextAnchor);

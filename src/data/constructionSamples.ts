@@ -127,8 +127,7 @@ export function createSampleConstructionB(): GlyphConstruction {
         id: "construction_sample_b_top_bowl",
         points: [
           {
-            cornerRadius: 0.02,
-            cornerStyle: "rounded",
+            cornerStyle: "sharp",
             id: "construction_sample_b_top_join",
             outHandle: { x: 0.5, y: 0.16 },
             segmentType: "curve",
@@ -137,8 +136,7 @@ export function createSampleConstructionB(): GlyphConstruction {
             y: 0.18,
           },
           {
-            cornerRadius: 0.03,
-            cornerStyle: "rounded",
+            cornerStyle: "sharp",
             id: "construction_sample_b_top_outer",
             inHandle: { x: 0.75, y: 0.17 },
             outHandle: { x: 0.83, y: 0.36 },
@@ -148,8 +146,7 @@ export function createSampleConstructionB(): GlyphConstruction {
             y: 0.32,
           },
           {
-            cornerRadius: 0.03,
-            cornerStyle: "rounded",
+            cornerStyle: "sharp",
             id: "construction_sample_b_middle_join",
             inHandle: { x: 0.78, y: 0.48 },
             outHandle: { x: 0.48, y: 0.49 },
@@ -168,8 +165,7 @@ export function createSampleConstructionB(): GlyphConstruction {
         id: "construction_sample_b_bottom_bowl",
         points: [
           {
-            cornerRadius: 0.03,
-            cornerStyle: "rounded",
+            cornerStyle: "sharp",
             id: "construction_sample_b_middle_start",
             outHandle: { x: 0.5, y: 0.48 },
             segmentType: "curve",
@@ -178,8 +174,7 @@ export function createSampleConstructionB(): GlyphConstruction {
             y: 0.48,
           },
           {
-            cornerRadius: 0.03,
-            cornerStyle: "rounded",
+            cornerStyle: "sharp",
             id: "construction_sample_b_bottom_outer",
             inHandle: { x: 0.82, y: 0.48 },
             outHandle: { x: 0.84, y: 0.76 },
@@ -189,8 +184,7 @@ export function createSampleConstructionB(): GlyphConstruction {
             y: 0.64,
           },
           {
-            cornerRadius: 0.03,
-            cornerStyle: "rounded",
+            cornerStyle: "sharp",
             id: "construction_sample_b_bottom_join",
             inHandle: { x: 0.72, y: 0.82 },
             segmentType: "curve",

@@ -1784,10 +1784,10 @@ export default function GlyphEditor({
               </button>
             ))}
             <button
-              className="construction-path-chip"
+              className={`construction-path-chip ${constructionSelection.pendingNewPath ? "selected" : ""}`}
               type="button"
               onClick={() => {
-                setConstructionSelection({ pathId: null });
+                setConstructionSelection({ pathId: null, pendingNewPath: true });
                 setConstructionTool("addPoint");
               }}
             >
