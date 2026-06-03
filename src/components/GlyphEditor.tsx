@@ -103,6 +103,7 @@ type FullscreenDrawer =
   | "background"
   | "guides"
   | "more"
+  | "constructionAdd"
   | "constructionPaths"
   | "constructionGuides"
   | "constructionMore"
@@ -1145,7 +1146,7 @@ export default function GlyphEditor({
 
   function armNewConstructionPath() {
     setConstructionSelection({ pathId: null, pendingNewPath: true });
-    setConstructionTool("addPoint");
+    setConstructionTool("line");
   }
 
   function chooseConstructionTool(nextTool: ConstructionTool) {
@@ -1649,7 +1650,8 @@ export default function GlyphEditor({
         : "None";
     const toolOptions: Array<{ id: ConstructionTool; label: string }> = [
       { id: "select", label: "Select" },
-      { id: "addPoint", label: "Add Point" },
+      { id: "point", label: "Point" },
+      { id: "line", label: "Line" },
       { id: "delete", label: "Delete" },
     ];
 
@@ -1986,6 +1988,29 @@ export default function GlyphEditor({
             </div>
           )}
 
+          {activeFullscreenDrawer === "constructionAdd" && (
+            <div id="construction-add-drawer" className="draw-control-drawer" aria-label="Construction add drawer">
+              <div className="draw-drawer-grid two" aria-label="Construction add tools">
+                <button
+                  className={`draw-drawer-button ${constructionTool === "point" ? "active-tool" : ""}`}
+                  type="button"
+                  onClick={() => chooseConstructionTool("point")}
+                >
+                  <Plus aria-hidden="true" />
+                  <span>Point</span>
+                </button>
+                <button
+                  className={`draw-drawer-button ${constructionTool === "line" ? "active-tool" : ""}`}
+                  type="button"
+                  onClick={() => chooseConstructionTool("line")}
+                >
+                  <Minus aria-hidden="true" />
+                  <span>Line</span>
+                </button>
+              </div>
+            </div>
+          )}
+
           {activeFullscreenDrawer === "constructionGuides" && (
             <div id="construction-guides-drawer" className="draw-control-drawer draw-guide-drawer" aria-label="Construction guides drawer">
               <div className="draw-drawer-grid three" aria-label="Construction guide actions">
@@ -2080,11 +2105,15 @@ export default function GlyphEditor({
               <MousePointer2 aria-hidden="true" />
             </button>
             <button
-              className={`draw-glass-button draw-icon-button ${constructionTool === "addPoint" ? "active-tool" : ""}`}
+              className={`draw-glass-button draw-icon-button ${
+                activeFullscreenDrawer === "constructionAdd" || constructionTool === "point" || constructionTool === "line" ? "active-tool" : ""
+              }`}
               type="button"
-              aria-label="Use add point"
-              title="Add Point"
-              onClick={() => chooseConstructionTool("addPoint")}
+              aria-label="Open construction add tools"
+              aria-expanded={activeFullscreenDrawer === "constructionAdd"}
+              aria-controls="construction-add-drawer"
+              title="Add"
+              onClick={() => toggleFullscreenDrawer("constructionAdd")}
             >
               <Plus aria-hidden="true" />
             </button>

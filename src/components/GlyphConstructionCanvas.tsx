@@ -10,7 +10,7 @@ import type {
   GlyphConstruction,
 } from "../types/fontTypes";
 
-export type ConstructionTool = "select" | "addPoint" | "delete";
+export type ConstructionTool = "select" | "point" | "line" | "delete";
 
 export type ConstructionSelection = {
   pathId: string | null;
@@ -333,12 +333,12 @@ export default function GlyphConstructionCanvas({
     return null;
   }
 
-  function addPoint(point: { x: number; y: number }) {
+  function addAnchor(point: { x: number; y: number }, connectToSelectedPath: boolean) {
     maybeStartEdit();
     const snappedPoint = snapPoint(point);
     const nextAnchor = makeAnchorPoint(snappedPoint.x, snappedPoint.y);
     const nextConstruction = cloneConstruction(constructionRef.current);
-    const targetPathId = selection.pendingNewPath ? null : selection.pathId;
+    const targetPathId = connectToSelectedPath && !selection.pendingNewPath ? selection.pathId : null;
 
     if (!targetPathId) {
       const path = makePath(nextAnchor);
@@ -402,8 +402,13 @@ export default function GlyphConstructionCanvas({
 
     event.currentTarget.setPointerCapture(event.pointerId);
 
-    if (tool === "addPoint") {
-      addPoint(point);
+    if (tool === "point") {
+      addAnchor(point, false);
+      return;
+    }
+
+    if (tool === "line") {
+      addAnchor(point, true);
       return;
     }
 

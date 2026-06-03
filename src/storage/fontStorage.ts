@@ -424,6 +424,10 @@ function normalizeConstruction(value: unknown): GlyphConstruction | undefined {
     return undefined;
   }
 
+  if (paths.every((path) => path.id.startsWith("construction_sample_"))) {
+    return undefined;
+  }
+
   return {
     ...(typeof value.fillColor === "string" ? { fillColor: value.fillColor } : {}),
     paths,
