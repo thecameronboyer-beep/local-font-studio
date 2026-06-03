@@ -1891,7 +1891,7 @@ export default function GlyphEditor({
           <div className="draw-character-pill">
             <strong>{characterLabel}</strong>
             <span>
-              Build - {characterIndex + 1}/{characterTotal}
+              {activeVariationLabel} - {characterIndex + 1}/{characterTotal}
             </span>
           </div>
           <button
@@ -2138,6 +2138,21 @@ export default function GlyphEditor({
               <Layers aria-hidden="true" />
             </button>
             <button
+              className="draw-gold-button draw-icon-button draw-save-next-button"
+              type="button"
+              aria-label="Save and next glyph"
+              title="Save + next"
+              onPointerUp={handleFullscreenSaveAndNext}
+              onTouchEnd={handleFullscreenSaveAndNextTouch}
+              onClick={handleSaveAndNextClick}
+            >
+              <SkipForward aria-hidden="true" />
+            </button>
+            <div className="construction-dock-status" aria-label={`${constructionPathCount} paths, ${constructionPointCount} points`}>
+              <span>{constructionPathCount}</span>
+              <span>{constructionPointCount}</span>
+            </div>
+            <button
               className={`draw-glass-button draw-icon-button ${activeFullscreenDrawer === "constructionGuides" ? "active-tool" : ""}`}
               type="button"
               aria-label="Open construction guides"
@@ -2178,17 +2193,6 @@ export default function GlyphEditor({
               onClick={() => toggleFullscreenDrawer("constructionMore")}
             >
               <Ellipsis aria-hidden="true" />
-            </button>
-            <button
-              className="draw-gold-button draw-icon-button draw-save-next-button"
-              type="button"
-              aria-label="Save and next glyph"
-              title="Save + next"
-              onPointerUp={handleFullscreenSaveAndNext}
-              onTouchEnd={handleFullscreenSaveAndNextTouch}
-              onClick={handleSaveAndNextClick}
-            >
-              <SkipForward aria-hidden="true" />
             </button>
           </div>
         </div>

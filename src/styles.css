@@ -2830,14 +2830,15 @@ h1 {
   overflow: hidden;
   border: 0;
   border-radius: 0;
-  background:
-    linear-gradient(rgba(248, 240, 223, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(248, 240, 223, 0.035) 1px, transparent 1px),
-    #101012;
-  background-size: 24px 24px;
+  background: #f4ead7;
   padding-top: calc(max(8px, env(safe-area-inset-top)) + 56px);
   box-shadow: none;
   transform: translateX(-50%);
+}
+
+.studio-panel.fullscreen-draw-only,
+.studio-panel.fullscreen-construction-only {
+  background: #f4ead7;
 }
 
 .fullscreen-construction-only .construction-fullscreen-canvas {
@@ -2858,11 +2859,30 @@ h1 {
 }
 
 .construction-only-toolbar {
-  grid-template-columns: repeat(9, minmax(0, 1fr));
+  grid-template-columns: repeat(11, minmax(0, 1fr));
 }
 
 .construction-only-toolbar .draw-save-next-button {
   grid-column: auto;
+}
+
+.construction-dock-status {
+  grid-column: span 2;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.construction-dock-status span {
+  display: grid;
+  place-items: center;
+  min-height: 42px;
+  border: 1px solid rgba(248, 230, 194, 0.18);
+  border-radius: 8px;
+  background: rgba(25, 22, 24, 0.84);
+  color: #f8f0df;
+  font-size: 0.68rem;
+  font-weight: 900;
 }
 
 .construction-paths-drawer .construction-stat-grid {
@@ -4554,7 +4574,16 @@ h1 {
   }
 
   .construction-only-toolbar {
-    grid-template-columns: repeat(9, minmax(0, 1fr));
+    grid-template-columns: repeat(11, minmax(0, 1fr));
+  }
+
+  .construction-dock-status {
+    gap: 5px;
+  }
+
+  .construction-dock-status span {
+    min-height: 52px;
+    font-size: 0.74rem;
   }
 
   .draw-sticker-mode-toolbar {
