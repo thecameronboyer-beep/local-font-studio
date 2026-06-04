@@ -11,6 +11,7 @@ export type FontPresetId =
   | "cuteFont"
   | "singleDay"
   | "gaegu"
+  | "cedarvilleCursive"
   | "imFellEnglish"
   | "imFellDWPica"
   | "medievalSharp"
@@ -128,6 +129,14 @@ export const fontPresets: FontPreset[] = [
     label: "Gaegu",
     license: "OFL",
     sourcePath: "/assets/fonts/presets/Gaegu-Regular.ttf",
+    weight: 400,
+  },
+  {
+    family: "LFS Cedarville Cursive",
+    id: "cedarvilleCursive",
+    label: "Cedarville Cursive",
+    license: "OFL",
+    sourcePath: "/assets/fonts/presets/Cedarville-Cursive.ttf",
     weight: 400,
   },
   {

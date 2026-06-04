@@ -95,6 +95,14 @@
 }
 
 @font-face {
+  font-family: "LFS Cedarville Cursive";
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url("/assets/fonts/presets/Cedarville-Cursive.ttf") format("truetype");
+}
+
+@font-face {
   font-family: "LFS IM Fell English";
   font-weight: 400;
   font-style: normal;
@@ -2437,6 +2445,17 @@ input[type="color"] {
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.34);
 }
 
+.phone-image-preview.long-skinny-preview {
+  place-items: start;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.phone-image-preview.long-skinny-preview .phone-image-canvas {
+  max-width: none;
+  max-height: min(40dvh, 280px);
+}
+
 @media (max-width: 980px) {
   .app-header {
     align-items: stretch;
@@ -4484,7 +4503,7 @@ h1 {
 
 .phone-image-fullscreen-bottom-bar {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: end;
   gap: 6px;
   padding: 8px 10px;
@@ -4507,6 +4526,40 @@ h1 {
   bottom: calc(100% + 8px);
 }
 
+.phone-image-format-wrap {
+  position: relative;
+  align-self: end;
+  justify-self: end;
+}
+
+.phone-image-format-button {
+  width: 84px;
+  min-height: 42px;
+  padding: 0 12px;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.phone-image-format-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 4;
+  display: grid;
+  gap: 8px;
+  width: 150px;
+  padding: 10px;
+  border: 1px solid rgba(248, 230, 194, 0.15);
+  border-radius: 8px;
+  background: #1c1a1d;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.36);
+}
+
+.phone-image-format-menu .compact-button {
+  width: 100%;
+  min-height: 42px;
+}
+
 .phone-image-fullscreen-surface {
   display: grid;
   place-items: center;
@@ -4524,6 +4577,15 @@ h1 {
   max-width: min(100%, 1080px);
   max-height: none;
   cursor: pointer;
+}
+
+.phone-image-fullscreen-surface.long-skinny-preview {
+  place-items: start;
+}
+
+.phone-image-fullscreen-surface.long-skinny-preview .phone-image-fullscreen-canvas {
+  max-width: none;
+  max-height: min(72dvh, 900px);
 }
 
 .phone-image-fullscreen-tools {

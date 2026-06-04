@@ -109,7 +109,7 @@ type TextPreviewProps = {
   spacebarGlyph: Glyph;
 };
 
-type ExportPresetId = "phone" | "social" | "transparent";
+type ExportPresetId = "landscape" | "longSkinny" | "phone" | "portrait" | "social";
 type FontMetricKey = "baselineOffset" | "leftBearing" | "rightBearing" | "width" | "xAdvance";
 type FontGlyphMetricKey = Exclude<FontMetricKey, "width">;
 type LetterMetricKey = "baselineOffset" | "height" | "leftBearing" | "rightBearing" | "width" | "xAdvance";
@@ -297,10 +297,12 @@ type PreviewDocument = {
 
 const PREVIEW_DOCUMENTS_KEY = "local-font-studio:preview-documents:v1";
 const MIN_IMAGE_CANVAS_WIDTH = 640;
-const MAX_IMAGE_CANVAS_WIDTH = 3300;
-const MIN_IMAGE_CANVAS_HEIGHT = 480;
+const MAX_IMAGE_CANVAS_WIDTH = 50000;
+const MIN_IMAGE_CANVAS_HEIGHT = 150;
 const MAX_IMAGE_CANVAS_HEIGHT = 3600;
 const HEADER_FONT_SIZE_MULTIPLIER = 3;
+const LONG_SKINNY_BOTTOM_PADDING_RATIO = 0.12;
+const LONG_SKINNY_TOP_PADDING_RATIO = 0.3;
 const STYLE_CANVAS_MAX_PIXELS = 850_000;
 const MANUSCRIPT_PARCHMENT_SRC = "/assets/parchment-clean-vellum.png";
 
@@ -334,15 +336,40 @@ const exportPresets: Array<{
     },
   },
   {
-    id: "transparent",
-    label: "Transparent",
+    id: "portrait",
+    label: "Portrait",
     settings: {
-      canvasWidth: 1600,
-      canvasHeight: 900,
-      exportPreset: "transparent",
-      fontSize: 112,
-      pagePadding: 80,
-      transparent: true,
+      canvasWidth: 2550,
+      canvasHeight: 3300,
+      exportPreset: "portrait",
+      fontSize: 132,
+      pagePadding: 180,
+      transparent: false,
+    },
+  },
+  {
+    id: "landscape",
+    label: "Landscape",
+    settings: {
+      canvasWidth: 3300,
+      canvasHeight: 2550,
+      exportPreset: "landscape",
+      fontSize: 120,
+      pagePadding: 170,
+      transparent: false,
+    },
+  },
+  {
+    id: "longSkinny",
+    label: "Long n' Skinny",
+    settings: {
+      canvasWidth: 1200,
+      canvasHeight: 150,
+      exportPreset: "longSkinny",
+      fontSize: 96,
+      lineSpacing: 1,
+      pagePadding: 8,
+      transparent: false,
     },
   },
 ];
@@ -790,6 +817,7 @@ export default function TextPreview({
   const [activeLetterSettingsSliderId, setActiveLetterSettingsSliderId] = useState<LetterSettingsSliderId | null>(null);
   const [activeStyleDrawer, setActiveStyleDrawer] = useState<StyleDrawer>(null);
   const [documentName, setDocumentName] = useState("Untitled preview");
+  const [fullscreenFormatMenuOpen, setFullscreenFormatMenuOpen] = useState(false);
   const [fullscreenSettingsMenuOpen, setFullscreenSettingsMenuOpen] = useState(false);
   const [imageViewerOpen, setImageViewerOpen] = useState(false);
   const [fontPresetsReady, setFontPresetsReady] = useState(false);
@@ -3348,6 +3376,43 @@ export default function TextPreview({
     drawPreviewDoodles(ctx, renderSettings, options.doodleStrokes);
   }
 
+  function drawLongSkinnyPaperRules(
+    ctx: CanvasRenderingContext2D,
+    layout: PhoneImageLayout,
+    bodyFontSize: number,
+  ) {
+    if (!shouldUseLongSkinnyFormat(layout.settings)) {
+      return;
+    }
+
+    const imageWidth = layout.settings.canvasWidth;
+    const imageHeight = layout.settings.canvasHeight;
+    const fontHeightScale = getFontHeightScale(previewFont);
+    const baselineY = layout.bodyStartY + bodyFontSize * 0.76 * fontHeightScale;
+    const indexX = Math.max(18, layout.settings.pagePadding * 0.56);
+
+    ctx.save();
+    ctx.lineCap = "butt";
+
+    ctx.strokeStyle = "#7fb7d8";
+    ctx.globalAlpha = 0.62;
+    ctx.lineWidth = Math.max(1.2, bodyFontSize * 0.035);
+    ctx.beginPath();
+    ctx.moveTo(0, Math.round(baselineY) + 0.5);
+    ctx.lineTo(imageWidth, Math.round(baselineY) + 0.5);
+    ctx.stroke();
+
+    ctx.strokeStyle = "#dc8ba0";
+    ctx.globalAlpha = 0.52;
+    ctx.lineWidth = Math.max(1.2, bodyFontSize * 0.028);
+    ctx.beginPath();
+    ctx.moveTo(Math.round(indexX) + 0.5, 0);
+    ctx.lineTo(Math.round(indexX) + 0.5, imageHeight);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
   function getScaledPreviewSettings(settings: PreviewImageSettings, maxPixels: number): PreviewImageSettings {
     const sourcePixels = settings.canvasWidth * settings.canvasHeight;
     const scale = sourcePixels > maxPixels ? Math.sqrt(maxPixels / sourcePixels) : 1;
@@ -3366,6 +3431,49 @@ export default function TextPreview({
     };
   }
 
+  function shouldUseLongSkinnyFormat(renderSettings: PreviewImageSettings) {
+    return renderSettings.exportPreset === "longSkinny" || (renderSettings.exportPreset as string) === "extreme";
+  }
+
+  function getLongSkinnySingleLineBodyText(text: string) {
+    const singleLine = text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .join(" ");
+
+    return [singleLine];
+  }
+
+  function getLongSkinnyLayoutSettings(
+    renderSettings: PreviewImageSettings,
+    bodyLineWidth: number,
+    bodyStartY: number,
+    bodyVisualHeight: number,
+    hasHeaderText: boolean,
+  ): { bodyEndY: number; bodyStartY: number; settings: PreviewImageSettings } {
+    const horizontalPadding = Math.max(renderSettings.pagePadding, renderSettings.fontSize * 0.5);
+    const topPadding = Math.max(10, Math.ceil(bodyVisualHeight * LONG_SKINNY_TOP_PADDING_RATIO));
+    const bottomPadding = Math.max(6, Math.ceil(bodyVisualHeight * LONG_SKINNY_BOTTOM_PADDING_RATIO));
+    const canvasWidth = Math.max(1, Math.ceil(bodyLineWidth + horizontalPadding * 2));
+    const canvasHeight = Math.min(
+      MAX_IMAGE_CANVAS_HEIGHT,
+      Math.max(1, Math.ceil(bodyVisualHeight + topPadding + bottomPadding)),
+    );
+    const nextBodyStartY = hasHeaderText ? bodyStartY : topPadding;
+
+    return {
+      bodyEndY: nextBodyStartY + bodyVisualHeight,
+      bodyStartY: nextBodyStartY,
+      settings: {
+        ...renderSettings,
+        canvasHeight,
+        canvasWidth,
+        pagePadding: horizontalPadding,
+      },
+    };
+  }
+
   function getPhoneImageLayout(
     ctx: CanvasRenderingContext2D,
     renderSettings: PreviewImageSettings = imageSettings,
@@ -3373,6 +3481,7 @@ export default function TextPreview({
     const maxLineWidth = Math.max(1, renderSettings.canvasWidth - renderSettings.pagePadding * 2);
     const headerFontSize = renderSettings.fontSize * HEADER_FONT_SIZE_MULTIPLIER;
     const hasHeaderText = headerPreviewText.trim().length > 0;
+    const useLongSkinnyFormat = shouldUseLongSkinnyFormat(renderSettings);
 
     if (activeFontPreset) {
       const presetHeaderFontSize = getActivePresetFontSize(headerFontSize);
@@ -3399,30 +3508,47 @@ export default function TextPreview({
       const headerLineHeight = getPresetLineHeight(renderSettings, presetHeaderFontSize);
       const headerGap = headerLines.length > 0 ? presetBodyFontSize * 0.85 : 0;
       const bodyStartY = renderSettings.pagePadding + headerLines.length * headerLineHeight + headerGap;
-      const wrappedLines = renderSettings.autoFit
-        ? buildPresetWordWrappedLines(
-            ctx,
-            previewText,
-            maxLineWidth,
-            activeFontPreset,
-            presetBodyFontSize,
-            previewFont,
-          )
-        : buildPresetCharacterWrappedLines(
-            ctx,
-            previewText,
-            maxLineWidth,
-            activeFontPreset,
-            presetBodyFontSize,
-            previewFont,
-          );
+      const wrappedLines = useLongSkinnyFormat
+        ? getLongSkinnySingleLineBodyText(previewText)
+        : renderSettings.autoFit
+          ? buildPresetWordWrappedLines(
+              ctx,
+              previewText,
+              maxLineWidth,
+              activeFontPreset,
+              presetBodyFontSize,
+              previewFont,
+            )
+          : buildPresetCharacterWrappedLines(
+              ctx,
+              previewText,
+              maxLineWidth,
+              activeFontPreset,
+              presetBodyFontSize,
+              previewFont,
+            );
       const bodyLineHeight = getPresetLineHeight(renderSettings, presetBodyFontSize);
-      const bodyEndY = bodyStartY + wrappedLines.length * bodyLineHeight;
+      const bodyVisualHeight = useLongSkinnyFormat
+        ? bodyLineHeight * Math.max(1, getFontHeightScale(previewFont))
+        : bodyLineHeight;
+      const bodyEndY = bodyStartY + wrappedLines.length * bodyVisualHeight;
+      const longSkinnyLayout = useLongSkinnyFormat
+        ? getLongSkinnyLayoutSettings(
+            renderSettings,
+            (() => {
+              setPresetCanvasFont(ctx, activeFontPreset, presetBodyFontSize);
+              return measurePresetTextRun(ctx, wrappedLines[0] ?? "", presetBodyFontSize, previewFont);
+            })(),
+            bodyStartY,
+            bodyVisualHeight,
+            hasHeaderText,
+          )
+        : null;
 
       return {
-        settings: renderSettings,
-        bodyEndY,
-        bodyStartY,
+        settings: longSkinnyLayout?.settings ?? renderSettings,
+        bodyEndY: longSkinnyLayout?.bodyEndY ?? bodyEndY,
+        bodyStartY: longSkinnyLayout?.bodyStartY ?? bodyStartY,
         headerFontSize: presetHeaderFontSize,
         headerLines,
         lines: wrappedLines,
@@ -3453,16 +3579,30 @@ export default function TextPreview({
     const headerGap = headerLines.length > 0 ? renderSettings.fontSize * 0.85 : 0;
     const bodyStartY = renderSettings.pagePadding + headerLines.length * headerLineHeight + headerGap;
     ctx.font = getFallbackFont(renderSettings.fontSize);
-    const wrappedLines = renderSettings.autoFit
-      ? buildWordWrappedLines(ctx, previewText, maxLineWidth, renderSettings.fontSize, false, previewFont)
-      : buildCharacterWrappedLines(ctx, previewText, maxLineWidth, renderSettings.fontSize, false, previewFont);
+    const wrappedLines = useLongSkinnyFormat
+      ? getLongSkinnySingleLineBodyText(previewText)
+      : renderSettings.autoFit
+        ? buildWordWrappedLines(ctx, previewText, maxLineWidth, renderSettings.fontSize, false, previewFont)
+        : buildCharacterWrappedLines(ctx, previewText, maxLineWidth, renderSettings.fontSize, false, previewFont);
     const bodyLineHeight = renderSettings.fontSize * renderSettings.lineSpacing;
-    const bodyEndY = bodyStartY + wrappedLines.length * bodyLineHeight;
+    const bodyVisualHeight = useLongSkinnyFormat
+      ? bodyLineHeight * Math.max(1, getFontHeightScale(previewFont))
+      : bodyLineHeight;
+    const bodyEndY = bodyStartY + wrappedLines.length * bodyVisualHeight;
+    const longSkinnyLayout = useLongSkinnyFormat
+      ? getLongSkinnyLayoutSettings(
+          renderSettings,
+          measureTextRun(ctx, wrappedLines[0] ?? "", renderSettings.fontSize, false, previewFont),
+          bodyStartY,
+          bodyVisualHeight,
+          hasHeaderText,
+        )
+      : null;
 
     return {
-      settings: renderSettings,
-      bodyEndY,
-      bodyStartY,
+      settings: longSkinnyLayout?.settings ?? renderSettings,
+      bodyEndY: longSkinnyLayout?.bodyEndY ?? bodyEndY,
+      bodyStartY: longSkinnyLayout?.bodyStartY ?? bodyStartY,
       headerFontSize,
       headerLines,
       lines: wrappedLines,
@@ -3719,6 +3859,12 @@ export default function TextPreview({
       stickers?: PreviewSticker[];
     } = {},
   ) {
+    drawLongSkinnyPaperRules(
+      ctx,
+      layout,
+      activeFontPreset ? getActivePresetFontSize(layout.settings.fontSize) : layout.settings.fontSize,
+    );
+
     if (activeFontPreset) {
       drawPresetTextToCanvas(ctx, layout.headerLines, layout.settings, {
         fontSize: layout.headerFontSize,
@@ -3957,6 +4103,9 @@ export default function TextPreview({
       ...current,
       ...preset.settings,
     }));
+    setActiveImageSettingsSliderId(null);
+    setFullscreenFormatMenuOpen(false);
+    setShareStatus(`${preset.label} format selected.`);
   }
 
   function savePreviewDocument() {
@@ -5891,15 +6040,17 @@ export default function TextPreview({
     switch (id) {
       case "size":
         const sizeBase = getFontSizeScaleBase();
+        const sizeMin = shouldUseLongSkinnyFormat(imageSettings) ? 0.25 : 0.55;
+        const sizeMax = shouldUseLongSkinnyFormat(imageSettings) ? 5 : 1.6;
 
         return {
           id,
           label: "Size",
-          max: 1.6,
-          min: 0.55,
+          max: sizeMax,
+          min: sizeMin,
           precision: 2,
           step: 0.05,
-          value: getClampedMetricValue(imageSettings.fontSize / sizeBase, 0.55, 1.6, 2),
+          value: getClampedMetricValue(imageSettings.fontSize / sizeBase, sizeMin, sizeMax, 2),
         };
       case "height":
         return {
@@ -6313,6 +6464,7 @@ export default function TextPreview({
     if (panel !== "letter") {
       setActiveLetterSettingsSliderId(null);
     }
+    setFullscreenFormatMenuOpen(false);
     setFullscreenSettingsMenuOpen(false);
   }
 
@@ -6320,6 +6472,7 @@ export default function TextPreview({
     setActiveFontSettingsSliderId(null);
     setActiveImageSettingsSliderId(null);
     setActiveLetterSettingsSliderId(null);
+    setFullscreenFormatMenuOpen(false);
     setFullscreenSettingsMenuOpen(false);
     setImageViewerOpen(false);
   }
@@ -6327,6 +6480,13 @@ export default function TextPreview({
   function renderFullscreenSettingsMenu() {
     return (
       <div className="phone-image-fullscreen-menu" aria-label="Export image menu">
+        <button
+          className={`secondary-button compact-button ${activeSettingsPanel === "image" ? "active-tool" : ""}`}
+          type="button"
+          onClick={() => setFullscreenSettings("image")}
+        >
+          Image settings
+        </button>
         <button
           className={`secondary-button compact-button ${activeSettingsPanel === "font" ? "active-tool" : ""}`}
           type="button"
@@ -6340,13 +6500,6 @@ export default function TextPreview({
           onClick={() => setFullscreenSettings("letter")}
         >
           Letter Tuning
-        </button>
-        <button
-          className={`secondary-button compact-button ${activeSettingsPanel === "image" ? "active-tool" : ""}`}
-          type="button"
-          onClick={() => setFullscreenSettings("image")}
-        >
-          Image settings
         </button>
         <button
           className={`secondary-button compact-button ${activeSettingsPanel === "position" ? "active-tool" : ""}`}
@@ -6378,6 +6531,25 @@ export default function TextPreview({
         >
           Export PNG
         </button>
+      </div>
+    );
+  }
+
+  function renderFullscreenFormatMenu() {
+    return (
+      <div className="phone-image-format-menu" aria-label="Format presets">
+        {exportPresets.map((preset) => (
+          <button
+            key={preset.id}
+            className={`secondary-button compact-button ${
+              imageSettings.exportPreset === preset.id ? "active-tool" : ""
+            }`}
+            type="button"
+            onClick={() => applyExportPreset(preset.id)}
+          >
+            {preset.label}
+          </button>
+        ))}
       </div>
     );
   }
@@ -6570,11 +6742,16 @@ export default function TextPreview({
         )}
 
         <button
-          className={`phone-image-preview phone-image-open-button ${imageSettings.transparent ? "transparent-preview" : ""}`}
+          className={`phone-image-preview phone-image-open-button ${
+            imageSettings.transparent ? "transparent-preview" : ""
+          } ${shouldUseLongSkinnyFormat(imageSettings) ? "long-skinny-preview" : ""}`}
           type="button"
-          aria-label="Open font settings"
+          aria-label="Open image settings"
           onClick={() => {
-            setActiveSettingsPanel("font");
+            setActiveSettingsPanel("image");
+            setActiveFontSettingsSliderId(null);
+            setActiveLetterSettingsSliderId(null);
+            setFullscreenFormatMenuOpen(false);
             setFullscreenSettingsMenuOpen(false);
             setImageViewerOpen(true);
           }}
@@ -6759,7 +6936,11 @@ export default function TextPreview({
             )}
           </div>
 
-          <div className={`phone-image-fullscreen-surface ${imageSettings.transparent ? "transparent-preview" : ""}`}>
+          <div
+            className={`phone-image-fullscreen-surface ${
+              imageSettings.transparent ? "transparent-preview" : ""
+            } ${shouldUseLongSkinnyFormat(imageSettings) ? "long-skinny-preview" : ""}`}
+          >
             <canvas
               ref={viewerCanvasRef}
               className="phone-image-canvas phone-image-fullscreen-canvas"
@@ -6776,7 +6957,10 @@ export default function TextPreview({
                 type="button"
                 aria-expanded={fullscreenSettingsMenuOpen}
                 aria-label="Open export image settings"
-                onClick={() => setFullscreenSettingsMenuOpen((open) => !open)}
+                onClick={() => {
+                  setFullscreenFormatMenuOpen(false);
+                  setFullscreenSettingsMenuOpen((open) => !open);
+                }}
               >
                 <span className="hamburger-lines" aria-hidden="true">
                   <span />
@@ -6796,6 +6980,25 @@ export default function TextPreview({
               {activeSettingsPanel === "position" &&
                 renderPositionSettingsControls("alignment-row image-option-row phone-image-fullscreen-options")}
             </div>
+            {activeSettingsPanel === "image" && (
+              <div className="phone-image-format-wrap">
+                <button
+                  className={`secondary-button compact-button phone-image-format-button ${
+                    fullscreenFormatMenuOpen ? "active-tool" : ""
+                  }`}
+                  type="button"
+                  aria-expanded={fullscreenFormatMenuOpen}
+                  aria-label="Open format presets"
+                  onClick={() => {
+                    setFullscreenSettingsMenuOpen(false);
+                    setFullscreenFormatMenuOpen((open) => !open);
+                  }}
+                >
+                  Format
+                </button>
+                {fullscreenFormatMenuOpen && renderFullscreenFormatMenu()}
+              </div>
+            )}
           </div>
         </section>
       )}
