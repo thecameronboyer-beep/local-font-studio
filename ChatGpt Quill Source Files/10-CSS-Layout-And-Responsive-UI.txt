@@ -1,0 +1,136 @@
+CSS, Layout, and Responsive UI
+==============================
+
+Main file
+---------
+- src\styles.css
+
+Related source files
+--------------------
+- src\App.tsx
+- src\components\TextPreview.tsx
+- src\components\GlyphEditor.tsx
+- src\components\FontLibrary.tsx
+- src\data\appThemes.ts
+
+What this category does
+-----------------------
+This category covers the app's visual layout, theme variables, fullscreen overlays, mobile preview panel behavior, glyph editor controls, drawers, buttons, grids, and responsive sizing.
+
+CSS variable theme system
+-------------------------
+App themes write CSS variables onto the root element:
+- --app-bg.
+- --app-bg-gradient.
+- --app-surface.
+- --app-surface-raised.
+- --app-surface-muted.
+- --app-surface-deep.
+- --app-input.
+- --app-text.
+- --app-text-strong.
+- --app-muted.
+- --app-heading.
+- --app-primary.
+- --app-primary-strong.
+- --app-primary-text.
+- --app-accent.
+- --app-accent-strong.
+- --app-gold.
+- --app-danger.
+- --app-border.
+- --app-border-strong.
+- --app-shadow.
+- --app-shadow-strong.
+- --app-grid.
+
+styles.css reads those variables throughout the app.
+
+Root data attributes
+--------------------
+App.tsx sets:
+- data-app-theme.
+- data-app-theme-background.
+
+These allow CSS to target whole themes or background variants if needed.
+
+Major UI areas
+--------------
+The stylesheet covers:
+- app layout and sidebar.
+- font library/profile panels.
+- glyph grid.
+- glyph editor.
+- glyph canvas.
+- construction canvas.
+- fullscreen draw/editor views.
+- preview panel.
+- fullscreen preview.
+- bottom category/action rows.
+- drawers/popovers.
+- saved images.
+- buttons, inputs, sliders, toggles, swatches.
+
+Fullscreen preview layout
+-------------------------
+Current design goal:
+- phone view matters most.
+- bottom row of category buttons should stay locked in place.
+- action row/drawers should not move the actual preview image.
+- clicking a category should not cause the preview canvas to jump.
+- the selected bottom category can hide/show the top row.
+- format is a secondary drawer inside Canvas and opens vertically.
+
+When debugging preview movement, inspect:
+- fullscreen preview wrapper dimensions.
+- fixed/sticky bottom panel rules.
+- safe-area padding.
+- action row positioning.
+- canvas stage height.
+- any margin/padding added conditionally by open drawers.
+
+Two-row preview panel
+---------------------
+Classes to look for include names around:
+- phone image controls.
+- fullscreen category tabs.
+- fullscreen category controls.
+- canvas format drawer.
+- font effects menu.
+- draw/control drawers.
+- style drawers.
+
+The exact class names evolve, but TextPreview renders most of the controls and styles.css owns their position.
+
+Responsive priority
+-------------------
+The user cares most about mobile phone view. Tablet/side-pane view is less important.
+
+Design rules already guiding the app:
+- avoid crowded nested panels.
+- use buttons and icon buttons consistently.
+- action rows can scroll horizontally only when absolutely needed, but recent direction is to avoid scroll by using secondary drawers.
+- stable dimensions for bottom buttons are important.
+- controls should not obscure the preview awkwardly.
+- preview canvas should remain visually stable when drawers open.
+
+Font list row styling
+---------------------
+FontLibrary sets CSS variables per row:
+- --font-row-bg.
+- --font-row-ink.
+- --font-row-accent.
+
+styles.css uses those so font rows show the actual background/color identity of the font.
+
+Planning notes
+--------------
+For layout changes, plan CSS and component markup together. TextPreview and GlyphEditor render many drawers/buttons, but styles.css determines whether they feel stable on mobile.
+
+When adding new mobile controls, prefer:
+- bottom category tab if it changes mode.
+- top action row if it directly changes the preview.
+- vertical drawer if it is a subcategory with many options.
+
+Avoid making the preview canvas depend on the open/closed height of controls.
+

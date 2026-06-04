@@ -197,6 +197,18 @@ function FontNamePreview({
   );
 }
 
+function getFontThemeRowStyle(font: FontSet) {
+  if (!font.theme) {
+    return undefined;
+  }
+
+  return {
+    "--font-row-accent": font.theme.accentColor,
+    "--font-row-bg": font.theme.backgroundColor,
+    "--font-row-ink": font.theme.inkColor,
+  } as React.CSSProperties;
+}
+
 function sanitizeFileName(value: string) {
   return value.trim().replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "") || "font";
 }
@@ -611,14 +623,6 @@ export default function FontLibrary({
               <label className="font-option-check">
                 <input
                   type="checkbox"
-                  checked={newFontCharacterSettings.showForgotten}
-                  onChange={(event) => updateNewFontCharacterSetting("showForgotten", event.target.checked)}
-                />
-                <span>Eth, Thorn, Ash (upper/lower)</span>
-              </label>
-              <label className="font-option-check">
-                <input
-                  type="checkbox"
                   checked={newFontCharacterSettings.showHeaderLetters}
                   onChange={(event) => updateNewFontCharacterSetting("showHeaderLetters", event.target.checked)}
                 />
@@ -681,7 +685,7 @@ export default function FontLibrary({
   return (
     <section className="studio-panel library-panel font-profile-panel" aria-label="Font profile">
       <div className="font-list">
-        <div className="font-row selected active-profile-row">
+        <div className="font-row selected active-profile-row themed-font-row" style={getFontThemeRowStyle(activeFont)}>
           <button
             type="button"
             className="font-select-button active-font-preview-button"
@@ -742,7 +746,8 @@ export default function FontLibrary({
                   ) : (
                     <div
                       key={font.id}
-                      className={`settings-font-option ${font.id === activeFontId ? "selected" : ""}`}
+                      className={`settings-font-option themed-font-row ${font.id === activeFontId ? "selected" : ""}`}
+                      style={getFontThemeRowStyle(font)}
                     >
                       <button
                         className="settings-font-select-button"
@@ -753,7 +758,7 @@ export default function FontLibrary({
                         }}
                         aria-label={`Select ${font.name}`}
                       >
-                        <FontNamePreview font={font} variant="compact" showThemeBackground={false} color="#fff4df" />
+                        <FontNamePreview font={font} variant="compact" />
                       </button>
                       <button
                         className="settings-font-edit-button"
@@ -833,14 +838,6 @@ export default function FontLibrary({
             <div className="font-settings-section">
               <strong>Characters</strong>
               <div className="advanced-font-options active-font-options">
-                <label className="font-option-check">
-                  <input
-                    type="checkbox"
-                    checked={(activeFont.characterSettings ?? defaultFontCharacterSettings).showForgotten}
-                    onChange={(event) => updateActiveFontCharacterSetting("showForgotten", event.target.checked)}
-                  />
-                  <span>Eth, Thorn, Ash (upper/lower)</span>
-                </label>
                 <label className="font-option-check">
                   <input
                     type="checkbox"

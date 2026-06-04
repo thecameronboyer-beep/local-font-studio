@@ -1,0 +1,115 @@
+Glyph Rendering Engine
+======================
+
+Main files
+----------
+- src\render\glyphRenderer.ts
+- src\render\constructionRenderer.ts
+- src\render\pixiInkRenderer.ts
+- src\components\GlyphCanvas.tsx
+- src\components\TextPreview.tsx
+
+What this category does
+-----------------------
+This category explains how saved glyph data turns into pixels in the editor, preview, export, mini previews, and preset fallback workflows.
+
+glyphRenderer.ts
+----------------
+This is the main 2D canvas glyph renderer. It knows how to draw:
+- freehand strokes.
+- quill strokes.
+- construction paths.
+- glyph decorations.
+- ink effects.
+- variant-aware glyph previews.
+
+Important exported functions:
+- hasDrawnGlyph(glyph): true if a glyph or any variant has marks.
+- getDrawableGlyphVariants(glyph): returns base/variants with visible marks.
+- findPreviewGlyph(glyphs, character): finds exact glyph or case fallback.
+- selectPreviewGlyph(glyphs, character, seed): deterministic variant picker.
+- getFontHeightScale(font): whole-font height scale.
+- getFontWidthScale(font): whole-font width scale.
+- getGlyphRenderScales(font, glyph): combines glyph and font scaling.
+- getGlyphLeftBearingOffset(font, glyph, fontSize): left bearing in pixels.
+- getGlyphTopForBaseline(glyph, fontSize, baselineY, heightScale): y coordinate.
+- getGlyphAdvance(glyph, fontSize, widthScale): text advance width.
+- getSpacebarAdvance(glyph, fontSize): spacebar advance.
+- drawStrokePath(ctx, stroke, options): draws one stroke.
+- drawGlyphDecoration(ctx, decoration, options): draws a decoration.
+- drawGlyph(ctx, glyph, options): draws the full glyph.
+
+Variant rendering
+-----------------
+selectPreviewGlyph uses a string seed so the same text can pick variants predictably. This allows repeated letters to vary while staying stable across redraws.
+
+Case fallback
+-------------
+If a glyph is missing for a lowercase character, the renderer can fall back to uppercase, and vice versa. This is useful while the user has only drawn part of the font.
+
+Metrics
+-------
+Rendering uses:
+- glyph.width and glyph.height.
+- font.shapeSettings.widthScale and heightScale.
+- glyph.baselineOffset.
+- glyph.leftBearing and rightBearing.
+- glyph.xAdvance.
+
+Text layout in preview depends on these metrics for line wrapping, hit testing, alignment, and export fidelity.
+
+Quill strokes
+-------------
+Quill stroke rendering uses an angled nib model. The segment width varies by:
+- stroke direction.
+- point pressure.
+- taper position.
+- deterministic grain/noise.
+- renderProfile.
+- backgroundTexture.
+
+Ink effects
+-----------
+Supported saved glyph ink effects:
+- subtleSpread: gentle bleed/spread marks.
+- dramaticPooling: heavier pooling around points and edges.
+- bubbleHighlight: highlight/shine overlay using highlightColor.
+
+Background texture affects spread intensity:
+- clean reduces spread.
+- fiber, canvas, woven can increase spread.
+
+constructionRenderer.ts
+-----------------------
+Construction rendering draws GlyphConstruction paths:
+- line and curve segments.
+- open and closed paths.
+- fills.
+- strokes.
+- rounded/chamfered corners.
+
+It converts normalized construction points into canvas positions using size, widthScale, and heightScale.
+
+pixiInkRenderer.ts
+------------------
+This renderer creates an overlay layer with Pixi.js for ink spread effects inside GlyphCanvas. It only handles strokes with visible Pixi ink effects:
+- subtleSpread.
+- dramaticPooling.
+- point spread values.
+
+GlyphCanvas uses both:
+- normal HTML canvas for base drawing and interaction.
+- Pixi overlay for richer ink spread display in the editor.
+
+Preview rendering
+-----------------
+TextPreview uses glyphRenderer to draw text into preview/export canvases. It also has a separate text-effect compositing layer for preview-only effects such as texture, shadow, outline, smooth, and thicken.
+
+Planning notes
+--------------
+When changing how saved glyphs look everywhere, edit glyphRenderer and possibly pixiInkRenderer.
+
+When changing only fullscreen preview/export text effects, edit TextPreview's offscreen text layer compositing rather than glyphRenderer.
+
+When changing construction shape behavior, edit constructionRenderer and GlyphConstructionCanvas together.
+

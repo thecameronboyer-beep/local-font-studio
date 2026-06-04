@@ -24,7 +24,7 @@ export type FontPalette = {
   main: PaletteSwatch[];
 };
 
-export const strawberryMarketPalette = {
+export const strawberryMarketPalette: FontPalette = {
   id: "strawberryMarket",
   label: "Strawberry Market",
   main: [
@@ -68,9 +68,55 @@ export const strawberryMarketPalette = {
   ],
   defaultBackgroundId: "strawberryCream",
   defaultTexture: "grain",
-} satisfies FontPalette;
+};
 
-export const fontPalettes = [strawberryMarketPalette];
+export const midnightCorrespondencePalette: FontPalette = {
+  id: "midnightCorrespondence",
+  label: "Midnight Correspondence",
+  main: [
+    { color: "#F5F1E8", label: "Parchment Ivory" },
+    { color: "#D7E3F4", label: "Moonlit Blue" },
+    { color: "#A8B0BF", label: "Dusty Slate" },
+  ],
+  accents: [
+    { color: "#7A2E3A", label: "Seal Garnet" },
+    { color: "#C9A45A", label: "Antique Gold" },
+  ],
+  ink: { color: "#2B2F3A", label: "Midnight Ink" },
+  backgrounds: [
+    {
+      id: "midnightParchment",
+      label: "Parchment Ivory",
+      color: "#F5F1E8",
+      backgroundColor: "#F5F1E8",
+      inkColor: "#2B2F3A",
+      accentColor: "#7A2E3A",
+      preview: "linear-gradient(135deg, #fffdf8 0%, #f5f1e8 56%, #c9a45a 100%)",
+    },
+    {
+      id: "midnightMoonlit",
+      label: "Moonlit Blue",
+      color: "#D7E3F4",
+      backgroundColor: "#D7E3F4",
+      inkColor: "#2B2F3A",
+      accentColor: "#7A2E3A",
+      preview: "linear-gradient(135deg, #f5f1e8 0%, #d7e3f4 58%, #a8b0bf 100%)",
+    },
+    {
+      id: "midnightSlate",
+      label: "Dusty Slate",
+      color: "#A8B0BF",
+      backgroundColor: "#A8B0BF",
+      inkColor: "#2B2F3A",
+      accentColor: "#C9A45A",
+      preview: "linear-gradient(135deg, #f5f1e8 0%, #c6ccd6 48%, #a8b0bf 100%)",
+    },
+  ],
+  defaultBackgroundId: "midnightParchment",
+  defaultTexture: "clean",
+};
+
+export const fontPalettes: FontPalette[] = [strawberryMarketPalette, midnightCorrespondencePalette];
 export const defaultFontPaletteId: FontPaletteId = "strawberryMarket";
 
 export function getFontPalette(paletteId?: FontPaletteId) {

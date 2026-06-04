@@ -1,0 +1,165 @@
+Data Model and Storage
+======================
+
+Main files
+----------
+- src\types\fontTypes.ts
+- src\storage\fontStorage.ts
+- src\storage\savedImageStorage.ts
+- src\data\characterSets.ts
+
+What this category does
+-----------------------
+This category defines what a Quill font is, how glyphs are represented, which characters exist, how project data is saved, how migrations happen, and how exported/saved image records are stored.
+
+Core data model
+---------------
+FontStudioData:
+- version: currently 3.
+- activeFontId: id of the selected font.
+- fonts: array of FontSet records.
+- activityLog: recent project events.
+- lastBackupAt: optional timestamp for backup scheduling.
+
+FontSet:
+- id, name, createdAt, updatedAt.
+- glyphs: map of character to Glyph.
+- characterSettings: toggles for optional character groups.
+- guideSettings: ascender, x-height, baseline, descender, left and right bounds.
+- homeSettings: which home sections are visible.
+- writingStyleSettings: whether draw/build styles are enabled.
+- shapeSettings: whole-font height scale, width scale, letter spacing.
+- theme: font preview/export palette settings.
+- renderProfile: optional render behavior such as quillParchment.
+- presetFontId: optional source id when a font is based on a preset.
+
+Glyph:
+- character: source character.
+- strokes: freehand pen/quill stroke data.
+- construction: optional build-mode vector path data.
+- decorations: glyph-level decorations such as eye stickers.
+- variants: optional alternate versions of the same glyph.
+- width, height, xAdvance, baselineOffset, leftBearing, rightBearing.
+- updatedAt.
+
+GlyphStroke:
+- id.
+- points: normalized x/y points from 0 to 1.
+- size: normalized stroke size.
+- color, highlightColor.
+- strokeTool: pen or quill.
+- inkEffect: none, dramaticPooling, subtleSpread, bubbleHighlight.
+
+GlyphPoint:
+- x, y.
+- pressure.
+- ink.
+- spread.
+
+GlyphConstruction:
+- paths made of anchor points.
+- supports line and curve segments.
+- supports sharp, rounded, and chamfered corner styles.
+- can be filled and/or stroked.
+
+FontTheme:
+- backgroundColor.
+- inkColor.
+- accentColor.
+- backgroundStyle.
+- backgroundTexture.
+- paletteId.
+
+PreviewSettings:
+- fontSize.
+- letterSpacing.
+- lineSpacing.
+- inkColor.
+- backgroundColor.
+- pagePadding.
+
+Character sets
+--------------
+src\data\characterSets.ts defines:
+- uppercase A-Z.
+- lowercase a-z.
+- optional header letters, stored as "header:A" style keys.
+- numbers 0-9.
+- punctuation.
+- forgotten, currently an empty array.
+- spacebar as " ".
+
+The app previously had eth, thorn, and ash in the forgotten group. They are currently removed from visible app use by making forgotten empty.
+
+getVisibleCharacters(font) decides which glyphs appear in the UI:
+- standard uppercase/lowercase/numbers/punctuation are always visible.
+- header letters appear when showHeaderLetters is true.
+- forgotten appears when showForgotten is true, but currently there are no forgotten characters.
+- spacebar appears when showSpacebar is true.
+
+Storage keys
+------------
+Project storage:
+- local-font-studio:data:v1
+
+Backups:
+- local-font-studio:backups:v1
+
+Corrupt data recovery:
+- local-font-studio:data:corrupt:v1
+
+Saved images:
+- local-font-studio:saved-images:v1
+
+App theme storage:
+- local-font-studio:app-theme:v3
+- local-font-studio:app-theme-background:v1
+
+Preview document storage:
+- local-font-studio:preview-documents:v1
+
+Storage behavior
+----------------
+src\storage\fontStorage.ts:
+- creates default data when storage is empty.
+- normalizes all loaded data defensively.
+- migrates older data to version 3.
+- filters removed preset data.
+- clamps numeric metric values.
+- fills missing glyphs.
+- normalizes strokes, construction paths, themes, guide settings, writing style settings, and home settings.
+- creates automatic backups.
+- recovers from corrupt storage if possible.
+- exports/imports full project JSON and single font JSON.
+
+src\storage\savedImageStorage.ts:
+- stores up to MAX_SAVED_IMAGES, currently 24.
+- validates saved image records on load.
+- stores preview PNG data URLs plus metadata.
+
+Default metrics
+---------------
+defaultGlyphMetrics:
+- width: 1
+- height: 1
+- xAdvance: 0.74
+- baselineOffset: 0.75
+- leftBearing: 0.08
+- rightBearing: 0.08
+
+defaultSpacebarMetrics:
+- width: 0.36
+- xAdvance: 0.36
+- bearings are 0.
+
+Planning notes
+--------------
+Any durable feature needs three steps:
+1. Add the type in src\types\fontTypes.ts.
+2. Create defaults and normalization in src\storage\fontStorage.ts.
+3. Wire mutations through App.tsx so data saves consistently.
+
+Preview-only features can usually live in TextPreview state and do not need schema migration.
+
+Be careful when changing glyph metrics. The renderer, preview hit testing, spacing controls, and apply-to-font logic all depend on width, height, xAdvance, bearings, and baselineOffset having normalized values.
+

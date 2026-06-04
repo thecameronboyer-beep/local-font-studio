@@ -268,7 +268,7 @@ function normalizeRenderProfile(value: unknown): FontRenderProfile | undefined {
 }
 
 function normalizePaletteId(value: unknown): FontPaletteId | undefined {
-  return value === "strawberryMarket" ? "strawberryMarket" : undefined;
+  return value === "strawberryMarket" || value === "midnightCorrespondence" ? value : undefined;
 }
 
 function normalizeBackgroundStyle(value: unknown): BackgroundStyle {
@@ -285,6 +285,9 @@ function normalizeBackgroundStyle(value: unknown): BackgroundStyle {
     value === "strawberryRed" ||
     value === "berryPink" ||
     value === "strawberryCream" ||
+    value === "midnightParchment" ||
+    value === "midnightMoonlit" ||
+    value === "midnightSlate" ||
     value === "lined" ||
     value === "grid"
     ? value

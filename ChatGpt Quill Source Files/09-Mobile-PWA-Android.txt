@@ -1,0 +1,115 @@
+Mobile, PWA, Android, Native Files
+==================================
+
+Main files and folders
+----------------------
+- package.json
+- vite.config.ts
+- capacitor.config.ts
+- src\pwa.ts
+- src\utils\nativeFiles.ts
+- public\manifest.webmanifest
+- public\sw.js
+- android
+- scripts\build-android-debug.mjs
+- scripts\serve-dist.mjs
+- scripts\ensure-d-drive-workspace.mjs
+- MOBILE_DEPLOY.md
+- docs\android-app.md
+
+What this category does
+-----------------------
+This category covers how Quill runs locally, builds as a web app, registers as a PWA, and integrates with Capacitor for Android/native file sharing.
+
+Project stack
+-------------
+Runtime:
+- React 19.
+- TypeScript.
+- Vite.
+- Capacitor 8.
+- Pixi.js for editor ink overlay effects.
+- lucide-react for UI icons.
+
+Important npm scripts
+---------------------
+- npm run dev:
+  Runs Vite dev server on 127.0.0.1.
+
+- npm run build:
+  Runs TypeScript and Vite build.
+
+- npm run preview:
+  Runs Vite preview on 127.0.0.1.
+
+- npm run android:sync:
+  Builds web app and syncs Capacitor Android.
+
+- npm run android:build:debug:
+  Builds and syncs, then runs the debug APK build script.
+
+- npm run serve:dist:
+  Serves the built dist with scripts\serve-dist.mjs.
+
+- npm run verify:renderer:
+  Runs scripts\verify-renderer.mjs.
+
+Workspace guard
+---------------
+Most scripts run a pre-step:
+- npm run check:workspace
+
+That runs:
+- scripts\ensure-d-drive-workspace.mjs
+
+The app expects to be in the D drive workspace.
+
+PWA
+---
+src\pwa.ts registers the service worker.
+
+public\manifest.webmanifest defines installable app metadata.
+
+public\sw.js is the service worker.
+
+Capacitor/native file integration
+---------------------------------
+src\utils\nativeFiles.ts provides:
+- isNativeFilePlatform.
+- saveNativeFileToDocuments.
+- shareNativeFile.
+
+saveNativeFileToDocuments writes to:
+- Documents/Local Font Studio/{fileName}
+
+shareNativeFile writes a temporary file into Capacitor Cache and calls Share.share.
+
+This is used by preview/export workflows when running on Android/native platforms.
+
+Android folder
+--------------
+The android folder is a Capacitor Android project. It contains:
+- Gradle config.
+- AndroidManifest.
+- app resources.
+- launcher icons.
+- splash assets.
+- MainActivity.
+- debug keystore.
+
+Build outputs
+-------------
+Existing APK downloads are present under:
+- public-downloads
+- docs\downloads
+
+These are packaged artifacts, not source files.
+
+Planning notes
+--------------
+For preview/export sharing changes, look at TextPreview and nativeFiles.ts together.
+
+For PWA install/offline changes, look at manifest.webmanifest, sw.js, and pwa.ts.
+
+For Android build changes, use npm scripts rather than manually editing generated Gradle files unless the feature specifically needs native configuration.
+

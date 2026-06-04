@@ -1,0 +1,108 @@
+Font Library and Presets
+========================
+
+Main files
+----------
+- src\components\FontLibrary.tsx
+- src\data\fontPresets.ts
+- src\data\palettes.ts
+- src\storage\fontStorage.ts
+- public\assets\fonts\presets
+
+What this category does
+-----------------------
+This category covers font creation, font switching, font rows, preset fonts, font import/export, renaming, duplication, deletion, writing style settings, guide settings, palette/theme selection, and the font profile panel.
+
+FontLibrary responsibilities
+----------------------------
+FontLibrary is the main UI for managing fonts. App.tsx owns final project data changes, but FontLibrary presents the controls.
+
+Important FontLibrary state:
+- createFormOpen: opens the create-new-font form.
+- newFontCharacterSettings: optional character groups for a new font.
+- guideEditorOpen and activeGuideEditorOpen: guide editing UIs.
+- newFontGuideSettings: ascender/x-height/baseline/descender/bounds for new font.
+- newFontName: typed font name.
+- newFontProfile: plain or quillParchment render profile.
+- editingFontId and fontRenameValue: rename workflow.
+- presetPickerOpen: preset font picker.
+- settingsOpen: font settings/profile panel.
+
+Font row theme behavior
+-----------------------
+Font list rows use the actual theme of each font:
+- row background comes from font.theme.backgroundColor.
+- text color comes from font.theme.inkColor.
+- active border/accent uses font.theme.accentColor.
+
+The compact name preview uses FontNamePreview, which draws the font name with the font's glyphs or preset font source, on the actual background color for that font.
+
+Font presets
+------------
+src\data\fontPresets.ts defines local TTF preset fonts.
+
+Preset fields:
+- id.
+- label.
+- family.
+- sourcePath.
+- license.
+- weight.
+
+The app has many bundled preset fonts in:
+public\assets\fonts\presets
+
+Preset helper functions:
+- getFontPresetOptionId(id): creates a "preset:id" option string.
+- getFontPresetById(id): finds a preset record.
+- getFontPresetFromOptionId(optionId): parses a preset option.
+- getFontPresetCanvasFont(preset, size): returns a canvas font string.
+
+How presets work with custom fonts
+----------------------------------
+A FontSet can have presetFontId. When a preview or list row uses that font, the renderer can use the preset TTF source for missing glyph rendering or preset-based text layers.
+
+Important planning note: custom drawn glyphs and preset font rendering are separate sources. Features that tune metrics or effects in preview should decide whether they affect only custom glyphs, only preset font fallback, or both.
+
+Font creation
+-------------
+New fonts are created by createFontSet in src\storage\fontStorage.ts.
+
+Creation inputs:
+- name.
+- renderProfile.
+- characterSettings.
+- guideSettings.
+- shapeSettings.
+
+createFontSet initializes every supported character with an empty Glyph. For normal characters, baselineOffset is initialized from the selected guide baseline.
+
+Render profiles
+---------------
+FontRenderProfile:
+- plain.
+- quillParchment.
+
+quillParchment uses:
+- quill-like default stroke rendering.
+- parchment-oriented default theme from quillParchmentTheme in fontStorage.ts.
+
+Font settings controlled here
+-----------------------------
+- Character visibility: header letters, spacebar, forgotten group.
+- Writing styles: draw and build.
+- Font guides: ascender, x-height, baseline, descender, left/right bounds.
+- Font palette/theme: background, ink, accent, texture.
+- Font import/export.
+- Font duplication.
+- Font deletion.
+- Font renaming.
+
+Planning notes
+--------------
+FontLibrary is about managing whole fonts, not editing individual glyph strokes. For glyph shapes, use GlyphEditor. For preview-only image output, use TextPreview.
+
+If adding more font categories, keep the active font row readable in mobile widths. The list rows are now visually tied to the font's own background, which is important for theme planning.
+
+If adding more preset metadata, update src\data\fontPresets.ts and ensure the preset asset exists under public\assets\fonts\presets.
+

@@ -101,6 +101,9 @@ export type BackgroundStyle =
   | "strawberryRed"
   | "berryPink"
   | "strawberryCream"
+  | "midnightParchment"
+  | "midnightMoonlit"
+  | "midnightSlate"
   | "lined"
   | "grid";
 
@@ -108,7 +111,7 @@ export type BackgroundTexture = "clean" | "grain" | "fiber" | "canvas" | "woven"
 
 export type FontRenderProfile = "plain" | "quillParchment";
 
-export type FontPaletteId = "strawberryMarket";
+export type FontPaletteId = "midnightCorrespondence" | "strawberryMarket";
 
 export type FontTheme = {
   accentColor: string;

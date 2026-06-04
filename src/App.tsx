@@ -5,6 +5,18 @@ import GlyphEditor from "./components/GlyphEditor";
 import GlyphGrid from "./components/GlyphGrid";
 import SavedImagesPanel from "./components/SavedImagesPanel";
 import TextPreview from "./components/TextPreview";
+import {
+  APP_THEME_STORAGE_KEY,
+  APP_THEME_BACKGROUND_STORAGE_KEY,
+  appThemes,
+  defaultAppThemeId,
+  getAppTheme,
+  getAppThemeBackground,
+  getDefaultAppThemeBackgroundId,
+  normalizeAppThemeBackgroundId,
+  normalizeAppThemeId,
+  type AppThemeId,
+} from "./data/appThemes";
 import { getVisibleCharacters, isHeaderLetter, spacebar } from "./data/characterSets";
 import { fontPresets } from "./data/fontPresets";
 import { hasDrawnGlyph } from "./render/glyphRenderer";
@@ -56,6 +68,25 @@ export default function App() {
   const [savedImagesOpen, setSavedImagesOpen] = useState(false);
   const [savedImages, setSavedImages] = useState<SavedImage[]>(() => loadSavedImages());
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [themesMenuOpen, setThemesMenuOpen] = useState(false);
+  const [activeAppThemeId, setActiveAppThemeId] = useState<AppThemeId>(() => {
+    if (typeof window === "undefined") {
+      return defaultAppThemeId;
+    }
+
+    return normalizeAppThemeId(window.localStorage.getItem(APP_THEME_STORAGE_KEY));
+  });
+  const [activeAppThemeBackgroundId, setActiveAppThemeBackgroundId] = useState(() => {
+    if (typeof window === "undefined") {
+      return "";
+    }
+
+    const storedTheme = getAppTheme(normalizeAppThemeId(window.localStorage.getItem(APP_THEME_STORAGE_KEY)));
+    return normalizeAppThemeBackgroundId(
+      storedTheme,
+      window.localStorage.getItem(APP_THEME_BACKGROUND_STORAGE_KEY),
+    );
+  });
   const [headerPreviewText, setHeaderPreviewText] = useState("");
   const [previewText, setPreviewText] = useState("the ducks know about the blue canoe.");
 
@@ -69,10 +100,15 @@ export default function App() {
   const selectedGlyph = activeFont.glyphs[selectedCharacter] ?? createEmptyGlyph(selectedCharacter);
   const spacebarGlyph = activeFont.glyphs[spacebar] ?? createEmptyGlyph(spacebar);
   const activeCharacters = useMemo(() => getVisibleCharacters(activeFont), [activeFont]);
+  const activeAppTheme = useMemo(() => getAppTheme(activeAppThemeId), [activeAppThemeId]);
+  const activeAppThemeBackground = useMemo(
+    () => getAppThemeBackground(activeAppTheme, activeAppThemeBackgroundId),
+    [activeAppTheme, activeAppThemeBackgroundId],
+  );
   const selectedCharacterIndex = activeCharacters.indexOf(selectedCharacter);
 
   function getSavedGlyphCount(font: FontSet) {
-    return Object.values(font.glyphs).filter((glyph) => hasDrawnGlyph(glyph)).length;
+    return getVisibleCharacters(font).filter((character) => hasDrawnGlyph(font.glyphs[character])).length;
   }
 
   useEffect(() => {
@@ -82,6 +118,31 @@ export default function App() {
       document.body.classList.remove("editor-fullscreen-open");
     };
   }, [editorFullScreen, gridFullScreen, savedImagesOpen]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const safeBackgroundId = normalizeAppThemeBackgroundId(activeAppTheme, activeAppThemeBackgroundId);
+
+    root.dataset.appTheme = activeAppTheme.id;
+    root.dataset.appThemeBackground = safeBackgroundId;
+    Object.entries(activeAppTheme.cssVariables).forEach(([property, value]) => {
+      root.style.setProperty(property, value);
+    });
+    Object.entries(activeAppThemeBackground?.cssVariables ?? {}).forEach(([property, value]) => {
+      root.style.setProperty(property, value);
+    });
+
+    if (safeBackgroundId !== activeAppThemeBackgroundId) {
+      setActiveAppThemeBackgroundId(safeBackgroundId);
+    }
+
+    try {
+      window.localStorage.setItem(APP_THEME_STORAGE_KEY, activeAppTheme.id);
+      window.localStorage.setItem(APP_THEME_BACKGROUND_STORAGE_KEY, safeBackgroundId);
+    } catch (error) {
+      console.warn("Unable to persist app theme.", error);
+    }
+  }, [activeAppTheme, activeAppThemeBackground, activeAppThemeBackgroundId]);
 
   useEffect(() => {
     if (!activeCharacters.includes(selectedCharacter) && !isHeaderLetter(selectedCharacter)) {
@@ -543,6 +604,13 @@ export default function App() {
     persistSavedImages(savedImages.filter((image) => image.id !== imageId));
   }
 
+  function selectAppTheme(themeId: AppThemeId) {
+    const nextTheme = getAppTheme(themeId);
+
+    setActiveAppThemeId(nextTheme.id);
+    setActiveAppThemeBackgroundId(getDefaultAppThemeBackgroundId(nextTheme));
+  }
+
   return (
     <main className="app-shell">
       <button
@@ -598,7 +666,63 @@ export default function App() {
           >
             Draw Letters
           </button>
+          <button
+            type="button"
+            aria-expanded={themesMenuOpen}
+            onClick={() => setThemesMenuOpen((open) => !open)}
+          >
+            Themes
+          </button>
         </nav>
+
+        {themesMenuOpen && (
+          <div className="sidebar-theme-panel" aria-label="App themes">
+            {appThemes.map((theme) => {
+              const selected = activeAppThemeId === theme.id;
+
+              return (
+                <div key={theme.id} className={`sidebar-theme-card ${selected ? "selected" : ""}`}>
+                  <button
+                    className="sidebar-theme-option"
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => selectAppTheme(theme.id)}
+                  >
+                    <span className="sidebar-theme-swatches" aria-hidden="true">
+                      {theme.swatches.map((color, index) => (
+                        <span key={`${theme.id}-${color}-${index}`} style={{ backgroundColor: color }} />
+                      ))}
+                    </span>
+                    <span className="sidebar-theme-copy">
+                      <strong>{theme.label}</strong>
+                      <span>{theme.description}</span>
+                    </span>
+                  </button>
+                  {selected && theme.backgrounds?.length ? (
+                    <div className="sidebar-theme-backgrounds" aria-label={`${theme.label} backgrounds`}>
+                      {theme.backgrounds.map((background) => {
+                        const backgroundSelected = activeAppThemeBackgroundId === background.id;
+
+                        return (
+                          <button
+                            key={background.id}
+                            className={`sidebar-theme-background-button ${backgroundSelected ? "selected" : ""}`}
+                            type="button"
+                            aria-pressed={backgroundSelected}
+                            onClick={() => setActiveAppThemeBackgroundId(background.id)}
+                          >
+                            <span style={{ backgroundColor: background.swatch }} aria-hidden="true" />
+                            {background.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </aside>
 
       <header className="app-header">

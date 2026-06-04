@@ -4,7 +4,7 @@ export const headerLetterPrefix = "header:";
 export const headerLetters = [...uppercase, ...lowercase].map((character) => `${headerLetterPrefix}${character}`);
 export const numbers = "0123456789".split("");
 export const punctuation = [".", ",", "?", "!", ":", ";", "'", "\"", "-", "(", ")"];
-export const forgotten = ["\u00DE", "\u00FE", "\u00D0", "\u00F0", "\u00C6", "\u00E6"];
+export const forgotten: string[] = [];
 export const spacebar = " ";
 
 export const supportedCharacters = [

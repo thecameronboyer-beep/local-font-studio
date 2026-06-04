@@ -1,0 +1,91 @@
+App Shell and Navigation
+========================
+
+Main files
+----------
+- src\App.tsx
+- src\main.tsx
+- src\pwa.ts
+- src\styles.css
+
+What this category does
+-----------------------
+This category covers the main React app shell: loading data, choosing the active font, selecting glyphs, opening fullscreen views, applying app themes, saving changes, and wiring the major child components together.
+
+The app is mounted by src\main.tsx. That file imports React, ReactDOM, App, styles.css, and registerServiceWorker.
+
+src\App.tsx is the main controller component. It owns project-level state and passes callbacks into all major feature panels.
+
+Important App.tsx state
+-----------------------
+- studioData: the whole saved font project loaded from localStorage.
+- selectedCharacter: the current glyph/letter being edited.
+- editorFullScreen: whether the glyph editor is fullscreen.
+- gridFullScreen: whether the glyph grid is fullscreen.
+- savedImagesOpen: whether the saved image gallery is open.
+- savedImages: exported/saved preview images.
+- sidebarOpen: mobile sidebar state.
+- themesMenuOpen: app theme menu state.
+- activeAppThemeId: current app UI theme.
+- activeAppThemeBackgroundId: selected app background variant.
+- headerPreviewText: optional large header text in preview/export.
+- previewText: body text used in preview/export.
+
+Main derived data
+-----------------
+- activeFont: selected from studioData.fonts by studioData.activeFontId.
+- selectedGlyph: activeFont.glyphs[selectedCharacter], with an empty fallback.
+- spacebarGlyph: activeFont.glyphs[" "], with an empty fallback.
+- activeCharacters: visible glyph list based on the font's character settings.
+- activeAppTheme and activeAppThemeBackground: theme definitions from src\data\appThemes.ts.
+
+Main responsibilities
+---------------------
+1. Load project data:
+   - Calls loadFontStudioDataWithHealth from src\storage\fontStorage.ts.
+   - Immediately persists migrated/recovered data when needed.
+
+2. Persist project changes:
+   - saveProjectData wraps saveFontStudioData.
+   - persist records activity entries and saves.
+   - deferProjectSave allows non-blocking delayed saves.
+
+3. Apply app theme:
+   - Writes theme CSS variables onto document.documentElement.
+   - Stores theme choices in localStorage.
+   - Sets root data attributes for CSS hooks.
+
+4. Route glyph editing:
+   - handleSelectCharacter opens the fullscreen glyph editor.
+   - handlePreviewSelectCharacter changes selected glyph from preview hit testing.
+   - save callbacks update the active font's glyphs.
+
+5. Route preview metric application:
+   - handleApplyPreviewFontSpacing takes a FontSpacingApplyDraft from TextPreview and applies font-wide or glyph-specific metric changes into saved glyphs.
+   - This is how preview letter/font tuning can become permanent when the user taps Apply.
+
+6. Manage fonts:
+   - Create, duplicate, rename, delete, import/export, update active font.
+   - Font management UI is mostly in FontLibrary, but App owns the final project mutation.
+
+7. Manage saved images:
+   - Preview exports can be saved into savedImages.
+   - SavedImagesPanel can show and delete them.
+
+Major child components
+----------------------
+- FontLibrary: font creation, selection, rename, duplicate, delete, import/export, themes, guides, character settings.
+- TextPreview: fullscreen preview, export, preview settings, effects, decor, text layers.
+- GlyphGrid: grid/list of visible glyphs.
+- GlyphEditor: per-glyph draw/build editor.
+- FontMetricsPanel: bulk metric tuning.
+- SavedImagesPanel: image gallery.
+
+Planning notes
+--------------
+App.tsx is the safest place for changes that affect project-wide state or persistence. Avoid burying durable project mutations inside deep components unless App passes an explicit callback for that purpose.
+
+The preview currently owns lots of temporary preview-only state. That is intentional: preview effects, doodles, stickers, text layers, and draft metric overrides should not automatically mutate saved glyphs.
+
+If a future feature needs to be saved as part of the font project, add the data type in src\types\fontTypes.ts, normalize it in src\storage\fontStorage.ts, then pass controlled state through App.tsx.
+

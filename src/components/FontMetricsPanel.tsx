@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import {
-  forgotten,
   getCharacterLabel,
   headerLetters,
   lowercase,
@@ -12,7 +11,7 @@ import {
 import { findPreviewGlyph, hasDrawnGlyph } from "../render/glyphRenderer";
 import type { FontSet } from "../types/fontTypes";
 
-type MetricGroupId = "uppercase" | "lowercase" | "numbers" | "punctuation" | "header" | "forgotten" | "spacebar";
+type MetricGroupId = "uppercase" | "lowercase" | "numbers" | "punctuation" | "header" | "spacebar";
 
 type FontMetricsPanelProps = {
   font: FontSet;
@@ -44,15 +43,11 @@ export default function FontMetricsPanel({
       ...(font.characterSettings.showHeaderLetters
         ? [{ id: "header" as const, label: "Header Letters", characters: headerLetters }]
         : []),
-      ...(font.characterSettings.showForgotten
-        ? [{ id: "forgotten" as const, label: "Eth, Thorn, Ash", characters: forgotten }]
-        : []),
       ...(font.characterSettings.showSpacebar
         ? [{ id: "spacebar" as const, label: "Space Bar", characters: [spacebar] }]
         : []),
     ],
     [
-      font.characterSettings.showForgotten,
       font.characterSettings.showHeaderLetters,
       font.characterSettings.showSpacebar,
     ],

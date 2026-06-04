@@ -1,0 +1,143 @@
+Decor, Doodles, Stickers, Ornaments, and Text Layers
+====================================================
+
+Main files
+----------
+- src\components\TextPreview.tsx
+- src\components\GlyphEditor.tsx
+- src\components\GlyphCanvas.tsx
+- src\render\glyphRenderer.ts
+- public\assets\stickers
+- assets\stickers
+
+What this category does
+-----------------------
+This category covers visual additions that are not the main body/header font text:
+- preview doodles.
+- preview stickers.
+- preview ornaments.
+- preview text layers.
+- glyph-level eye decorations.
+
+Important distinction
+---------------------
+There are two kinds of decoration:
+
+1. Glyph-level decoration:
+   - Stored inside a Glyph in FontSet.
+   - Edited in GlyphEditor/GlyphCanvas.
+   - Rendered every time that glyph is drawn.
+
+2. Preview-level decor:
+   - Stored in TextPreview preview document state.
+   - Applies only to a preview/export composition.
+   - Does not mutate the saved font.
+
+Preview doodles
+---------------
+Preview doodles are strokes drawn on the preview page.
+
+Preview doodle data:
+- id.
+- points.
+- size.
+- color.
+- tool: pen, quill, or line.
+- inkEffect.
+
+Preview doodle controls live under the Decor category. They support:
+- starting doodle mode.
+- selecting tool.
+- changing brush size.
+- choosing ink/effect.
+- clearing/deleting doodle strokes.
+
+Preview stickers
+----------------
+Preview stickers are placed on the preview page as independent image or eye-style elements.
+
+Preview sticker data can include:
+- id.
+- kind.
+- x and y position.
+- scale/size.
+- rotation.
+- expression or face settings for eye-style stickers.
+- asset path for image stickers.
+
+Current Decor split:
+- Stickers: existing eye-style stickers.
+- Ornaments: divider/decorative image assets.
+
+Ornaments
+---------
+The current public ornament assets live in:
+public\assets\stickers\strawberry-market
+
+The app treats these as style sticker assets whose kind is not "eyes". The Decor UI labels them as Ornaments.
+
+Text layers
+-----------
+Preview text layers are extra moveable text elements on top of the preview page.
+
+PreviewTextLayer includes:
+- id.
+- text.
+- x and y position.
+- size scale.
+- color.
+- font source.
+- alignment/rotation style data.
+
+Text layer font source can be:
+- the active custom font.
+- another custom font.
+- a bundled preset font.
+
+Text layers are preview-only and are drawn into the same preview/export canvas pipeline.
+
+Selection/edit mode
+-------------------
+TextPreview supports selection targets:
+- doodles.
+- stickers.
+- text.
+
+Selection actions include:
+- select item on page.
+- move selected item.
+- resize/adjust selected item.
+- delete selected item.
+- edit selected text layer.
+
+Glyph-level eye decoration
+--------------------------
+GlyphEditor/GlyphCanvas can place eye-style decorations inside a glyph. This decoration becomes part of the glyph data and is drawn by glyphRenderer.
+
+That means a decorated glyph will show the decoration in:
+- glyph editor live preview.
+- glyph grid mini preview.
+- fullscreen preview.
+- export.
+
+Asset folders
+-------------
+Public assets used by the browser:
+- public\assets\stickers
+- public\assets\fonts\presets
+- public\assets\parchment-clean-vellum.png
+
+Source asset folders also exist under:
+- assets\stickers
+
+Planning notes
+--------------
+If decor should export with a specific preview image only, build it in TextPreview.
+
+If decor should become part of the font/glyph itself, build it in GlyphEditor and store it as GlyphDecoration.
+
+For future decor category planning, keep the bottom panel uncrowded:
+- bottom row switches category.
+- top row exposes current category actions.
+- subdrawers open vertically when a category has too many actions.
+

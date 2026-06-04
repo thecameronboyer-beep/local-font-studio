@@ -188,6 +188,32 @@
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background: #111012;
   color: #f7efe0;
+  --app-accent: #82d0bc;
+  --app-accent-strong: #63ad9b;
+  --app-bg: #111012;
+  --app-bg-gradient: linear-gradient(135deg, #121112 0%, #191614 54%, #101314 100%);
+  --app-border: rgba(248, 230, 194, 0.12);
+  --app-border-strong: rgba(130, 208, 188, 0.46);
+  --app-danger: #cc665e;
+  --app-danger-soft: rgba(78, 31, 33, 0.9);
+  --app-gold: #c8a45d;
+  --app-grid: rgba(248, 230, 194, 0.035);
+  --app-heading: #f7efe0;
+  --app-input: #0f0e10;
+  --app-ink: #f7efe0;
+  --app-muted: #dacbb7;
+  --app-primary: #c8a45d;
+  --app-primary-strong: #d9b769;
+  --app-primary-text: #17110b;
+  --app-shadow: rgba(0, 0, 0, 0.32);
+  --app-shadow-strong: rgba(0, 0, 0, 0.42);
+  --app-surface: rgba(28, 26, 29, 0.9);
+  --app-surface-deep: #151314;
+  --app-surface-muted: #1c1a1d;
+  --app-surface-raised: #242124;
+  --app-surface-solid: #181618;
+  --app-text: #f7efe0;
+  --app-text-strong: #fff7e6;
   --phone-shell-width: 430px;
 }
 
@@ -530,6 +556,26 @@ h3 {
 .font-row.selected {
   border-color: #82d0bc;
   background: #1b2c2b;
+}
+
+.themed-font-row {
+  border-color: color-mix(in srgb, var(--font-row-accent, var(--app-accent)) 40%, var(--font-row-ink, var(--app-text)) 18%);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--font-row-bg, var(--app-surface-raised)) 92%, #ffffff 8%), var(--font-row-bg, var(--app-surface-raised)));
+  color: var(--font-row-ink, var(--app-text));
+}
+
+.themed-font-row.selected {
+  border-color: color-mix(in srgb, var(--font-row-accent, var(--app-accent)) 70%, var(--font-row-ink, var(--app-text)) 30%);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--font-row-bg, var(--app-surface-raised)) 82%, #ffffff 18%), var(--font-row-bg, var(--app-surface-raised)));
+}
+
+.themed-font-row .settings-font-edit-button,
+.themed-font-row .font-rename-icon-button {
+  border-color: color-mix(in srgb, var(--font-row-accent, var(--app-accent)) 42%, transparent);
+  background: color-mix(in srgb, var(--font-row-bg, var(--app-surface-solid)) 78%, var(--font-row-accent, var(--app-accent)) 22%);
+  color: var(--font-row-ink, var(--app-text));
 }
 
 .font-select-button {
@@ -4226,10 +4272,6 @@ h1 {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
-.style-texture-presets {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-}
-
 .style-sticker-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -4356,7 +4398,14 @@ h1 {
   z-index: 32;
   inset: 0 auto 0 50%;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  --phone-image-action-row-height: 48px;
+  --phone-image-category-row-height: 42px;
+  --phone-image-panel-gap: 8px;
+  --phone-image-category-gap: 6px;
+  --phone-image-edit-panel-height: calc(
+    var(--phone-image-action-row-height) + var(--phone-image-category-row-height) + var(--phone-image-panel-gap) + 16px + env(safe-area-inset-bottom)
+  );
+  grid-template-rows: auto minmax(0, 1fr) var(--phone-image-edit-panel-height);
   width: min(var(--phone-shell-width), 100vw);
   height: 100dvh;
   max-height: 100dvh;
@@ -4371,7 +4420,7 @@ h1 {
   position: static;
   z-index: 3;
   display: grid;
-  grid-template-columns: 96px minmax(0, 1fr) 96px;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   border-bottom: 1px solid rgba(248, 230, 194, 0.12);
@@ -4382,7 +4431,7 @@ h1 {
 
 .phone-image-home-button,
 .phone-image-heading-spacer {
-  width: 58px;
+  width: 52px;
   min-height: 48px;
 }
 
@@ -4393,8 +4442,21 @@ h1 {
   padding: 0;
 }
 
-.phone-image-header-apply-button {
+.phone-image-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: end;
+  gap: 6px;
   justify-self: end;
+  min-width: 0;
+}
+
+.phone-image-header-actions .compact-button {
+  min-height: 42px;
+  padding: 0 10px;
+  font-size: 0.74rem;
+  font-weight: 900;
+  white-space: nowrap;
 }
 
 .phone-image-home-button svg {
@@ -4503,12 +4565,178 @@ h1 {
 
 .phone-image-fullscreen-bottom-bar {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: end;
-  gap: 6px;
-  padding: 8px 10px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: var(--phone-image-action-row-height) var(--phone-image-category-row-height);
+  align-content: end;
+  align-items: stretch;
+  gap: var(--phone-image-panel-gap);
+  box-sizing: border-box;
+  height: var(--phone-image-edit-panel-height);
+  min-height: var(--phone-image-edit-panel-height);
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
   border-top: 1px solid rgba(248, 230, 194, 0.09);
   background: #151314;
+}
+
+.phone-image-edit-panel {
+  max-height: none;
+  overflow: visible;
+}
+
+.phone-image-action-panel {
+  grid-row: 1;
+  min-width: 0;
+  height: var(--phone-image-action-row-height);
+  min-height: var(--phone-image-action-row-height);
+  overflow: visible;
+}
+
+.phone-image-panel-stack {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  height: var(--phone-image-action-row-height);
+  min-width: 0;
+  max-height: none;
+  overflow: visible;
+}
+
+.phone-image-action-row {
+  display: flex;
+  align-items: end;
+  gap: 6px;
+  box-sizing: border-box;
+  height: var(--phone-image-action-row-height);
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: visible;
+  padding: 0;
+  scrollbar-width: thin;
+}
+
+.phone-image-action-row .phone-image-fullscreen-tools,
+.phone-image-action-row .phone-image-fullscreen-options {
+  flex: 0 0 auto;
+  min-width: 0;
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+  border-top: 0;
+  background: transparent;
+}
+
+.phone-image-action-row .font-slider-shell {
+  min-width: 0;
+}
+
+.phone-image-action-row .font-slider-button-row {
+  overflow-x: visible;
+}
+
+.phone-image-action-row .font-settings-tools,
+.phone-image-action-row .image-settings-tools,
+.phone-image-action-row .letter-settings-tools {
+  width: max-content;
+  max-width: none;
+}
+
+.phone-image-action-row .phone-image-fullscreen-options {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.phone-image-action-row .phone-image-fullscreen-options .compact-button,
+.phone-image-action-row .phone-image-fullscreen-options .check-control {
+  flex: 0 0 auto;
+  min-height: 42px;
+  white-space: nowrap;
+}
+
+.phone-image-category-row {
+  grid-row: 2;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--phone-image-category-gap);
+  box-sizing: border-box;
+  height: var(--phone-image-category-row-height);
+}
+
+.phone-image-category-row .compact-button {
+  min-height: var(--phone-image-category-row-height);
+  padding: 0 6px;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.phone-image-format-preset-row {
+  display: flex;
+  align-items: end;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.phone-image-format-preset-row .compact-button {
+  min-height: 42px;
+  padding: 0 10px;
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.canvas-panel-controls {
+  max-height: none;
+  overflow: visible;
+}
+
+.canvas-action-row {
+  overflow: visible;
+}
+
+.phone-image-canvas-format-drawer {
+  position: absolute;
+  z-index: 18;
+  left: 0;
+  bottom: calc(100% + 8px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  justify-self: start;
+  width: min(172px, 100%);
+  padding: 8px;
+  border: 1px solid rgba(248, 230, 194, 0.14);
+  border-radius: 8px;
+  background: #1c1a1d;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.32);
+}
+
+.phone-image-canvas-format-drawer .compact-button {
+  justify-content: center;
+  width: 100%;
+}
+
+.phone-image-tool-button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  min-width: 84px;
+  min-height: 42px;
+  padding: 0 10px;
+  font-size: 0.7rem;
+  font-weight: 900;
+}
+
+.phone-image-tool-button svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2.7;
+}
+
+.phone-image-tool-button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .phone-image-bottom-menu-wrap {
@@ -4532,12 +4760,171 @@ h1 {
   justify-self: end;
 }
 
+.phone-image-top-format-wrap {
+  align-self: center;
+}
+
 .phone-image-format-button {
   width: 84px;
   min-height: 42px;
   padding: 0 12px;
   font-size: 0.78rem;
   font-weight: 900;
+}
+
+.phone-image-style-wrap {
+  align-self: end;
+  justify-self: end;
+}
+
+.phone-image-right-actions {
+  display: flex;
+  align-items: end;
+  justify-content: end;
+  gap: 6px;
+  min-width: 0;
+}
+
+.phone-image-style-button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  width: 84px;
+  min-height: 42px;
+  padding: 0 10px;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.phone-image-style-button svg {
+  width: 17px;
+  height: 17px;
+  stroke-width: 2.7;
+}
+
+.phone-image-style-button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.phone-image-inline-style-drawer {
+  position: absolute;
+  z-index: 18;
+  right: 0;
+  bottom: calc(100% + 8px);
+  left: 0;
+  grid-column: 1 / -1;
+  max-height: min(42dvh, 420px);
+  overflow: auto;
+  border: 0;
+  background: transparent;
+  padding: 0 0 4px;
+  box-shadow: none;
+}
+
+.font-effects-slot {
+  flex-basis: 42px;
+}
+
+.font-effects-trigger-button {
+  color: #82d0bc;
+}
+
+.font-effects-trigger-button .font-slider-button-value {
+  min-width: 20px;
+  font-size: 0.5rem;
+}
+
+.font-effects-menu {
+  position: absolute;
+  right: 0;
+  bottom: 48px;
+  z-index: 14;
+  display: grid;
+  gap: 8px;
+  width: 152px;
+  max-width: calc(100vw - 20px);
+  padding: 10px;
+  border: 1px solid rgba(248, 230, 194, 0.15);
+  border-radius: 8px;
+  background: #1c1a1d;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.36);
+}
+
+.font-effects-menu .compact-button {
+  justify-content: center;
+  width: 100%;
+  min-height: 42px;
+}
+
+@media (max-width: 560px) {
+  .phone-image-fullscreen {
+    --phone-image-category-gap: 4px;
+  }
+
+  .phone-image-fullscreen-heading {
+    grid-template-columns: 52px minmax(0, 1fr) auto;
+    gap: 6px;
+  }
+
+  .phone-image-header-actions {
+    gap: 4px;
+  }
+
+  .phone-image-header-actions .compact-button {
+    min-height: 38px;
+    padding: 0 8px;
+    font-size: 0.68rem;
+  }
+
+  .phone-image-style-button {
+    grid-template-columns: 1fr;
+    place-items: center;
+    width: 42px;
+    padding: 0;
+  }
+
+  .phone-image-style-button span {
+    display: none;
+  }
+
+  .phone-image-tool-button {
+    min-width: 42px;
+    grid-template-columns: 1fr;
+    place-items: center;
+    padding: 0 8px;
+  }
+
+  .phone-image-tool-button span {
+    display: none;
+  }
+
+  .phone-image-category-row .compact-button {
+    font-size: 0.66rem;
+  }
+
+  .phone-image-format-trigger span {
+    display: block;
+  }
+}
+
+.phone-image-format-trigger {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  align-self: end;
+  flex: 0 0 calc((100% - (var(--phone-image-category-gap) * 4)) / 5);
+  width: calc((100% - (var(--phone-image-category-gap) * 4)) / 5);
+  height: var(--phone-image-category-row-height);
+  min-width: 0;
+  min-height: var(--phone-image-category-row-height);
+  padding: 0 6px;
+  font-size: 0.72rem;
+}
+
+.phone-image-format-trigger span {
+  display: block;
 }
 
 .phone-image-format-menu {
@@ -4553,6 +4940,11 @@ h1 {
   border-radius: 8px;
   background: #1c1a1d;
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.36);
+}
+
+.phone-image-top-format-wrap .phone-image-format-menu {
+  top: calc(100% + 8px);
+  bottom: auto;
 }
 
 .phone-image-format-menu .compact-button {
@@ -4577,6 +4969,20 @@ h1 {
   max-width: min(100%, 1080px);
   max-height: none;
   cursor: pointer;
+}
+
+.phone-image-fullscreen-canvas.drawing-enabled {
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.phone-image-fullscreen-canvas.moving-sticker-enabled {
+  cursor: grab;
+  touch-action: none;
+}
+
+.phone-image-fullscreen-canvas.moving-sticker-enabled:active {
+  cursor: grabbing;
 }
 
 .phone-image-fullscreen-surface.long-skinny-preview {
@@ -4628,7 +5034,8 @@ h1 {
   background: transparent;
 }
 
-.phone-image-fullscreen-settings:has(.font-slider-drawer) {
+.phone-image-fullscreen-settings:has(.font-slider-drawer),
+.phone-image-fullscreen-settings:has(.font-effects-menu) {
   overflow: visible;
 }
 
@@ -4832,7 +5239,7 @@ h1 {
   min-height: 42px;
 }
 
-@media (min-width: 700px) and (max-width: 1024px) and (orientation: portrait) {
+@media (min-width: 700px) and (max-width: 1024px) and (orientation: portrait) and (hover: none) and (pointer: coarse) {
   :root {
     --phone-shell-width: 820px;
   }
@@ -5619,4 +6026,495 @@ h1 {
 
 .phone-image-canvas {
   max-height: min(62dvh, 620px);
+}
+
+/* App theme skin */
+:root[data-app-theme="classic"] {
+  color-scheme: dark;
+}
+
+:root[data-app-theme="strawberryMarket"] {
+  color-scheme: light;
+}
+
+:root[data-app-theme="midnightCorrespondence"] {
+  color-scheme: light;
+}
+
+body {
+  background: var(--app-bg-gradient);
+  color: var(--app-text);
+}
+
+.app-shell {
+  color: var(--app-text);
+}
+
+.app-header,
+.panel-heading,
+.phone-image-fullscreen-heading,
+.font-profile-fullscreen-heading,
+.construction-panel-heading,
+.draw-only-topbar {
+  color: var(--app-heading);
+}
+
+h1,
+h2,
+h3,
+.panel-heading strong,
+.missing-group-heading strong,
+.glyph-progress strong,
+.font-settings-section > strong,
+.preview-summary-pill,
+.phone-image-active-settings {
+  color: var(--app-heading);
+}
+
+.eyebrow,
+.glyph-progress span,
+.font-palette-copy span,
+.font-preset-option small,
+.preview-field-label,
+.font-settings-menu label,
+.library-form label,
+.preview-tools label {
+  color: var(--app-muted);
+}
+
+.menu-toggle,
+.sidebar-menu,
+.studio-panel,
+.font-settings-menu,
+.glyph-ink-menu,
+.draw-control-drawer,
+.style-control-drawer,
+.style-select-popover,
+.style-selection-action-row,
+.style-sticker-sleepiness-panel,
+.style-sticker-redness-panel,
+.style-sticker-face-panel,
+.font-effects-menu,
+.phone-image-canvas-format-drawer,
+.phone-image-format-menu,
+.phone-image-fullscreen-menu,
+.font-preset-picker,
+.settings-create-font-form.expanded {
+  border-color: var(--app-border);
+  background: var(--app-surface-solid);
+  color: var(--app-text);
+  box-shadow: 0 20px 55px var(--app-shadow);
+}
+
+.sidebar-menu,
+.phone-image-fullscreen,
+.font-profile-fullscreen,
+.phone-image-fullscreen-heading,
+.phone-image-fullscreen-bottom-bar,
+.phone-image-fullscreen-tools,
+.phone-image-fullscreen-settings {
+  background: var(--app-surface-solid);
+}
+
+.studio-panel,
+.preview-panel,
+.phone-generator-panel,
+.metrics-panel,
+.library-panel,
+.grid-panel,
+.editor-panel,
+.font-profile-panel,
+.minimal-preview-panel {
+  background: var(--app-surface);
+  border-color: var(--app-border);
+  box-shadow: 0 20px 60px var(--app-shadow);
+}
+
+.panel-heading,
+.phone-image-fullscreen-heading,
+.phone-image-fullscreen-bottom-bar,
+.font-profile-fullscreen-heading,
+.font-settings-section,
+.spacing-controls,
+.preview-tools,
+.glyph-nav,
+.construction-panel-heading {
+  border-color: var(--app-border);
+}
+
+.sidebar-backdrop.open {
+  background: rgba(90, 64, 53, 0.28);
+}
+
+.menu-toggle {
+  background: color-mix(in srgb, var(--app-surface-solid) 92%, var(--app-primary) 8%);
+}
+
+.menu-toggle span {
+  background: var(--app-primary-strong);
+}
+
+.sidebar-heading h2 {
+  color: var(--app-heading);
+}
+
+.sidebar-dropdown summary span {
+  color: var(--app-heading);
+}
+
+.sidebar-dropdown summary::after {
+  border-color: var(--app-heading);
+}
+
+.sidebar-dropdown summary strong {
+  color: var(--app-accent-strong);
+}
+
+.sidebar-nav button,
+.sidebar-dropdown,
+.sidebar-dropdown summary,
+.sidebar-theme-option,
+.font-row,
+.font-preset-option,
+.settings-font-option,
+.missing-group-card,
+.preview-document-card,
+.glyph-cell,
+.construction-side-panel,
+.construction-center-panel,
+.construction-controls-panel,
+.style-color-card,
+.style-drawer-empty,
+.draw-background-preset,
+.draw-texture-preset,
+.draw-drawer-button,
+.draw-glass-button,
+.font-palette-option {
+  border-color: var(--app-border);
+  background: var(--app-surface-raised);
+  color: var(--app-text);
+}
+
+.sidebar-nav button:hover,
+.sidebar-nav button:focus-visible,
+.sidebar-theme-option:hover,
+.sidebar-theme-option:focus-visible,
+.font-row:hover,
+.font-row:focus-within,
+.font-preset-option:hover,
+.font-preset-option:focus-visible,
+.settings-font-option:hover,
+.settings-font-option:focus-visible,
+.glyph-cell:hover,
+.draw-drawer-button:hover,
+.draw-drawer-button:focus-visible,
+.draw-glass-button:hover,
+.draw-glass-button:focus-visible {
+  border-color: var(--app-border-strong);
+  background: var(--app-surface-muted);
+}
+
+.font-row.selected,
+.glyph-cell.selected,
+.settings-font-option.selected,
+.font-palette-option.selected,
+.preview-document-card.selected,
+.active-tool,
+.draw-glass-button.active-tool,
+.draw-drawer-button.active-tool,
+.draw-background-preset.selected,
+.draw-texture-preset.selected,
+.use-preset-toggle.active-tool {
+  border-color: var(--app-accent-strong);
+  background: color-mix(in srgb, var(--app-accent) 24%, var(--app-surface-solid));
+  color: var(--app-text-strong);
+}
+
+.glyph-cell.complete,
+.missing-complete,
+.missing-group-heading em,
+.font-select-button strong,
+.sidebar-dropdown summary strong,
+.settings-font-edit-button,
+.font-rename-icon-button,
+.font-effects-trigger-button {
+  color: var(--app-accent-strong);
+}
+
+.primary-button,
+.draw-gold-button,
+.font-slider-apply-button,
+.start-drawing-button {
+  background: linear-gradient(135deg, var(--app-gold), var(--app-primary));
+  color: var(--app-primary-text);
+  border-color: transparent;
+}
+
+.secondary-button,
+.compact-button.secondary-button {
+  border-color: var(--app-border);
+  background: var(--app-surface-raised);
+  color: var(--app-heading);
+}
+
+.secondary-button:hover:not(:disabled),
+.secondary-button:focus-visible:not(:disabled),
+.primary-button:hover:not(:disabled),
+.primary-button:focus-visible:not(:disabled) {
+  border-color: var(--app-border-strong);
+  filter: brightness(1.02);
+}
+
+.danger-button,
+.danger-action,
+.draw-drawer-button.danger-action {
+  border-color: color-mix(in srgb, var(--app-danger) 52%, transparent);
+  background: var(--app-danger-soft);
+  color: var(--app-danger);
+}
+
+input,
+textarea,
+select,
+.preview-input,
+.phone-text-input,
+.style-text-layer-input,
+.editor-live-preview input,
+.font-settings-menu input,
+.library-form input,
+.preview-document-tools input,
+.settings-font-rename-row input {
+  border-color: var(--app-border);
+  background: var(--app-input);
+  color: var(--app-text-strong);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--app-border-strong);
+  outline-color: var(--app-primary);
+}
+
+::placeholder {
+  color: color-mix(in srgb, var(--app-muted) 70%, transparent);
+}
+
+.preview-surface,
+.glyph-canvas-frame,
+.editor-live-preview-surface,
+.construction-viewer-panel,
+.phone-image-preview,
+.phone-style-preview {
+  border-color: var(--app-border);
+  background:
+    linear-gradient(var(--app-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--app-grid) 1px, transparent 1px),
+    var(--app-surface-solid);
+  background-size: 18px 18px;
+}
+
+.phone-image-fullscreen-surface,
+.fullscreen-grid-page,
+.fullscreen-draw-only,
+.fullscreen-construction-only {
+  background:
+    linear-gradient(var(--app-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--app-grid) 1px, transparent 1px),
+    color-mix(in srgb, var(--app-surface-muted) 62%, var(--app-bg));
+  background-size: 18px 18px;
+}
+
+.glyph-placeholder,
+.font-palette-copy span,
+.settings-font-select-button span,
+.preview-document-card span {
+  color: var(--app-muted);
+}
+
+.missing-progress-track {
+  background: color-mix(in srgb, var(--app-muted) 18%, transparent);
+}
+
+.missing-progress-track span {
+  background: linear-gradient(90deg, var(--app-accent), var(--app-gold), var(--app-primary));
+}
+
+.draw-icon-button,
+.settings-font-edit-button,
+.font-rename-icon-button,
+.glyph-ink-toggle,
+.draw-ink-color-button,
+.draw-ink-preset-option {
+  border-color: var(--app-border);
+  background: color-mix(in srgb, var(--app-surface-solid) 82%, var(--app-primary) 18%);
+  color: var(--app-primary-strong);
+}
+
+.draw-icon-button:hover,
+.draw-icon-button:focus-visible,
+.settings-font-edit-button:hover,
+.settings-font-edit-button:focus-visible,
+.font-rename-icon-button:hover,
+.font-rename-icon-button:focus-visible {
+  border-color: var(--app-border-strong);
+  background: color-mix(in srgb, var(--app-primary) 18%, var(--app-surface-solid));
+}
+
+.font-slider-button-value {
+  border-color: color-mix(in srgb, var(--app-accent) 35%, transparent);
+  background: color-mix(in srgb, var(--app-surface-solid) 85%, var(--app-accent) 15%);
+  color: var(--app-accent-strong);
+}
+
+.font-slider-drawer,
+.font-settings-slider-body {
+  color: var(--app-text);
+}
+
+.font-horizontal-slider {
+  accent-color: var(--app-primary);
+}
+
+.sidebar-theme-panel {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.sidebar-theme-card {
+  display: grid;
+  gap: 7px;
+  overflow: hidden;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-surface-raised);
+}
+
+.sidebar-theme-card.selected {
+  border-color: var(--app-accent-strong);
+  background: color-mix(in srgb, var(--app-accent) 12%, var(--app-surface-solid));
+}
+
+.sidebar-theme-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 64px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 9px 10px;
+  text-align: left;
+}
+
+.sidebar-theme-card.selected .sidebar-theme-option {
+  background: color-mix(in srgb, var(--app-accent) 10%, transparent);
+}
+
+.sidebar-theme-swatches {
+  display: flex;
+  overflow: hidden;
+  width: 48px;
+  height: 34px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+}
+
+.sidebar-theme-swatches span {
+  flex: 1;
+}
+
+.sidebar-theme-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.sidebar-theme-copy strong,
+.sidebar-theme-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-theme-copy strong {
+  color: var(--app-heading);
+  font-size: 0.92rem;
+}
+
+.sidebar-theme-copy span {
+  color: var(--app-muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.sidebar-theme-backgrounds {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  border-top: 1px solid var(--app-border);
+  padding: 8px;
+}
+
+.sidebar-theme-background-button {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 58px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-surface-solid);
+  color: var(--app-text);
+  padding: 7px 5px;
+  font-size: 0.62rem;
+  font-weight: 900;
+  line-height: 1.05;
+  text-align: center;
+}
+
+.sidebar-theme-background-button span {
+  display: block;
+  width: 100%;
+  height: 18px;
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+}
+
+.sidebar-theme-background-button.selected {
+  border-color: var(--app-accent-strong);
+  background: color-mix(in srgb, var(--app-accent) 18%, var(--app-surface-solid));
+  color: var(--app-heading);
+}
+
+.font-row.themed-font-row,
+.settings-font-option.themed-font-row {
+  border-color: color-mix(in srgb, var(--font-row-accent, var(--app-accent)) 42%, var(--font-row-ink, var(--app-text)) 18%);
+  background-color: var(--font-row-bg, var(--app-surface-raised));
+  background-image: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--font-row-bg, var(--app-surface-raised)) 88%, #ffffff 12%),
+    var(--font-row-bg, var(--app-surface-raised))
+  );
+  color: var(--font-row-ink, var(--app-text));
+}
+
+.font-row.themed-font-row.selected,
+.settings-font-option.themed-font-row.selected {
+  border-color: color-mix(in srgb, var(--font-row-accent, var(--app-accent)) 72%, var(--font-row-ink, var(--app-text)) 28%);
+  background-image: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--font-row-bg, var(--app-surface-raised)) 78%, #ffffff 22%),
+    var(--font-row-bg, var(--app-surface-raised))
+  );
+}
+
+.themed-font-row .settings-font-edit-button,
+.themed-font-row .font-rename-icon-button {
+  border-color: color-mix(in srgb, var(--font-row-accent, var(--app-accent)) 46%, transparent);
+  background: color-mix(in srgb, var(--font-row-bg, var(--app-surface-solid)) 76%, var(--font-row-accent, var(--app-accent)) 24%);
+  color: var(--font-row-ink, var(--app-text));
 }
