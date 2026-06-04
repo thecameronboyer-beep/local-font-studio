@@ -15,6 +15,7 @@ import {
   Eye,
   Feather,
   Hand,
+  Home,
   Minus,
   MousePointer2,
   Palette,
@@ -50,6 +51,7 @@ import type {
 } from "./GlyphConstructionCanvas";
 import SpacingControls from "./SpacingControls";
 import { getCharacterLabel, getVisibleCharacters, spacebar } from "../data/characterSets";
+import { getDefaultFontPaletteTheme, paletteBackgroundPresets, paletteInkSwatches } from "../data/palettes";
 import {
   drawGlyph,
   drawGlyphDecoration,
@@ -104,8 +106,9 @@ type FullscreenDrawer =
   | "guides"
   | "more"
   | "constructionAdd"
+  | "constructionInk"
   | "constructionPaths"
-  | "constructionGuides"
+  | "constructionSettings"
   | "constructionMore"
   | null;
 type ActiveVariation = "base" | "new" | number;
@@ -121,10 +124,15 @@ type InkPreset = {
   smoothingMode: SmoothingMode;
   tool: InkTool;
 };
+type ConstructionInkPreset = {
+  inkColor: string;
+  thickness: number;
+};
 
 const DEFAULT_HIGHLIGHT_COLOR = "#ffd6f0";
 
 const glyphInkSwatches = [
+  ...paletteInkSwatches,
   { color: "#19140f", label: "Lamp Black" },
   { color: "#ff6fb2", label: "Bubble Pink" },
   { color: "#ffd1dc", label: "Blush Pink" },
@@ -163,6 +171,7 @@ const editorBackgroundPresets: Array<{
   label: string;
   preview: string;
 }> = [
+  ...paletteBackgroundPresets,
   {
     id: "paper",
     label: "Paper",
@@ -256,6 +265,7 @@ const editorTexturePresets: Array<{
   },
 ];
 const DEFAULT_BRUSH_SIZE = 7;
+const DEFAULT_CONSTRUCTION_THICKNESS = 12;
 const DEFAULT_CANVAS_VIEW: CanvasViewOffset = { x: 0, y: 0 };
 const smoothingOptions: Array<{ id: SmoothingMode; label: string }> = [
   { id: "raw", label: "Raw" },
@@ -284,7 +294,7 @@ function getDefaultInkEffect(_font: FontSet): GlyphInkEffect {
 
 function getDefaultInkPresets(font: FontSet): Record<InkPresetId, InkPreset> {
   const defaultTool = getDefaultDrawingTool(font);
-  const primaryColor = font.theme?.inkColor ?? "#19140f";
+  const primaryColor = font.theme?.inkColor ?? getDefaultFontPaletteTheme().inkColor;
 
   return {
     primary: {
@@ -312,6 +322,29 @@ function getDefaultInkPresets(font: FontSet): Record<InkPresetId, InkPreset> {
       tool: defaultTool,
     },
   };
+}
+
+function getDefaultConstructionInkPresets(font: FontSet): Record<InkPresetId, ConstructionInkPreset> {
+  const primaryColor = font.theme?.inkColor ?? getDefaultFontPaletteTheme().inkColor;
+
+  return {
+    primary: {
+      inkColor: primaryColor,
+      thickness: DEFAULT_CONSTRUCTION_THICKNESS,
+    },
+    secondary: {
+      inkColor: primaryColor.toLowerCase() === "#e34234" ? "#19140f" : "#e34234",
+      thickness: 9,
+    },
+    tertiary: {
+      inkColor: primaryColor.toLowerCase() === "#3d6f8f" ? "#493424" : "#3d6f8f",
+      thickness: 6,
+    },
+  };
+}
+
+function getConstructionStrokeWidth(thickness: number) {
+  return Math.max(0.01, thickness / 200);
 }
 
 function getInkToolLabel(tool: InkTool) {
@@ -876,7 +909,11 @@ export default function GlyphEditor({
 }: GlyphEditorProps) {
   const [draftGlyph, setDraftGlyph] = useState<Glyph>(() => cloneGlyph(glyph));
   const [activeVariation, setActiveVariation] = useState<ActiveVariation>("base");
-  const [editorMode, setEditorMode] = useState<EditorMode>("draw");
+  const [editorMode, setEditorMode] = useState<EditorMode>(() =>
+    font.writingStyleSettings?.enabledStyles.draw === false && font.writingStyleSettings?.enabledStyles.build
+      ? "construction"
+      : "draw",
+  );
   const draftGlyphRef = useRef<Glyph>(draftGlyph);
   const pastRef = useRef<Glyph[]>([]);
   const futureRef = useRef<Glyph[]>([]);
@@ -885,10 +922,14 @@ export default function GlyphEditor({
   const [eraserMode, setEraserMode] = useState<EraserMode>("stroke");
   const [eyeExpression, setEyeExpression] = useState<NonNullable<GlyphDecoration["expression"]>>("googly");
   const [inkEffect, setInkEffect] = useState<GlyphInkEffect>(() => getDefaultInkEffect(font));
-  const [inkColor, setInkColor] = useState(font.theme?.inkColor ?? "#19140f");
+  const [inkColor, setInkColor] = useState(font.theme?.inkColor ?? getDefaultFontPaletteTheme().inkColor);
   const [highlightColor, setHighlightColor] = useState(DEFAULT_HIGHLIGHT_COLOR);
   const [inkPresets, setInkPresets] = useState<Record<InkPresetId, InkPreset>>(() => getDefaultInkPresets(font));
   const [activeInkPresetId, setActiveInkPresetId] = useState<InkPresetId>("primary");
+  const [constructionInkPresets, setConstructionInkPresets] = useState<Record<InkPresetId, ConstructionInkPreset>>(() =>
+    getDefaultConstructionInkPresets(font),
+  );
+  const [activeConstructionInkPresetId, setActiveConstructionInkPresetId] = useState<InkPresetId>("primary");
   const [referenceCharacter, setReferenceCharacter] = useState("");
   const [selectMode, setSelectMode] = useState<SelectMode>("moveStroke");
   const [selectedDecorationId, setSelectedDecorationId] = useState<string | null>(null);
@@ -928,12 +969,26 @@ export default function GlyphEditor({
   const variantCount = glyph.variants?.length ?? 0;
   const activeVariationLabel = getVariationLabel(activeVariation);
   const activeFontTheme: FontTheme = font.theme ?? {
-    accentColor: "#d3bf97",
-    backgroundColor: "#f4ead7",
-    backgroundStyle: "paper",
-    backgroundTexture: "grain",
+    ...getDefaultFontPaletteTheme(),
     inkColor: inkColor,
   };
+  const activeConstructionInkPreset = constructionInkPresets[activeConstructionInkPresetId];
+  const enabledWritingStyles = font.writingStyleSettings?.enabledStyles ?? { build: true, draw: true };
+  const canUseBuildStyle = enabledWritingStyles.build;
+  const canUseDrawStyle = enabledWritingStyles.draw || !canUseBuildStyle;
+
+  useEffect(() => {
+    if (editorMode === "draw" && !canUseDrawStyle && canUseBuildStyle) {
+      setEditorMode("construction");
+      setActiveFullscreenDrawer(null);
+      return;
+    }
+
+    if (editorMode === "construction" && !canUseBuildStyle && canUseDrawStyle) {
+      setEditorMode("draw");
+      setActiveFullscreenDrawer(null);
+    }
+  }, [canUseBuildStyle, canUseDrawStyle, editorMode]);
 
   useEffect(() => {
     const nextGlyph = cloneGlyph(glyph);
@@ -959,9 +1014,12 @@ export default function GlyphEditor({
   useEffect(() => {
     const nextPresets = getDefaultInkPresets(font);
     const primaryPreset = nextPresets.primary;
+    const nextConstructionPresets = getDefaultConstructionInkPresets(font);
 
     setInkPresets(nextPresets);
     setActiveInkPresetId("primary");
+    setConstructionInkPresets(nextConstructionPresets);
+    setActiveConstructionInkPresetId("primary");
     setLastInkTool(primaryPreset.tool);
     setTool(primaryPreset.tool);
     setBrushSize(primaryPreset.brushSize);
@@ -1146,7 +1204,67 @@ export default function GlyphEditor({
 
   function armNewConstructionPath() {
     setConstructionSelection({ pathId: null, pendingNewPath: true });
-    setConstructionTool("line");
+    setConstructionTool("point");
+  }
+
+  function getDefaultConstructionHandle(
+    anchor: ConstructionAnchorPoint,
+    target: ConstructionAnchorPoint | undefined,
+    fallbackDx: number,
+  ) {
+    if (target) {
+      return {
+        x: clamp(anchor.x + (target.x - anchor.x) * 0.35),
+        y: clamp(anchor.y + (target.y - anchor.y) * 0.35),
+      };
+    }
+
+    return {
+      x: clamp(anchor.x + fallbackDx),
+      y: anchor.y,
+    };
+  }
+
+  function makeSelectedConstructionPointCurved() {
+    const selectedPath = getSelectedConstructionPath();
+    const selectedPoint = getSelectedConstructionPoint();
+
+    if (!selectedPath || !selectedPoint) {
+      setSavedMessage("Select a point first");
+      return;
+    }
+
+    const pointIndex = selectedPath.points.findIndex((point) => point.id === selectedPoint.id);
+    const previousPoint = selectedPath.points[pointIndex - 1] ?? (selectedPath.closed ? selectedPath.points[selectedPath.points.length - 1] : undefined);
+    const nextPoint = selectedPath.points[pointIndex + 1] ?? (selectedPath.closed ? selectedPath.points[0] : undefined);
+    const inHandle = selectedPoint.inHandle ?? getDefaultConstructionHandle(selectedPoint, previousPoint, -0.12);
+    const outHandle = selectedPoint.outHandle ?? getDefaultConstructionHandle(selectedPoint, nextPoint, 0.12);
+
+    pushHistory();
+    updateDraftConstruction({
+      ...(draftGlyphRef.current.construction ?? { paths: [] }),
+      paths: (draftGlyphRef.current.construction?.paths ?? []).map((path) =>
+        path.id === selectedPath.id
+          ? {
+              ...path,
+              points: path.points.map((point) =>
+                point.id === selectedPoint.id
+                  ? {
+                      ...point,
+                      inHandle,
+                      outHandle,
+                      segmentType: "curve",
+                      type: point.type === "corner" ? "smooth" : point.type,
+                    }
+                  : point,
+              ),
+            }
+          : path,
+      ),
+    });
+    setConstructionSelection({ handle: "out", pathId: selectedPath.id, pointId: selectedPoint.id });
+    setConstructionTool("select");
+    setActiveFullscreenDrawer(null);
   }
 
   function chooseConstructionTool(nextTool: ConstructionTool) {
@@ -1167,6 +1285,10 @@ export default function GlyphEditor({
   }
 
   function openConstructionMode() {
+    if (!canUseBuildStyle) {
+      return;
+    }
+
     setEditorMode("construction");
     setActiveFullscreenDrawer(null);
   }
@@ -1252,6 +1374,34 @@ export default function GlyphEditor({
     setActiveFullscreenDrawer(null);
   }
 
+  function updateActiveConstructionInkPreset(patch: Partial<ConstructionInkPreset>) {
+    setConstructionInkPresets((current) => ({
+      ...current,
+      [activeConstructionInkPresetId]: {
+        ...current[activeConstructionInkPresetId],
+        ...patch,
+      },
+    }));
+  }
+
+  function updateConstructionInkColor(value: string) {
+    updateActiveConstructionInkPreset({ inkColor: value });
+  }
+
+  function updateConstructionInkThickness(value: number) {
+    updateActiveConstructionInkPreset({ thickness: value });
+  }
+
+  function handleConstructionInkPresetButton(presetId: InkPresetId) {
+    if (presetId === activeConstructionInkPresetId) {
+      toggleFullscreenDrawer("constructionInk");
+      return;
+    }
+
+    setActiveConstructionInkPresetId(presetId);
+    setActiveFullscreenDrawer(null);
+  }
+
   function chooseTool(nextTool: DrawingTool) {
     if (nextTool === "pen" || nextTool === "quill" || nextTool === "line") {
       setLastInkTool(nextTool);
@@ -1302,6 +1452,7 @@ export default function GlyphEditor({
       backgroundStyle: preset.id,
       backgroundTexture: activeFontTheme.backgroundTexture,
       inkColor: preset.inkColor,
+      paletteId: activeFontTheme.paletteId,
     };
 
     onUpdateFontTheme(nextTheme);
@@ -1642,6 +1793,7 @@ export default function GlyphEditor({
     const constructionPaths = draftGlyph.construction?.paths ?? [];
     const constructionPathCount = constructionPaths.length;
     const constructionPointCount = constructionPaths.reduce((total, path) => total + path.points.length, 0);
+    const selectedPointHasCurve = Boolean(selectedPoint && (selectedPoint.inHandle || selectedPoint.outHandle || selectedPoint.segmentType === "curve"));
     const selectedPathIndex = selectedPath ? constructionPaths.findIndex((path) => path.id === selectedPath.id) : -1;
     const selectedLabel = selectedPoint
       ? "Point"
@@ -1651,7 +1803,6 @@ export default function GlyphEditor({
     const toolOptions: Array<{ id: ConstructionTool; label: string }> = [
       { id: "select", label: "Select" },
       { id: "point", label: "Point" },
-      { id: "line", label: "Line" },
       { id: "delete", label: "Delete" },
     ];
 
@@ -1706,6 +1857,8 @@ export default function GlyphEditor({
             selection={constructionSelection}
             showGuides={constructionShowGuides}
             snapSettings={constructionSnapSettings}
+            strokeColor={activeConstructionInkPreset.inkColor}
+            strokeWidth={getConstructionStrokeWidth(activeConstructionInkPreset.thickness)}
             tool={constructionTool}
             onChange={updateDraftConstruction}
             onEditStart={pushHistory}
@@ -1767,6 +1920,14 @@ export default function GlyphEditor({
                 onClick={armNewConstructionPath}
               >
                 New Path
+              </button>
+              <button
+                className={`secondary-button ${selectedPointHasCurve ? "active-tool" : ""}`}
+                type="button"
+                disabled={!selectedPoint}
+                onClick={makeSelectedConstructionPointCurved}
+              >
+                Curve
               </button>
               <button
                 className="danger-button"
@@ -1841,6 +2002,7 @@ export default function GlyphEditor({
     const constructionPaths = draftGlyph.construction?.paths ?? [];
     const constructionPathCount = constructionPaths.length;
     const constructionPointCount = constructionPaths.reduce((total, path) => total + path.points.length, 0);
+    const selectedPointHasCurve = Boolean(selectedPoint && (selectedPoint.inHandle || selectedPoint.outHandle || selectedPoint.segmentType === "curve"));
     const selectedPathIndex = selectedPath ? constructionPaths.findIndex((path) => path.id === selectedPath.id) : -1;
     const selectedLabel = selectedPoint
       ? "Point"
@@ -1862,6 +2024,8 @@ export default function GlyphEditor({
             selection={constructionSelection}
             showGuides={constructionShowGuides}
             snapSettings={constructionSnapSettings}
+            strokeColor={activeConstructionInkPreset.inkColor}
+            strokeWidth={getConstructionStrokeWidth(activeConstructionInkPreset.thickness)}
             tool={constructionTool}
             onChange={updateDraftConstruction}
             onEditStart={pushHistory}
@@ -1869,52 +2033,89 @@ export default function GlyphEditor({
           />
         </div>
 
-        <div className="draw-only-topbar construction-only-topbar" aria-label="Construction navigation">
-          <button
-            className="draw-glass-button draw-icon-button draw-top-icon"
-            type="button"
-            aria-label="Exit fullscreen construction"
-            title="Exit"
-            onClick={onToggleFullScreen}
-          >
-            <X aria-hidden="true" />
-          </button>
-          <button
-            className="draw-glass-button draw-icon-button draw-top-icon"
-            type="button"
-            aria-label="Previous glyph"
-            title="Previous"
-            onClick={onPreviousCharacter}
-          >
-            <ChevronLeft aria-hidden="true" />
-          </button>
-          <div className="draw-character-pill">
-            <strong>{characterLabel}</strong>
-            <span>
-              {activeVariationLabel} - {characterIndex + 1}/{characterTotal}
-            </span>
+        <div className="construction-header-stack" aria-label="Construction header">
+          <div className="draw-only-topbar construction-only-topbar" aria-label="Construction navigation">
+            <button
+              className="draw-glass-button draw-icon-button draw-top-icon"
+              type="button"
+              aria-label="Go home"
+              title="Home"
+              onClick={() => {
+                setActiveFullscreenDrawer(null);
+                onToggleFullScreen();
+              }}
+            >
+              <Home aria-hidden="true" />
+            </button>
+            <button
+              className="draw-glass-button draw-icon-button draw-top-icon"
+              type="button"
+              aria-label="Previous glyph"
+              title="Previous"
+              onClick={onPreviousCharacter}
+            >
+              <ChevronLeft aria-hidden="true" />
+            </button>
+            <div className="draw-character-pill">
+              <strong>{characterLabel}</strong>
+              <span>
+                {activeVariationLabel} - {characterIndex + 1}/{characterTotal}
+              </span>
+            </div>
+            {canUseDrawStyle && (
+              <button
+                className="draw-glass-button draw-top-construction-button"
+                type="button"
+                aria-label="Return to drawing mode"
+                title="Draw"
+                onClick={() => {
+                  setEditorMode("draw");
+                  setActiveFullscreenDrawer(null);
+                }}
+              >
+                Draw
+              </button>
+            )}
+            <button
+              className="draw-glass-button draw-icon-button draw-top-icon"
+              type="button"
+              aria-label="Next glyph"
+              title="Next"
+              onClick={onNextCharacter}
+            >
+              <ChevronRight aria-hidden="true" />
+            </button>
           </div>
-          <button
-            className="draw-glass-button draw-top-construction-button"
-            type="button"
-            aria-label="Return to drawing mode"
-            title="Draw"
-            onClick={() => {
-              setEditorMode("draw");
-              setActiveFullscreenDrawer(null);
-            }}
-          >
-            Draw
-          </button>
-          <button
-            className="draw-glass-button draw-icon-button draw-top-icon"
-            type="button"
-            aria-label="Next glyph"
-            title="Next"
-            onClick={onNextCharacter}
-          >
-            <ChevronRight aria-hidden="true" />
-          </button>
+
+          <div className="construction-path-strip" aria-label="Construction paths">
+            {constructionPaths.map((path, index) => (
+              <button
+                key={path.id}
+                className={`construction-path-tab ${constructionSelection.pathId === path.id ? "selected" : ""}`}
+                type="button"
+                aria-pressed={constructionSelection.pathId === path.id}
+                onClick={() => {
+                  setConstructionSelection({ pathId: path.id });
+                  setActiveFullscreenDrawer(null);
+                }}
+              >
+                <span>Path {index + 1}</span>
+                <strong>{path.points.length}</strong>
+              </button>
+            ))}
+            <button
+              className={`construction-path-tab construction-path-new-tab ${constructionSelection.pendingNewPath ? "selected" : ""}`}
+              type="button"
+              aria-pressed={constructionSelection.pendingNewPath}
+              onClick={() => {
+                armNewConstructionPath();
+                setActiveFullscreenDrawer(null);
+              }}
+            >
+              <Plus aria-hidden="true" />
+              <span>New</span>
+            </button>
+          </div>
         </div>
 
         <div className="draw-fullscreen-controls construction-fullscreen-controls" ref={fullscreenControlsRef}>
@@ -1990,7 +2191,7 @@ export default function GlyphEditor({
 
           {activeFullscreenDrawer === "constructionAdd" && (
             <div id="construction-add-drawer" className="draw-control-drawer" aria-label="Construction add drawer">
-              <div className="draw-drawer-grid two" aria-label="Construction add tools">
+              <div className="draw-drawer-grid two">
                 <button
                   className={`draw-drawer-button ${constructionTool === "point" ? "active-tool" : ""}`}
                   type="button"
@@ -2000,19 +2201,71 @@ export default function GlyphEditor({
                   <span>Point</span>
                 </button>
                 <button
-                  className={`draw-drawer-button ${constructionTool === "line" ? "active-tool" : ""}`}
+                  className={`draw-drawer-button ${selectedPointHasCurve ? "active-tool" : ""}`}
                   type="button"
-                  onClick={() => chooseConstructionTool("line")}
+                  disabled={!selectedPoint}
+                  onClick={makeSelectedConstructionPointCurved}
                 >
-                  <Minus aria-hidden="true" />
-                  <span>Line</span>
+                  <Circle aria-hidden="true" />
+                  <span>Curve</span>
                 </button>
               </div>
             </div>
           )}
 
-          {activeFullscreenDrawer === "constructionGuides" && (
-            <div id="construction-guides-drawer" className="draw-control-drawer draw-guide-drawer" aria-label="Construction guides drawer">
+          {activeFullscreenDrawer === "constructionInk" && (
+            <div id="construction-ink-drawer" className="draw-control-drawer" aria-label="Construction ink drawer">
+              <div className="draw-ink-preset-selector" aria-label="Construction ink quick slots">
+                {inkPresetIds.map((presetId, index) => {
+                  const preset = constructionInkPresets[presetId];
+
+                  return (
+                    <button
+                      key={presetId}
+                      className={`draw-ink-preset-option ${activeConstructionInkPresetId === presetId ? "active-tool" : ""}`}
+                      type="button"
+                      onClick={() => setActiveConstructionInkPresetId(presetId)}
+                      aria-label={`Edit construction ink slot ${index + 1}`}
+                    >
+                      <span className="draw-ink-preset-dot" style={{ backgroundColor: preset.inkColor }} />
+                      <strong>{index + 1}</strong>
+                      <span>{preset.thickness}px</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <label className="draw-drawer-range">
+                <span>Thickness</span>
+                <input
+                  type="range"
+                  min="2"
+                  max="28"
+                  value={activeConstructionInkPreset.thickness}
+                  onChange={(event) => updateConstructionInkThickness(Number(event.target.value))}
+                />
+                <output>{activeConstructionInkPreset.thickness}px</output>
+              </label>
+
+              <div className="draw-ink-swatches" aria-label="Construction ink colors">
+                {glyphInkSwatches.map((swatch) => (
+                  <button
+                    key={swatch.label}
+                    className={`draw-ink-swatch ${activeConstructionInkPreset.inkColor === swatch.color ? "selected" : ""}`}
+                    type="button"
+                    onClick={() => updateConstructionInkColor(swatch.color)}
+                    aria-label={`Use ${swatch.label} construction ink`}
+                    title={swatch.label}
+                  >
+                    <span style={{ backgroundColor: swatch.color }} />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {activeFullscreenDrawer === "constructionSettings" && (
+            <div id="construction-settings-drawer" className="draw-control-drawer draw-guide-drawer" aria-label="Construction settings drawer">
               <div className="draw-drawer-grid three" aria-label="Construction guide actions">
                 <button
                   className={`draw-drawer-button ${constructionShowGuides ? "active-tool" : ""}`}
@@ -2106,7 +2359,7 @@ export default function GlyphEditor({
             </button>
             <button
               className={`draw-glass-button draw-icon-button ${
-                activeFullscreenDrawer === "constructionAdd" || constructionTool === "point" || constructionTool === "line" ? "active-tool" : ""
+                activeFullscreenDrawer === "constructionAdd" || constructionTool === "point" ? "active-tool" : ""
               }`}
               type="button"
               aria-label="Open construction add tools"
@@ -2127,41 +2380,46 @@ export default function GlyphEditor({
               <X aria-hidden="true" />
             </button>
             <button
-              className={`draw-glass-button draw-icon-button ${activeFullscreenDrawer === "constructionPaths" ? "active-tool" : ""}`}
+              className="draw-glass-button draw-icon-button"
               type="button"
-              aria-label="Open construction paths"
-              aria-expanded={activeFullscreenDrawer === "constructionPaths"}
-              aria-controls="construction-paths-drawer"
-              title="Paths"
-              onClick={() => toggleFullscreenDrawer("constructionPaths")}
-            >
-              <Layers aria-hidden="true" />
-            </button>
-            <button
-              className="draw-gold-button draw-icon-button draw-save-next-button"
-              type="button"
-              aria-label="Save and next glyph"
-              title="Save + next"
-              onPointerUp={handleFullscreenSaveAndNext}
-              onTouchEnd={handleFullscreenSaveAndNextTouch}
-              onClick={handleSaveAndNextClick}
-            >
-              <SkipForward aria-hidden="true" />
-            </button>
-            <div className="construction-dock-status" aria-label={`${constructionPathCount} paths, ${constructionPointCount} points`}>
-              <span>{constructionPathCount}</span>
-              <span>{constructionPointCount}</span>
+              aria-hidden="true"
+              tabIndex={-1}
+              disabled
+            />
+            <div className="draw-ink-preset-group construction-ink-preset-group" aria-label="Construction ink quick slots">
+              {inkPresetIds.map((presetId, index) => {
+                const preset = constructionInkPresets[presetId];
+                const isActivePreset = presetId === activeConstructionInkPresetId;
+
+                return (
+                  <button
+                    key={presetId}
+                    className={`draw-glass-button draw-icon-button draw-ink-color-button ${
+                      isActivePreset ? "selected-preset" : ""
+                    } ${isActivePreset && activeFullscreenDrawer === "constructionInk" ? "active-tool" : ""}`}
+                    type="button"
+                    aria-label={`${isActivePreset ? "Open" : "Use"} construction ink slot ${index + 1}`}
+                    aria-expanded={isActivePreset ? activeFullscreenDrawer === "constructionInk" : undefined}
+                    aria-controls="construction-ink-drawer"
+                    title={`Construction ink ${index + 1}: ${preset.thickness}px`}
+                    style={{ backgroundColor: preset.inkColor, color: getReadableInkButtonColor(preset.inkColor) }}
+                    onClick={() => handleConstructionInkPresetButton(presetId)}
+                  >
+                    <span>{index + 1}</span>
+                  </button>
+                );
+              })}
             </div>
             <button
-              className={`draw-glass-button draw-icon-button ${activeFullscreenDrawer === "constructionGuides" ? "active-tool" : ""}`}
+              className={`draw-glass-button draw-icon-button ${activeFullscreenDrawer === "constructionSettings" ? "active-tool" : ""}`}
               type="button"
-              aria-label="Open construction guides"
-              aria-expanded={activeFullscreenDrawer === "constructionGuides"}
-              aria-controls="construction-guides-drawer"
-              title="Guides"
-              onClick={() => toggleFullscreenDrawer("constructionGuides")}
+              aria-label="Open construction settings"
+              aria-expanded={activeFullscreenDrawer === "constructionSettings"}
+              aria-controls="construction-settings-drawer"
+              title="Settings"
+              onClick={() => toggleFullscreenDrawer("constructionSettings")}
             >
-              <Eye aria-hidden="true" />
+              <SlidersHorizontal aria-hidden="true" />
             </button>
             <button
               className="draw-glass-button draw-icon-button"
@@ -2193,6 +2451,17 @@ export default function GlyphEditor({
               onClick={() => toggleFullscreenDrawer("constructionMore")}
             >
               <Ellipsis aria-hidden="true" />
+            </button>
+            <button
+              className="draw-gold-button draw-icon-button draw-save-next-button"
+              type="button"
+              aria-label="Save and next glyph"
+              title="Save + next"
+              onPointerUp={handleFullscreenSaveAndNext}
+              onTouchEnd={handleFullscreenSaveAndNextTouch}
+              onClick={handleSaveAndNextClick}
+            >
+              <SkipForward aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -2245,49 +2514,56 @@ export default function GlyphEditor({
           }}
         />
 
-        <div className="draw-only-topbar" aria-label="Drawing navigation">
-          <button
-            className="draw-glass-button draw-icon-button draw-top-icon"
-            type="button"
-            aria-label="Exit fullscreen drawing"
-            title="Exit"
-            onClick={onToggleFullScreen}
-          >
-            <X aria-hidden="true" />
-          </button>
-          <button
-            className="draw-glass-button draw-icon-button draw-top-icon"
-            type="button"
-            aria-label="Previous glyph"
-            title="Previous"
-            onClick={onPreviousCharacter}
-          >
-            <ChevronLeft aria-hidden="true" />
-          </button>
-          <div className="draw-character-pill">
-            <strong>{characterLabel}</strong>
-            <span>
-              {activeVariationLabel} - {characterIndex + 1}/{characterTotal}
-            </span>
+        <div className="draw-header-stack" aria-label="Drawing header">
+          <div className="draw-only-topbar" aria-label="Drawing navigation">
+            <button
+              className="draw-glass-button draw-icon-button draw-top-icon"
+              type="button"
+              aria-label="Go home"
+              title="Home"
+              onClick={() => {
+                setActiveFullscreenDrawer(null);
+                onToggleFullScreen();
+              }}
+            >
+              <Home aria-hidden="true" />
+            </button>
+            <button
+              className="draw-glass-button draw-icon-button draw-top-icon"
+              type="button"
+              aria-label="Previous glyph"
+              title="Previous"
+              onClick={onPreviousCharacter}
+            >
+              <ChevronLeft aria-hidden="true" />
+            </button>
+            <div className="draw-character-pill">
+              <strong>{characterLabel}</strong>
+              <span>
+                {activeVariationLabel} - {characterIndex + 1}/{characterTotal}
+              </span>
+            </div>
+            {canUseBuildStyle && (
+              <button
+                className="draw-glass-button draw-top-construction-button"
+                type="button"
+                aria-label="Open letter construction mode"
+                title="Construction"
+                onClick={openConstructionMode}
+              >
+                Build
+              </button>
+            )}
+            <button
+              className="draw-glass-button draw-icon-button draw-top-icon"
+              type="button"
+              aria-label="Next glyph"
+              title="Next"
+              onClick={onNextCharacter}
+            >
+              <ChevronRight aria-hidden="true" />
+            </button>
           </div>
-          <button
-            className="draw-glass-button draw-top-construction-button"
-            type="button"
-            aria-label="Open letter construction mode"
-            title="Construction"
-            onClick={openConstructionMode}
-          >
-            Build
-          </button>
-          <button
-            className="draw-glass-button draw-icon-button draw-top-icon"
-            type="button"
-            aria-label="Next glyph"
-            title="Next"
-            onClick={onNextCharacter}
-          >
-            <ChevronRight aria-hidden="true" />
-          </button>
         </div>
 
         <div className="draw-fullscreen-controls" ref={fullscreenControlsRef}>
@@ -2767,17 +3043,6 @@ export default function GlyphEditor({
             >
               <Hand aria-hidden="true" />
             </button>
-            <button
-              className="draw-gold-button draw-icon-button draw-save-next-button"
-              type="button"
-              aria-label="Save and next glyph"
-              title="Save + next"
-              onPointerUp={handleFullscreenSaveAndNext}
-              onTouchEnd={handleFullscreenSaveAndNextTouch}
-              onClick={handleSaveAndNextClick}
-            >
-              <SkipForward aria-hidden="true" />
-            </button>
             <div className="draw-ink-preset-group" aria-label="Ink quick slots">
               {inkPresetIds.map((presetId, index) => {
                 const preset = inkPresets[presetId];
@@ -2845,6 +3110,17 @@ export default function GlyphEditor({
               onClick={() => toggleFullscreenDrawer("more")}
             >
               <Ellipsis aria-hidden="true" />
+            </button>
+            <button
+              className="draw-gold-button draw-icon-button draw-save-next-button"
+              type="button"
+              aria-label="Save and next glyph"
+              title="Save + next"
+              onPointerUp={handleFullscreenSaveAndNext}
+              onTouchEnd={handleFullscreenSaveAndNextTouch}
+              onClick={handleSaveAndNextClick}
+            >
+              <SkipForward aria-hidden="true" />
             </button>
           </div>
           ) : (
@@ -2922,13 +3198,15 @@ export default function GlyphEditor({
           <div className="glyph-pill">
             {draftGlyph.strokes.length} strokes / {draftGlyph.construction?.paths.length ?? 0} paths
           </div>
-          <button
-            className={`secondary-button compact-button ${editorMode === "construction" ? "active-tool" : ""}`}
-            type="button"
-            onClick={openConstructionMode}
-          >
-            Construction
-          </button>
+          {canUseBuildStyle && (
+            <button
+              className={`secondary-button compact-button ${editorMode === "construction" ? "active-tool" : ""}`}
+              type="button"
+              onClick={openConstructionMode}
+            >
+              Construction
+            </button>
+          )}
           <button className="secondary-button compact-button" type="button" onClick={onToggleFullScreen}>
             {isFullScreen ? "Exit" : "Full screen"}
           </button>
@@ -2952,22 +3230,24 @@ export default function GlyphEditor({
 
       {renderVariationControls()}
 
-      <div className="editor-mode-switch" role="group" aria-label="Editor mode">
-        <button
-          className={`secondary-button ${editorMode === "draw" ? "active-tool" : ""}`}
-          type="button"
-          onClick={() => setEditorMode("draw")}
-        >
-          Draw
-        </button>
-        <button
-          className={`secondary-button ${editorMode === "construction" ? "active-tool" : ""}`}
-          type="button"
-          onClick={() => setEditorMode("construction")}
-        >
-          Letter Construction
-        </button>
-      </div>
+      {canUseDrawStyle && canUseBuildStyle && (
+        <div className="editor-mode-switch" role="group" aria-label="Editor mode">
+          <button
+            className={`secondary-button ${editorMode === "draw" ? "active-tool" : ""}`}
+            type="button"
+            onClick={() => setEditorMode("draw")}
+          >
+            Draw
+          </button>
+          <button
+            className={`secondary-button ${editorMode === "construction" ? "active-tool" : ""}`}
+            type="button"
+            onClick={() => setEditorMode("construction")}
+          >
+            Build
+          </button>
+        </div>
+      )}
 
       {editorMode === "construction" ? (
         renderConstructionMode()

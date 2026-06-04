@@ -1,21 +1,33 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
+  AlignHorizontalSpaceAround,
+  AlignVerticalSpaceAround,
+  ArrowLeftToLine,
+  ArrowRightToLine,
+  Baseline,
   Brush,
   Droplets,
   Feather,
   Hand,
+  Home,
   Image as ImageIcon,
   Minus,
   Moon,
   MousePointer2,
+  MoveHorizontal,
+  MoveVertical,
   PenLine,
   Pipette,
   Plus,
+  Ruler,
+  RotateCcw,
+  Scaling,
   Sparkles,
   Sticker,
   SlidersHorizontal,
+  Space,
   Trash2,
   Type as TypeIcon,
 } from "lucide-react";
@@ -23,14 +35,29 @@ import {
   canUseHeaderLetter,
   getCharacterLabel,
   getHeaderLetter,
-  getHeaderSourceCharacter,
   isHeaderLetter,
   spacebar,
 } from "../data/characterSets";
+import {
+  getDefaultFontPaletteTheme,
+  paletteBackgroundPresets,
+  paletteInkSwatches,
+} from "../data/palettes";
+import {
+  fontPresets,
+  getFontPresetById,
+  getFontPresetCanvasFont,
+  getFontPresetFromOptionId,
+  getFontPresetOptionId,
+} from "../data/fontPresets";
+import type { FontPreset } from "../data/fontPresets";
 import type {
+  AppliedLetterMetricOverrides,
   BackgroundStyle,
   BackgroundTexture,
   FontGuideSettings,
+  FontHomeSectionId,
+  FontSpacingApplyDraft,
   FontSet,
   FontShapeSettings,
   Glyph,
@@ -54,6 +81,7 @@ import {
   hasDrawnGlyph,
   selectPreviewGlyph,
 } from "../render/glyphRenderer";
+import { defaultGlyphMetrics, defaultSpacebarMetrics } from "../storage/fontStorage";
 import { isNativeFilePlatform, saveNativeFileToDocuments, shareNativeFile } from "../utils/nativeFiles";
 
 type SavedPreviewImage = {
@@ -69,9 +97,12 @@ type TextPreviewProps = {
   fonts: FontSet[];
   onRecordExport?: (message: string) => void;
   onSaveImage?: (image: SavedPreviewImage) => boolean;
+  onApplyFontSpacing: (settings: FontSpacingApplyDraft) => void;
+  onOpenCharacterEditor: (character: string) => void;
   onSelectCharacter: (character: string) => void;
   headerPreviewText: string;
   onHeaderPreviewTextChange: (text: string) => void;
+  visibleHomeSections: Record<FontHomeSectionId, boolean>;
   previewText: string;
   onPreviewTextChange: (text: string) => void;
   selectedGlyph: Glyph;
@@ -82,24 +113,65 @@ type ExportPresetId = "phone" | "social" | "transparent";
 type FontMetricKey = "baselineOffset" | "leftBearing" | "rightBearing" | "width" | "xAdvance";
 type FontGlyphMetricKey = Exclude<FontMetricKey, "width">;
 type LetterMetricKey = "baselineOffset" | "height" | "leftBearing" | "rightBearing" | "width" | "xAdvance";
-type LetterMetricOverrides = Partial<Pick<Glyph, LetterMetricKey>>;
-type ImageMetricKey = "canvasHeight" | "canvasWidth" | "letterSpacing" | "lineSpacing" | "pagePadding";
+type LetterSettingsSliderId = LetterMetricKey | "size";
+type LetterMetricOverrides = AppliedLetterMetricOverrides;
+type ImageSettingsSliderId = "canvasHeight" | "canvasWidth" | "pagePadding" | "size";
 type ManuscriptMetricKey = "manuscriptAge" | "manuscriptEdges" | "manuscriptFibers" | "manuscriptInkSoak" | "manuscriptRuling" | "manuscriptStains";
-type SettingsPanel = "font" | "headerLetter" | "image" | "letter" | "position";
+type SettingsPanel = "font" | "image" | "letter" | "position";
+type FontSettingsSliderId = "height" | "letterSpacing" | "rowSpacing" | "size" | "spacebar" | "width";
+type FontSettingsSliderConfig = {
+  id: FontSettingsSliderId;
+  label: string;
+  max: number;
+  min: number;
+  precision: number;
+  step: number;
+  value: number;
+};
+type LetterSettingsSliderConfig = {
+  id: LetterSettingsSliderId;
+  label: string;
+  max: number;
+  min: number;
+  precision: number;
+  step: number;
+  value: number;
+};
+type ImageSettingsSliderConfig = {
+  id: ImageSettingsSliderId;
+  label: string;
+  max: number;
+  min: number;
+  precision: number;
+  step: number;
+  value: number;
+};
 type StyleDrawer = "doodle" | "page" | "select" | "stickers" | "text" | null;
 type StyleDoodleSmoothing = "gentle" | "raw" | "strong";
 type StyleDoodleTool = "line" | "pen" | "quill";
 type StyleSelectTarget = "doodles" | "stickers" | "text";
 type TextAlignment = "left" | "center" | "right";
 type EyeExpression = NonNullable<GlyphDecoration["expression"]>;
+type PreviewStickerKind = "eyes" | "strawberry-vine-divider" | "lace-ribbon-divider" | "botanical-branch-divider";
 
 const settingsPanelLabels: Record<SettingsPanel, string> = {
   font: "Font settings",
-  headerLetter: "Header Letter settings",
   image: "Image settings",
-  letter: "Letter settings",
+  letter: "Letter Tuning",
   position: "Position settings",
 };
+
+const fontSettingsSliderOrder: FontSettingsSliderId[] = ["size", "width", "height", "letterSpacing", "rowSpacing", "spacebar"];
+const imageSettingsSliderOrder: ImageSettingsSliderId[] = ["size", "canvasWidth", "canvasHeight", "pagePadding"];
+const letterSettingsSliderOrder: LetterSettingsSliderId[] = [
+  "size",
+  "width",
+  "height",
+  "baselineOffset",
+  "leftBearing",
+  "rightBearing",
+  "xAdvance",
+];
 
 type PreviewImageSettings = PreviewSettings & {
   accentColor: string;
@@ -158,6 +230,7 @@ type PreviewSticker = {
   expression: EyeExpression;
   faceMood?: number;
   id: string;
+  kind?: PreviewStickerKind;
   lookAt?: PreviewDoodlePoint;
   redness?: number;
   sleepiness?: number;
@@ -167,7 +240,7 @@ type PreviewSticker = {
 };
 
 type StyleStickerDrag = {
-  expression: EyeExpression;
+  asset: StyleStickerAsset;
   isDragging: boolean;
   pointerId: number;
   startX: number;
@@ -177,9 +250,20 @@ type StyleStickerDrag = {
 };
 
 type StyleStickerDragPreview = {
-  expression: EyeExpression;
+  asset: StyleStickerAsset;
   x: number;
   y: number;
+};
+
+type StyleStickerAsset = {
+  aspectRatio?: number;
+  defaultSize?: number;
+  id: PreviewStickerKind;
+  kind: PreviewStickerKind;
+  label: string;
+  maxSize?: number;
+  minSize?: number;
+  src?: string;
 };
 
 type PreviewTextLayer = {
@@ -188,6 +272,10 @@ type PreviewTextLayer = {
   sizeScale: number;
   text: string;
 };
+
+type PreviewTextFontSource =
+  | { font: FontSet; kind: "custom" }
+  | { kind: "preset"; preset: FontPreset };
 
 type PreviewTextLayerHitTarget = {
   height: number;
@@ -259,18 +347,20 @@ const exportPresets: Array<{
   },
 ];
 
+const defaultPreviewTheme = getDefaultFontPaletteTheme();
+
 const defaultPhoneImageSettings: PreviewImageSettings = {
-  accentColor: "#d3bf97",
+  accentColor: defaultPreviewTheme.accentColor,
   alignment: "left",
   autoFit: true,
-  backgroundColor: "#f4ead7",
-  backgroundStyle: "paper",
-  backgroundTexture: "grain",
+  backgroundColor: defaultPreviewTheme.backgroundColor,
+  backgroundStyle: defaultPreviewTheme.backgroundStyle,
+  backgroundTexture: defaultPreviewTheme.backgroundTexture,
   canvasHeight: 1920,
   canvasWidth: 1080,
   exportPreset: "phone",
   fontSize: 118,
-  inkColor: "#17110b",
+  inkColor: defaultPreviewTheme.inkColor,
   letterSpacing: 0,
   lineSpacing: 1.18,
   manuscriptAge: 0.18,
@@ -322,6 +412,7 @@ const previewPresets = [
 ];
 
 const inkSwatches = [
+  ...paletteInkSwatches,
   { color: "#19140f", label: "Lamp Black" },
   { color: "#d93434", label: "Modern Red" },
   { color: "#f0a934", label: "Modern Amber" },
@@ -375,6 +466,40 @@ const texturePresets: Array<{
 ];
 
 const previewStickerExpression: EyeExpression = "googly";
+const STRAWBERRY_MARKET_STICKER_PATH = "/assets/stickers/strawberry-market";
+const styleStickerAssets: StyleStickerAsset[] = [
+  { id: "eyes", kind: "eyes", label: "Eyes" },
+  {
+    aspectRatio: 3,
+    defaultSize: 0.46,
+    id: "strawberry-vine-divider",
+    kind: "strawberry-vine-divider",
+    label: "Strawberry vine",
+    maxSize: 0.92,
+    minSize: 0.16,
+    src: `${STRAWBERRY_MARKET_STICKER_PATH}/strawberry-vine-divider-transparent.png`,
+  },
+  {
+    aspectRatio: 3,
+    defaultSize: 0.46,
+    id: "lace-ribbon-divider",
+    kind: "lace-ribbon-divider",
+    label: "Lace ribbon",
+    maxSize: 0.92,
+    minSize: 0.16,
+    src: `${STRAWBERRY_MARKET_STICKER_PATH}/lace-ribbon-divider-transparent.png`,
+  },
+  {
+    aspectRatio: 3,
+    defaultSize: 0.46,
+    id: "botanical-branch-divider",
+    kind: "botanical-branch-divider",
+    label: "Botanical branch",
+    maxSize: 0.92,
+    minSize: 0.16,
+    src: `${STRAWBERRY_MARKET_STICKER_PATH}/botanical-branch-divider-transparent.png`,
+  },
+];
 const styleDoodleSmoothingOptions: Array<{ id: StyleDoodleSmoothing; label: string }> = [
   { id: "raw", label: "Raw" },
   { id: "gentle", label: "Gentle" },
@@ -428,6 +553,14 @@ function PreviewEyeStickerPreview({ expression }: { expression: EyeExpression })
   return <canvas ref={canvasRef} className="eye-style-preview" aria-hidden="true" />;
 }
 
+function isEyePreviewSticker(sticker: PreviewSticker | null | undefined) {
+  return !sticker?.kind || sticker.kind === "eyes";
+}
+
+function getStyleStickerAsset(kind: PreviewStickerKind | undefined) {
+  return styleStickerAssets.find((asset) => asset.kind === (kind ?? "eyes")) ?? styleStickerAssets[0];
+}
+
 const backgroundPresets: Array<{
   accentColor: string;
   backgroundColor: string;
@@ -436,6 +569,7 @@ const backgroundPresets: Array<{
   label: string;
   preview: string;
 }> = [
+  ...paletteBackgroundPresets,
   {
     id: "paper",
     label: "Paper",
@@ -620,16 +754,21 @@ function savePreviewDocuments(documents: PreviewDocument[]) {
 export default function TextPreview({
   font,
   fonts,
+  onApplyFontSpacing,
+  onOpenCharacterEditor,
   onRecordExport,
   onSaveImage,
   onSelectCharacter,
   headerPreviewText,
   onHeaderPreviewTextChange,
+  visibleHomeSections,
   previewText,
   onPreviewTextChange,
   selectedGlyph,
   spacebarGlyph,
 }: TextPreviewProps) {
+  const showExportControls = visibleHomeSections.exportControls;
+  const showPreviewText = visibleHomeSections.previewText;
   const imageCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const previewPointerStartRef = useRef<{ id: number; x: number; y: number } | null>(null);
   const previewDoodlesRef = useRef<PreviewDoodleStroke[]>([]);
@@ -641,18 +780,24 @@ export default function TextPreview({
   const styleStickerDragRef = useRef<StyleStickerDrag | null>(null);
   const styleMovingStickerRef = useRef<string | null>(null);
   const styleCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const styleStickerImagesRef = useRef<Partial<Record<PreviewStickerKind, HTMLImageElement>>>({});
   const manuscriptParchmentRef = useRef<HTMLImageElement | null>(null);
   const viewerCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [activeDocumentId, setActiveDocumentId] = useState<string | null>(null);
   const [activeSettingsPanel, setActiveSettingsPanel] = useState<SettingsPanel>("image");
+  const [activeFontSettingsSliderId, setActiveFontSettingsSliderId] = useState<FontSettingsSliderId | null>(null);
+  const [activeImageSettingsSliderId, setActiveImageSettingsSliderId] = useState<ImageSettingsSliderId | null>(null);
+  const [activeLetterSettingsSliderId, setActiveLetterSettingsSliderId] = useState<LetterSettingsSliderId | null>(null);
   const [activeStyleDrawer, setActiveStyleDrawer] = useState<StyleDrawer>(null);
   const [documentName, setDocumentName] = useState("Untitled preview");
   const [fullscreenSettingsMenuOpen, setFullscreenSettingsMenuOpen] = useState(false);
   const [imageViewerOpen, setImageViewerOpen] = useState(false);
+  const [fontPresetsReady, setFontPresetsReady] = useState(false);
   const [manuscriptParchmentReady, setManuscriptParchmentReady] = useState(false);
   const [previewMenuRoot, setPreviewMenuRoot] = useState<HTMLElement | null>(null);
   const [previewDoodles, setPreviewDoodles] = useState<PreviewDoodleStroke[]>([]);
   const [previewStickers, setPreviewStickers] = useState<PreviewSticker[]>([]);
+  const [styleStickerImagesReady, setStyleStickerImagesReady] = useState(0);
   const [previewTextLayers, setPreviewTextLayers] = useState<PreviewTextLayer[]>([]);
   const [savedDocuments, setSavedDocuments] = useState<PreviewDocument[]>(() => loadPreviewDocuments());
   const [selectedPreviewDoodleId, setSelectedPreviewDoodleId] = useState<string | null>(null);
@@ -727,27 +872,38 @@ export default function TextPreview({
       : [previewFont, ...fonts];
   }, [font, fonts, previewFont]);
 
+  const availableTextFontOptions = useMemo(
+    () => [
+      ...availableFonts.map((item) => ({
+        id: item.id,
+        kind: "custom" as const,
+        label: item.name,
+      })),
+      ...fontPresets.map((preset) => ({
+        id: getFontPresetOptionId(preset.id),
+        kind: "preset" as const,
+        label: preset.label,
+      })),
+    ],
+    [availableFonts],
+  );
+  const activeFontPreset = useMemo(
+    () => getFontPresetById(previewFont.presetFontId),
+    [previewFont.presetFontId],
+  );
+
   const fontGlyphs = useMemo(
     () => Object.values(previewFont.glyphs).filter((glyph) => glyph.character !== spacebar),
     [previewFont.glyphs],
   );
-  const selectedSourceCharacter = getHeaderSourceCharacter(selectedGlyph.character);
-  const headerSettingsCharacter = canUseHeaderLetter(selectedSourceCharacter)
-    ? getHeaderLetter(selectedSourceCharacter)
-    : getHeaderLetter("A");
-  const letterSettingsCharacter = isHeaderLetter(selectedGlyph.character)
-    ? selectedSourceCharacter
-    : selectedGlyph.character;
-  const settingsGlyphCharacter = activeSettingsPanel === "headerLetter"
-    ? headerSettingsCharacter
-    : letterSettingsCharacter;
+  const settingsGlyphCharacter = selectedGlyph.character;
   const settingsGlyph = previewFont.glyphs[settingsGlyphCharacter] ?? {
     ...selectedGlyph,
     character: settingsGlyphCharacter,
   };
   const settingsGlyphIsHeader = isHeaderLetter(settingsGlyph.character);
   const settingsGlyphLabel = getCharacterLabel(settingsGlyph.character);
-  const settingsGlyphPanelLabel = settingsGlyphIsHeader ? "Header Letter settings" : "Letter settings";
+  const settingsGlyphPanelLabel = "Letter Tuning";
   const previewSpacebarGlyph = previewFont.glyphs[spacebar] ?? spacebarGlyph;
   const selectedPreviewDoodle = selectedPreviewDoodleId
     ? previewDoodles.find((stroke) => stroke.id === selectedPreviewDoodleId) ?? null
@@ -758,16 +914,19 @@ export default function TextPreview({
   const selectedPreviewTextLayer = selectedPreviewTextLayerId
     ? previewTextLayers.find((layer) => layer.id === selectedPreviewTextLayerId) ?? null
     : null;
-  const headerEditorSourceCharacter = (() => {
-    const firstTypedHeaderLetter = headerPreviewText.match(/[A-Za-z]/)?.[0];
-    const preferredCharacter = firstTypedHeaderLetter ?? selectedSourceCharacter;
-    const uppercaseCharacter = preferredCharacter.toUpperCase();
-
-    return canUseHeaderLetter(uppercaseCharacter) ? uppercaseCharacter : "A";
-  })();
-  const headerEditorCharacter = getHeaderLetter(headerEditorSourceCharacter);
-  const headerEditorLabel = getCharacterLabel(headerEditorCharacter);
-
+  const hasPendingFontSpacingChanges = useMemo(
+    () =>
+      Object.keys(previewFontMetricOverrides).length > 0 ||
+      Object.values(previewGlyphMetricOverrides).some((overrides) => Object.keys(overrides).length > 0) ||
+      previewGuideSettings !== null ||
+      previewShapeSettings !== null,
+    [
+      previewFontMetricOverrides,
+      previewGlyphMetricOverrides,
+      previewGuideSettings,
+      previewShapeSettings,
+    ],
+  );
   useEffect(() => {
     setPreviewMenuRoot(document.getElementById("preview-text-menu-slot"));
   }, []);
@@ -786,9 +945,58 @@ export default function TextPreview({
   }, []);
 
   useEffect(() => {
+    const imageStickerAssets = styleStickerAssets.filter((asset) => asset.src);
+    let cancelled = false;
+
+    imageStickerAssets.forEach((asset) => {
+      if (!asset.src) {
+        return;
+      }
+
+      const image = new Image();
+
+      image.onload = () => {
+        if (cancelled) {
+          return;
+        }
+
+        styleStickerImagesRef.current[asset.kind] = image;
+        setStyleStickerImagesReady((current) => current + 1);
+      };
+      image.src = asset.src;
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === "undefined" || !document.fonts) {
+      setFontPresetsReady(true);
+      return;
+    }
+
+    let cancelled = false;
+
+    Promise.all(fontPresets.map((preset) => document.fonts.load(getFontPresetCanvasFont(preset, 48))))
+      .finally(() => {
+        if (!cancelled) {
+          setFontPresetsReady(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     renderPhoneImage();
   }, [
+    activeSettingsPanel,
     font,
+    fontPresetsReady,
     headerPreviewText,
     imageSettings,
     imageViewerOpen,
@@ -802,6 +1010,7 @@ export default function TextPreview({
     selectedPreviewStickerId,
     selectedPreviewTextLayerId,
     styleEditorOpen,
+    styleStickerImagesReady,
   ]);
 
   useEffect(() => {
@@ -813,6 +1022,9 @@ export default function TextPreview({
   }, [previewStickers]);
 
   useEffect(() => {
+    setActiveFontSettingsSliderId(null);
+    setActiveImageSettingsSliderId(null);
+    setActiveLetterSettingsSliderId(null);
     setPreviewFontMetricOverrides({});
     setPreviewGlyphMetricOverrides({});
     setPreviewGuideSettings(null);
@@ -824,6 +1036,25 @@ export default function TextPreview({
       })),
     );
   }, [font.id]);
+
+  useEffect(() => {
+    if (!activeFontSettingsSliderId && !activeImageSettingsSliderId && !activeLetterSettingsSliderId) {
+      return undefined;
+    }
+
+    function closeSettingsSliderOnOutsidePointer(event: PointerEvent) {
+      if (event.target instanceof Element && event.target.closest(".font-slider-shell, .image-slider-shell, .letter-slider-shell")) {
+        return;
+      }
+
+      setActiveFontSettingsSliderId(null);
+      setActiveImageSettingsSliderId(null);
+      setActiveLetterSettingsSliderId(null);
+    }
+
+    document.addEventListener("pointerdown", closeSettingsSliderOnOutsidePointer);
+    return () => document.removeEventListener("pointerdown", closeSettingsSliderOnOutsidePointer);
+  }, [activeFontSettingsSliderId, activeImageSettingsSliderId, activeLetterSettingsSliderId]);
 
   useEffect(() => {
     return () => {
@@ -861,6 +1092,21 @@ export default function TextPreview({
     return useHeaderLetters && canUseHeaderLetter(character) ? getHeaderLetter(character) : character;
   }
 
+  function getMetricGlyphForCharacter(fontForText: FontSet, character: string, useHeaderLetters = false) {
+    const glyphKey = getPreviewGlyphKey(character, useHeaderLetters);
+    const exactGlyph = fontForText.glyphs[glyphKey];
+
+    if (exactGlyph) {
+      return exactGlyph;
+    }
+
+    const caseFallback = glyphKey === glyphKey.toLowerCase()
+      ? glyphKey.toUpperCase()
+      : glyphKey.toLowerCase();
+
+    return caseFallback !== glyphKey ? fontForText.glyphs[caseFallback] : undefined;
+  }
+
   function measureCharacter(
     ctx: CanvasRenderingContext2D,
     character: string,
@@ -872,36 +1118,48 @@ export default function TextPreview({
       return getSpacebarAdvance(fontForText.glyphs[spacebar], fontSize);
     }
 
-    const glyph = findPreviewGlyph(fontForText.glyphs, getPreviewGlyphKey(character, useHeaderLetters));
+    const glyphKey = getPreviewGlyphKey(character, useHeaderLetters);
+    const glyph = findPreviewGlyph(fontForText.glyphs, glyphKey);
 
     if (glyph) {
       return getGlyphAdvance(glyph, fontSize, getFontWidthScale(fontForText));
     }
 
-    return ctx.measureText(character).width;
+    const metricGlyph = getMetricGlyphForCharacter(fontForText, character, useHeaderLetters);
+
+    if (metricGlyph) {
+      return getGlyphAdvance(metricGlyph, fontSize, getFontWidthScale(fontForText));
+    }
+
+    return ctx.measureText(character).width * getFontWidthScale(fontForText);
   }
 
-  function getTrackedCharacterAdvance(characterWidth: number, renderSettings: Pick<PreviewImageSettings, "letterSpacing">) {
-    return Math.max(1, characterWidth + renderSettings.letterSpacing);
+  function getFontLetterSpacing(fontForText: FontSet, fontSize: number) {
+    return fontSize * (fontForText.shapeSettings?.letterSpacing ?? 0);
+  }
+
+  function getTrackedCharacterAdvance(characterWidth: number, letterSpacing: number) {
+    return Math.max(1, characterWidth + letterSpacing);
   }
 
   function measureTextRun(
     ctx: CanvasRenderingContext2D,
     text: string,
     fontSize: number,
-    letterSpacing = imageSettings.letterSpacing,
     useHeaderLetters = false,
     fontForText: FontSet = previewFont,
   ) {
     const characters = [...text];
+    const letterSpacing = getFontLetterSpacing(fontForText, fontSize);
 
-    return characters.reduce(
-      (width, character, index) =>
-        width +
-        measureCharacter(ctx, character, fontSize, useHeaderLetters, fontForText) +
-        (index < characters.length - 1 ? letterSpacing : 0),
-      0,
-    );
+    return characters.reduce((width, character, index) => {
+      const characterWidth = measureCharacter(ctx, character, fontSize, useHeaderLetters, fontForText);
+      const advance = index < characters.length - 1
+        ? getTrackedCharacterAdvance(characterWidth, letterSpacing)
+        : characterWidth;
+
+      return width + advance;
+    }, 0);
   }
 
   function buildWordWrappedLines(
@@ -909,7 +1167,6 @@ export default function TextPreview({
     text: string,
     maxLineWidth: number,
     fontSize: number,
-    letterSpacing = imageSettings.letterSpacing,
     useHeaderLetters = false,
     fontForText: FontSet = previewFont,
   ) {
@@ -932,18 +1189,18 @@ export default function TextPreview({
           continue;
         }
 
-        const tokenWidth = measureTextRun(ctx, token, fontSize, letterSpacing, useHeaderLetters, fontForText);
+        const tokenWidth = measureTextRun(ctx, token, fontSize, useHeaderLetters, fontForText);
 
         if (line.length > 0 && lineWidth + tokenWidth > maxLineWidth) {
           lines.push(line.trimEnd());
           line = token.replace(/^\s+/, "");
-          lineWidth = measureTextRun(ctx, line, fontSize, letterSpacing, useHeaderLetters, fontForText);
+          lineWidth = measureTextRun(ctx, line, fontSize, useHeaderLetters, fontForText);
         } else {
           line += token;
           lineWidth += tokenWidth;
         }
 
-        lineWidth = Math.max(lineWidth, measureTextRun(ctx, line, fontSize, letterSpacing, useHeaderLetters, fontForText));
+        lineWidth = Math.max(lineWidth, measureTextRun(ctx, line, fontSize, useHeaderLetters, fontForText));
       }
 
       lines.push(line.trimEnd());
@@ -957,12 +1214,12 @@ export default function TextPreview({
     text: string,
     maxLineWidth: number,
     fontSize: number,
-    letterSpacing = imageSettings.letterSpacing,
     useHeaderLetters = false,
     fontForText: FontSet = previewFont,
   ) {
     const paragraphs = text.split("\n");
     const lines: string[] = [];
+    const letterSpacing = getFontLetterSpacing(fontForText, fontSize);
 
     for (const paragraph of paragraphs) {
       let line = "";
@@ -976,13 +1233,13 @@ export default function TextPreview({
       for (const character of paragraph) {
         const characterWidth = measureCharacter(ctx, character, fontSize, useHeaderLetters, fontForText);
         const trackedWidth = line.length > 0
-          ? getTrackedCharacterAdvance(characterWidth, { letterSpacing })
+          ? getTrackedCharacterAdvance(characterWidth, letterSpacing)
           : characterWidth;
 
         if (line.length > 0 && lineWidth + trackedWidth > maxLineWidth) {
           lines.push(line);
           line = character.trimStart();
-          lineWidth = measureTextRun(ctx, line, fontSize, letterSpacing, useHeaderLetters, fontForText);
+          lineWidth = measureTextRun(ctx, line, fontSize, useHeaderLetters, fontForText);
           continue;
         }
 
@@ -1004,14 +1261,7 @@ export default function TextPreview({
     useHeaderLetters = false,
     fontForText: FontSet = previewFont,
   ) {
-    const lineWidth = measureTextRun(
-      ctx,
-      line,
-      fontSize,
-      renderSettings.letterSpacing,
-      useHeaderLetters,
-      fontForText,
-    );
+    const lineWidth = measureTextRun(ctx, line, fontSize, useHeaderLetters, fontForText);
 
     if (renderSettings.alignment === "center") {
       return Math.max(renderSettings.pagePadding, (renderSettings.canvasWidth - lineWidth) / 2);
@@ -1022,6 +1272,214 @@ export default function TextPreview({
     }
 
     return renderSettings.pagePadding;
+  }
+
+  function setPresetCanvasFont(ctx: CanvasRenderingContext2D, preset: FontPreset, fontSize: number) {
+    ctx.font = getFontPresetCanvasFont(preset, fontSize);
+  }
+
+  function getPresetAdvanceScale(fontForText?: FontSet) {
+    if (!fontForText) {
+      return 1;
+    }
+
+    const glyphs = Object.values(fontForText.glyphs).filter((glyph) => glyph.character !== spacebar);
+    const totalAdvance = glyphs.reduce((sum, glyph) => sum + glyph.xAdvance, 0);
+    const averageAdvance = glyphs.length > 0 ? totalAdvance / glyphs.length : defaultGlyphMetrics.xAdvance;
+
+    return Math.max(0.1, averageAdvance / defaultGlyphMetrics.xAdvance);
+  }
+
+  function getPresetCharacterAdvance(
+    ctx: CanvasRenderingContext2D,
+    character: string,
+    fontSize: number,
+    fontForText?: FontSet,
+  ) {
+    const advanceScale = getPresetAdvanceScale(fontForText);
+
+    if (character.trim().length === 0) {
+      const spaceGlyph = fontForText?.glyphs[spacebar] ?? (fontForText?.id === previewFont.id ? previewSpacebarGlyph : undefined);
+      return getSpacebarAdvance(spaceGlyph, fontSize) * advanceScale;
+    }
+
+    return ctx.measureText(character).width * (fontForText ? getFontWidthScale(fontForText) : 1) * advanceScale;
+  }
+
+  function measurePresetTextRun(
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    fontSize: number,
+    fontForText?: FontSet,
+  ) {
+    const characters = [...text];
+    const letterSpacing = fontForText ? getFontLetterSpacing(fontForText, fontSize) : 0;
+
+    return characters.reduce((width, character, index) => {
+      const characterAdvance = getPresetCharacterAdvance(ctx, character, fontSize, fontForText);
+
+      return width + characterAdvance + (index < characters.length - 1 ? letterSpacing : 0);
+    }, 0);
+  }
+
+  function buildPresetWordWrappedLines(
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    maxLineWidth: number,
+    preset: FontPreset,
+    fontSize: number,
+    fontForText?: FontSet,
+  ) {
+    setPresetCanvasFont(ctx, preset, fontSize);
+    const paragraphs = text.split("\n");
+    const lines: string[] = [];
+
+    for (const paragraph of paragraphs) {
+      let line = "";
+      let lineWidth = 0;
+
+      if (paragraph.length === 0) {
+        lines.push("");
+        continue;
+      }
+
+      for (const rawToken of tokenizeParagraph(paragraph)) {
+        const token = line.length === 0 ? rawToken.replace(/^\s+/, "") : rawToken;
+
+        if (!token) {
+          continue;
+        }
+
+        const tokenWidth = measurePresetTextRun(ctx, token, fontSize, fontForText);
+
+        if (line.length > 0 && lineWidth + tokenWidth > maxLineWidth) {
+          lines.push(line.trimEnd());
+          line = token.replace(/^\s+/, "");
+          lineWidth = measurePresetTextRun(ctx, line, fontSize, fontForText);
+        } else {
+          line += token;
+          lineWidth += tokenWidth;
+        }
+
+        lineWidth = Math.max(lineWidth, measurePresetTextRun(ctx, line, fontSize, fontForText));
+      }
+
+      lines.push(line.trimEnd());
+    }
+
+    return lines;
+  }
+
+  function buildPresetCharacterWrappedLines(
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    maxLineWidth: number,
+    preset: FontPreset,
+    fontSize: number,
+    fontForText?: FontSet,
+  ) {
+    setPresetCanvasFont(ctx, preset, fontSize);
+    const paragraphs = text.split("\n");
+    const letterSpacing = fontForText ? getFontLetterSpacing(fontForText, fontSize) : 0;
+    const lines: string[] = [];
+
+    for (const paragraph of paragraphs) {
+      let line = "";
+      let lineWidth = 0;
+
+      if (paragraph.length === 0) {
+        lines.push("");
+        continue;
+      }
+
+      for (const character of paragraph) {
+        const characterWidth = getPresetCharacterAdvance(ctx, character, fontSize, fontForText);
+        const trackedWidth = line.length > 0 ? characterWidth + letterSpacing : characterWidth;
+
+        if (line.length > 0 && lineWidth + trackedWidth > maxLineWidth) {
+          lines.push(line);
+          line = character.trimStart();
+          lineWidth = measurePresetTextRun(ctx, line, fontSize, fontForText);
+          continue;
+        }
+
+        line += character;
+        lineWidth += trackedWidth;
+      }
+
+      lines.push(line.trimEnd());
+    }
+
+    return lines;
+  }
+
+  function getPresetLineHeight(renderSettings: PreviewImageSettings, fontSize: number) {
+    return fontSize * renderSettings.lineSpacing;
+  }
+
+  function getPresetLineX(
+    ctx: CanvasRenderingContext2D,
+    line: string,
+    renderSettings: PreviewImageSettings,
+    preset: FontPreset,
+    fontSize: number,
+    fontForText?: FontSet,
+  ) {
+    setPresetCanvasFont(ctx, preset, fontSize);
+    const lineWidth = measurePresetTextRun(ctx, line, fontSize, fontForText);
+
+    if (renderSettings.alignment === "center") {
+      return Math.max(renderSettings.pagePadding, (renderSettings.canvasWidth - lineWidth) / 2);
+    }
+
+    if (renderSettings.alignment === "right") {
+      return Math.max(renderSettings.pagePadding, renderSettings.canvasWidth - renderSettings.pagePadding - lineWidth);
+    }
+
+    return renderSettings.pagePadding;
+  }
+
+  function drawPresetTextToCanvas(
+    ctx: CanvasRenderingContext2D,
+    lines: string[],
+    renderSettings: PreviewImageSettings,
+    options: {
+      fontSize: number;
+      fontForText?: FontSet;
+      preset: FontPreset;
+      startY: number;
+    },
+  ) {
+    const lineHeight = getPresetLineHeight(renderSettings, options.fontSize);
+    const letterSpacing = options.fontForText ? getFontLetterSpacing(options.fontForText, options.fontSize) : 0;
+    const widthScale = options.fontForText ? getFontWidthScale(options.fontForText) : 1;
+    const heightScale = options.fontForText ? getFontHeightScale(options.fontForText) : 1;
+    ctx.fillStyle = renderSettings.inkColor;
+    ctx.textBaseline = "top";
+    setPresetCanvasFont(ctx, options.preset, options.fontSize);
+
+    lines.forEach((line, lineIndex) => {
+      let x = getPresetLineX(ctx, line, renderSettings, options.preset, options.fontSize, options.fontForText);
+      const y = options.startY + lineIndex * lineHeight;
+
+      [...line].forEach((character, characterIndex) => {
+        const characterAdvance = getPresetCharacterAdvance(ctx, character, options.fontSize, options.fontForText);
+
+        if (character.trim().length > 0) {
+          ctx.save();
+          ctx.translate(x, y);
+          ctx.scale(widthScale, heightScale);
+          ctx.fillText(character, 0, 0);
+          ctx.restore();
+        }
+
+        x += characterAdvance + (characterIndex < line.length - 1 ? letterSpacing : 0);
+      });
+    });
+  }
+
+  function getActivePresetFontSize(fontSize: number) {
+    return fontSize;
   }
 
   function drawTextToCanvas(
@@ -1043,7 +1501,8 @@ export default function TextPreview({
     const sourceText = options.sourceText ?? previewText;
     const startY = options.startY ?? renderSettings.pagePadding;
     const useHeaderLetters = options.useHeaderLetters ?? false;
-    const lineHeight = fontSize * renderSettings.lineSpacing * Math.max(0.72, fontHeightScale);
+    const letterSpacing = getFontLetterSpacing(fontForText, fontSize);
+    const lineHeight = fontSize * renderSettings.lineSpacing;
     ctx.font = getFallbackFont(fontSize);
     ctx.textBaseline = "top";
 
@@ -1053,6 +1512,7 @@ export default function TextPreview({
 
       [...line].forEach((character, characterIndex) => {
         const glyphKey = getPreviewGlyphKey(character, useHeaderLetters);
+        const metricGlyph = getMetricGlyphForCharacter(fontForText, character, useHeaderLetters);
         const glyph = selectPreviewGlyph(
           fontForText.glyphs,
           glyphKey,
@@ -1062,7 +1522,7 @@ export default function TextPreview({
         if (glyph) {
           const scales = getGlyphRenderScales(fontForText, glyph);
           const baselineY = y + fontSize * 0.76 * fontHeightScale;
-          const glyphX = x + getGlyphLeftBearingOffset(font, glyph, fontSize);
+          const glyphX = x + getGlyphLeftBearingOffset(fontForText, glyph, fontSize);
           const glyphY = getGlyphTopForBaseline(glyph, fontSize, baselineY, scales.heightScale);
 
           drawGlyph(ctx, glyph, {
@@ -1077,7 +1537,7 @@ export default function TextPreview({
           });
           x += getTrackedCharacterAdvance(
             getGlyphAdvance(glyph, fontSize, fontWidthScale),
-            renderSettings,
+            letterSpacing,
           );
           return;
         }
@@ -1085,19 +1545,27 @@ export default function TextPreview({
         if (character === spacebar) {
           x += getTrackedCharacterAdvance(
             measureCharacter(ctx, character, fontSize, useHeaderLetters, fontForText),
-            renderSettings,
+            letterSpacing,
           );
           return;
         }
 
-        const fallbackWidth = ctx.measureText(character).width;
+        const fallbackWidth = measureCharacter(ctx, character, fontSize, useHeaderLetters, fontForText);
+        const fallbackHeightScale = (metricGlyph?.height ?? 1) * fontHeightScale;
+        const fallbackWidthScale = (metricGlyph?.width ?? 1) * fontWidthScale;
+        const fallbackBaselineY = y + fontSize * 0.76 * fontHeightScale;
+        const fallbackX = x + (metricGlyph ? getGlyphLeftBearingOffset(fontForText, metricGlyph, fontSize) : 0);
+        const fallbackY = metricGlyph
+          ? getGlyphTopForBaseline(metricGlyph, fontSize, fallbackBaselineY, fallbackHeightScale)
+          : y + fontSize * 0.04;
+
         ctx.save();
-        ctx.fillStyle = "rgba(204, 102, 94, 0.24)";
-        ctx.fillRect(x - 3, y + fontSize * 0.02, fallbackWidth + 6, fontSize * 1.02);
-        ctx.restore();
         ctx.fillStyle = renderSettings.inkColor;
-        ctx.fillText(character, x, y + fontSize * 0.04);
-        x += getTrackedCharacterAdvance(fallbackWidth, renderSettings);
+        ctx.translate(fallbackX, fallbackY);
+        ctx.scale(fallbackWidthScale, fallbackHeightScale);
+        ctx.fillText(character, 0, 0);
+        ctx.restore();
+        x += getTrackedCharacterAdvance(fallbackWidth, letterSpacing);
       });
     });
   }
@@ -1121,8 +1589,8 @@ export default function TextPreview({
     const sourceText = options.sourceText ?? previewText;
     const startY = options.startY ?? renderSettings.pagePadding;
     const useHeaderLetters = options.useHeaderLetters ?? false;
-    const lineHeight = fontSize * renderSettings.lineSpacing * Math.max(0.72, fontHeightScale);
-    const targetHeight = Math.max(lineHeight, fontSize * 1.08 * fontHeightScale);
+    const letterSpacing = getFontLetterSpacing(fontForText, fontSize);
+    const lineHeight = fontSize * renderSettings.lineSpacing;
     ctx.font = getFallbackFont(fontSize);
 
     return lines.flatMap((line, lineIndex) => {
@@ -1131,6 +1599,7 @@ export default function TextPreview({
 
       return [...line].flatMap((character, characterIndex) => {
         const glyphKey = getPreviewGlyphKey(character, useHeaderLetters);
+        const metricGlyph = getMetricGlyphForCharacter(fontForText, character, useHeaderLetters);
         const glyph = selectPreviewGlyph(
           fontForText.glyphs,
           glyphKey,
@@ -1139,6 +1608,10 @@ export default function TextPreview({
         const characterWidth = glyph
           ? getGlyphAdvance(glyph, fontSize, fontWidthScale)
           : measureCharacter(ctx, character, fontSize, useHeaderLetters, fontForText);
+        const characterHeightScale = glyph
+          ? getGlyphRenderScales(fontForText, glyph).heightScale
+          : (metricGlyph?.height ?? 1) * fontHeightScale;
+        const targetHeight = Math.max(lineHeight, fontSize * 1.08 * characterHeightScale);
         const target: PreviewGlyphHitTarget = {
           character,
           editableCharacter: glyph?.character ?? glyphKey,
@@ -1148,7 +1621,7 @@ export default function TextPreview({
           y,
         };
 
-        x += getTrackedCharacterAdvance(characterWidth, renderSettings);
+        x += getTrackedCharacterAdvance(characterWidth, letterSpacing);
 
         if (character.trim().length === 0 || fontForText.id !== previewFont.id || !fontForText.glyphs[target.editableCharacter]) {
           return [];
@@ -1160,6 +1633,10 @@ export default function TextPreview({
   }
 
   function findPreviewGlyphHitTarget(canvas: HTMLCanvasElement, clientX: number, clientY: number) {
+    if (activeFontPreset) {
+      return null;
+    }
+
     const ctx = canvas.getContext("2d");
 
     if (!ctx) {
@@ -1224,7 +1701,7 @@ export default function TextPreview({
     event.preventDefault();
     setFullscreenSettingsMenuOpen(false);
     onSelectCharacter(hitTarget.editableCharacter);
-    setActiveSettingsPanel(isHeaderLetter(hitTarget.editableCharacter) ? "headerLetter" : "letter");
+    setActiveSettingsPanel("letter");
     setShareStatus(`Selected "${getCharacterLabel(hitTarget.editableCharacter)}".`);
   }
 
@@ -1320,12 +1797,73 @@ export default function TextPreview({
     });
   }
 
+  function getImageStickerAspectRatio(asset: StyleStickerAsset) {
+    const image = styleStickerImagesRef.current[asset.kind];
+
+    if (image?.naturalWidth && image.naturalHeight) {
+      return image.naturalWidth / image.naturalHeight;
+    }
+
+    return asset.aspectRatio ?? 1;
+  }
+
+  function getPreviewImageStickerCanvasBox(
+    sticker: PreviewSticker,
+    renderSettings: PreviewImageSettings,
+  ) {
+    const asset = getStyleStickerAsset(sticker.kind);
+
+    if (!asset.src) {
+      return null;
+    }
+
+    const width = Math.max(1, sticker.size * renderSettings.canvasWidth);
+    const height = width / getImageStickerAspectRatio(asset);
+
+    return {
+      height,
+      width,
+      x: sticker.x * renderSettings.canvasWidth - width / 2,
+      y: sticker.y * renderSettings.canvasHeight - height / 2,
+    };
+  }
+
+  function getPreviewImageStickerNormalizedBox(
+    sticker: PreviewSticker,
+    renderSettings: PreviewImageSettings,
+  ) {
+    const box = getPreviewImageStickerCanvasBox(sticker, renderSettings);
+
+    if (!box) {
+      return null;
+    }
+
+    return {
+      height: box.height / renderSettings.canvasHeight,
+      width: box.width / renderSettings.canvasWidth,
+      x: box.x / renderSettings.canvasWidth,
+      y: box.y / renderSettings.canvasHeight,
+    };
+  }
+
   function findPreviewStickerAtPoint(point: PreviewDoodlePoint, fallbackToEditableSticker = true) {
     if (previewStickers.length === 0) {
       return null;
     }
 
+    const renderSettings = getScaledPreviewSettings(imageSettings, STYLE_CANVAS_MAX_PIXELS);
     const hitSticker = [...previewStickers].reverse().find((sticker) => {
+      const imageBox = getPreviewImageStickerNormalizedBox(sticker, renderSettings);
+
+      if (imageBox) {
+        return (
+          point.x >= imageBox.x &&
+          point.x <= imageBox.x + imageBox.width &&
+          point.y >= imageBox.y &&
+          point.y <= imageBox.y + imageBox.height
+        );
+      }
+
       const hitRadius = Math.max(0.06, sticker.size * 2.8);
       return Math.hypot(point.x - sticker.x, point.y - sticker.y) <= hitRadius;
     });
@@ -1441,7 +1979,7 @@ export default function TextPreview({
     if (styleStickerLookMode) {
       event.preventDefault();
 
-      if (!selectedPreviewStickerId) {
+      if (!selectedPreviewStickerId || !isEyePreviewSticker(selectedPreviewSticker)) {
         setShareStatus("Select eyes first.");
         setStyleStickerLookMode(false);
         return;
@@ -1473,7 +2011,7 @@ export default function TextPreview({
       const stickerId = findPreviewStickerAtPoint(point);
 
       if (!stickerId) {
-        setShareStatus("Add eyes first.");
+        setShareStatus("Add a sticker first.");
         return;
       }
 
@@ -2070,6 +2608,18 @@ export default function TextPreview({
       return;
     }
 
+    if (["strawberryRed", "berryPink", "strawberryCream"].includes(renderSettings.backgroundStyle)) {
+      const gradient = ctx.createLinearGradient(0, 0, imageWidth, imageHeight);
+      gradient.addColorStop(0, "#fffaf5");
+      gradient.addColorStop(0.5, renderSettings.backgroundColor);
+      gradient.addColorStop(1, renderSettings.accentColor);
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, imageWidth, imageHeight);
+      drawPaperTexture(ctx, "#ffffff", imageWidth, imageHeight);
+      drawSelectedImageTexture(ctx, renderSettings);
+      return;
+    }
+
     ctx.fillStyle = renderSettings.backgroundColor;
     ctx.fillRect(0, 0, imageWidth, imageHeight);
 
@@ -2126,6 +2676,11 @@ export default function TextPreview({
     stickers: PreviewSticker[] = previewStickers,
   ) {
     stickers.forEach((sticker) => {
+      if (!isEyePreviewSticker(sticker)) {
+        drawPreviewImageSticker(ctx, renderSettings, sticker);
+        return;
+      }
+
       if (
         sticker.faceMood !== undefined ||
         sticker.lookAt ||
@@ -2153,6 +2708,36 @@ export default function TextPreview({
         renderSettings.canvasHeight,
       );
     });
+  }
+
+  function drawPreviewImageSticker(
+    ctx: CanvasRenderingContext2D,
+    renderSettings: PreviewImageSettings,
+    sticker: PreviewSticker,
+  ) {
+    const asset = getStyleStickerAsset(sticker.kind);
+    const image = styleStickerImagesRef.current[asset.kind];
+    const box = getPreviewImageStickerCanvasBox(sticker, renderSettings);
+
+    if (!asset.src || !box) {
+      return;
+    }
+
+    if (!image?.complete || !image.naturalWidth) {
+      ctx.save();
+      ctx.globalAlpha = 0.7;
+      ctx.strokeStyle = imageSettings.accentColor;
+      ctx.lineWidth = Math.max(1, renderSettings.canvasWidth / 900);
+      ctx.strokeRect(box.x, box.y, box.width, box.height);
+      ctx.restore();
+      return;
+    }
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(image, box.x, box.y, box.width, box.height);
+    ctx.restore();
   }
 
   function getPreviewStickerSeed(id: string, salt: number) {
@@ -2788,6 +3373,62 @@ export default function TextPreview({
     const maxLineWidth = Math.max(1, renderSettings.canvasWidth - renderSettings.pagePadding * 2);
     const headerFontSize = renderSettings.fontSize * HEADER_FONT_SIZE_MULTIPLIER;
     const hasHeaderText = headerPreviewText.trim().length > 0;
+
+    if (activeFontPreset) {
+      const presetHeaderFontSize = getActivePresetFontSize(headerFontSize);
+      const presetBodyFontSize = getActivePresetFontSize(renderSettings.fontSize);
+      const headerLines = hasHeaderText
+        ? renderSettings.autoFit
+          ? buildPresetWordWrappedLines(
+              ctx,
+              headerPreviewText,
+              maxLineWidth,
+              activeFontPreset,
+              presetHeaderFontSize,
+              previewFont,
+            )
+          : buildPresetCharacterWrappedLines(
+              ctx,
+              headerPreviewText,
+              maxLineWidth,
+              activeFontPreset,
+              presetHeaderFontSize,
+              previewFont,
+            )
+        : [];
+      const headerLineHeight = getPresetLineHeight(renderSettings, presetHeaderFontSize);
+      const headerGap = headerLines.length > 0 ? presetBodyFontSize * 0.85 : 0;
+      const bodyStartY = renderSettings.pagePadding + headerLines.length * headerLineHeight + headerGap;
+      const wrappedLines = renderSettings.autoFit
+        ? buildPresetWordWrappedLines(
+            ctx,
+            previewText,
+            maxLineWidth,
+            activeFontPreset,
+            presetBodyFontSize,
+            previewFont,
+          )
+        : buildPresetCharacterWrappedLines(
+            ctx,
+            previewText,
+            maxLineWidth,
+            activeFontPreset,
+            presetBodyFontSize,
+            previewFont,
+          );
+      const bodyLineHeight = getPresetLineHeight(renderSettings, presetBodyFontSize);
+      const bodyEndY = bodyStartY + wrappedLines.length * bodyLineHeight;
+
+      return {
+        settings: renderSettings,
+        bodyEndY,
+        bodyStartY,
+        headerFontSize: presetHeaderFontSize,
+        headerLines,
+        lines: wrappedLines,
+      };
+    }
+
     ctx.font = getFallbackFont(headerFontSize);
     const headerLines = hasHeaderText
       ? renderSettings.autoFit
@@ -2796,7 +3437,6 @@ export default function TextPreview({
             headerPreviewText,
             maxLineWidth,
             headerFontSize,
-            renderSettings.letterSpacing,
             true,
             previewFont,
           )
@@ -2805,20 +3445,18 @@ export default function TextPreview({
             headerPreviewText,
             maxLineWidth,
             headerFontSize,
-            renderSettings.letterSpacing,
             true,
             previewFont,
           )
       : [];
-    const fontHeightScale = getFontHeightScale(font);
-    const headerLineHeight = headerFontSize * renderSettings.lineSpacing * Math.max(0.72, fontHeightScale);
+    const headerLineHeight = headerFontSize * renderSettings.lineSpacing;
     const headerGap = headerLines.length > 0 ? renderSettings.fontSize * 0.85 : 0;
     const bodyStartY = renderSettings.pagePadding + headerLines.length * headerLineHeight + headerGap;
     ctx.font = getFallbackFont(renderSettings.fontSize);
     const wrappedLines = renderSettings.autoFit
-      ? buildWordWrappedLines(ctx, previewText, maxLineWidth, renderSettings.fontSize, renderSettings.letterSpacing, false, previewFont)
-      : buildCharacterWrappedLines(ctx, previewText, maxLineWidth, renderSettings.fontSize, renderSettings.letterSpacing, false, previewFont);
-    const bodyLineHeight = renderSettings.fontSize * renderSettings.lineSpacing * Math.max(0.72, fontHeightScale);
+      ? buildWordWrappedLines(ctx, previewText, maxLineWidth, renderSettings.fontSize, false, previewFont)
+      : buildCharacterWrappedLines(ctx, previewText, maxLineWidth, renderSettings.fontSize, false, previewFont);
+    const bodyLineHeight = renderSettings.fontSize * renderSettings.lineSpacing;
     const bodyEndY = bodyStartY + wrappedLines.length * bodyLineHeight;
 
     return {
@@ -2831,8 +3469,17 @@ export default function TextPreview({
     };
   }
 
-  function getPreviewLayerFont(fontId: string) {
-    return availableFonts.find((item) => item.id === fontId) ?? previewFont;
+  function getPreviewLayerFontSource(fontId: string): PreviewTextFontSource {
+    const preset = getFontPresetFromOptionId(fontId);
+
+    if (preset) {
+      return { kind: "preset", preset };
+    }
+
+    return {
+      font: availableFonts.find((item) => item.id === fontId) ?? previewFont,
+      kind: "custom",
+    };
   }
 
   function drawPreviewTextLayers(
@@ -2848,8 +3495,37 @@ export default function TextPreview({
         return;
       }
 
-      const layerFont = getPreviewLayerFont(layer.fontId);
+      const layerFontSource = getPreviewLayerFontSource(layer.fontId);
       const layerFontSize = renderSettings.fontSize * layer.sizeScale;
+
+      if (layerFontSource.kind === "preset") {
+        const lines = renderSettings.autoFit
+          ? buildPresetWordWrappedLines(
+              ctx,
+              layer.text,
+              maxLineWidth,
+              layerFontSource.preset,
+              layerFontSize,
+            )
+          : buildPresetCharacterWrappedLines(
+              ctx,
+              layer.text,
+              maxLineWidth,
+              layerFontSource.preset,
+              layerFontSize,
+            );
+
+        drawPresetTextToCanvas(ctx, lines, renderSettings, {
+          fontSize: layerFontSize,
+          preset: layerFontSource.preset,
+          startY: y,
+        });
+
+        y += lines.length * getPresetLineHeight(renderSettings, layerFontSize) + renderSettings.fontSize * 0.35;
+        return;
+      }
+
+      const layerFont = layerFontSource.font;
       ctx.font = getFallbackFont(layerFontSize);
       const lines = renderSettings.autoFit
         ? buildWordWrappedLines(
@@ -2857,7 +3533,6 @@ export default function TextPreview({
             layer.text,
             maxLineWidth,
             layerFontSize,
-            renderSettings.letterSpacing,
             false,
             layerFont,
           )
@@ -2866,7 +3541,6 @@ export default function TextPreview({
             layer.text,
             maxLineWidth,
             layerFontSize,
-            renderSettings.letterSpacing,
             false,
             layerFont,
           );
@@ -2878,7 +3552,7 @@ export default function TextPreview({
         startY: y,
       });
 
-      y += lines.length * layerFontSize * renderSettings.lineSpacing * Math.max(0.72, getFontHeightScale(layerFont)) +
+      y += lines.length * layerFontSize * renderSettings.lineSpacing +
         renderSettings.fontSize * 0.35;
     });
   }
@@ -2897,9 +3571,42 @@ export default function TextPreview({
         return;
       }
 
-      const layerFont = getPreviewLayerFont(layer.fontId);
+      const layerFontSource = getPreviewLayerFontSource(layer.fontId);
       const layerFontSize = renderSettings.fontSize * layer.sizeScale;
-      const lineHeight = layerFontSize * renderSettings.lineSpacing * Math.max(0.72, getFontHeightScale(layerFont));
+
+      if (layerFontSource.kind === "preset") {
+        const lineHeight = getPresetLineHeight(renderSettings, layerFontSize);
+        const lines = renderSettings.autoFit
+          ? buildPresetWordWrappedLines(
+              ctx,
+              layer.text,
+              maxLineWidth,
+              layerFontSource.preset,
+              layerFontSize,
+            )
+          : buildPresetCharacterWrappedLines(
+              ctx,
+              layer.text,
+              maxLineWidth,
+              layerFontSource.preset,
+              layerFontSize,
+            );
+        const height = Math.max(lineHeight, lines.length * lineHeight);
+
+        targets.push({
+          height,
+          id: layer.id,
+          width: maxLineWidth,
+          x: renderSettings.pagePadding,
+          y,
+        });
+
+        y += height + renderSettings.fontSize * 0.35;
+        return;
+      }
+
+      const layerFont = layerFontSource.font;
+      const lineHeight = layerFontSize * renderSettings.lineSpacing;
       ctx.font = getFallbackFont(layerFontSize);
       const lines = renderSettings.autoFit
         ? buildWordWrappedLines(
@@ -2907,7 +3614,6 @@ export default function TextPreview({
             layer.text,
             maxLineWidth,
             layerFontSize,
-            renderSettings.letterSpacing,
             false,
             layerFont,
           )
@@ -2916,7 +3622,6 @@ export default function TextPreview({
             layer.text,
             maxLineWidth,
             layerFontSize,
-            renderSettings.letterSpacing,
             false,
             layerFont,
           );
@@ -2948,13 +3653,31 @@ export default function TextPreview({
       : null;
 
     if (selectedSticker) {
-      const x = selectedSticker.x * renderSettings.canvasWidth;
-      const y = selectedSticker.y * renderSettings.canvasHeight;
-      const radius = Math.max(22, selectedSticker.size * renderSettings.canvasWidth * 2.9);
-      ctx.beginPath();
-      ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
+      const imageBox = getPreviewImageStickerCanvasBox(selectedSticker, renderSettings);
+
+      if (imageBox) {
+        const padding = Math.max(8, renderSettings.canvasWidth / 140);
+        ctx.fillRect(
+          imageBox.x - padding,
+          imageBox.y - padding,
+          imageBox.width + padding * 2,
+          imageBox.height + padding * 2,
+        );
+        ctx.strokeRect(
+          imageBox.x - padding,
+          imageBox.y - padding,
+          imageBox.width + padding * 2,
+          imageBox.height + padding * 2,
+        );
+      } else {
+        const x = selectedSticker.x * renderSettings.canvasWidth;
+        const y = selectedSticker.y * renderSettings.canvasHeight;
+        const radius = Math.max(22, selectedSticker.size * renderSettings.canvasWidth * 2.9);
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
     }
 
     const selectedDoodle = selectedPreviewDoodleId
@@ -2996,18 +3719,33 @@ export default function TextPreview({
       stickers?: PreviewSticker[];
     } = {},
   ) {
-    drawTextToCanvas(ctx, layout.headerLines, layout.settings, {
-      font: previewFont,
-      fontSize: layout.headerFontSize,
-      sourceText: headerPreviewText,
-      startY: layout.settings.pagePadding,
-      useHeaderLetters: true,
-    });
-    drawTextToCanvas(ctx, layout.lines, layout.settings, {
-      font: previewFont,
-      sourceText: previewText,
-      startY: layout.bodyStartY,
-    });
+    if (activeFontPreset) {
+      drawPresetTextToCanvas(ctx, layout.headerLines, layout.settings, {
+        fontSize: layout.headerFontSize,
+        fontForText: previewFont,
+        preset: activeFontPreset,
+        startY: layout.settings.pagePadding,
+      });
+      drawPresetTextToCanvas(ctx, layout.lines, layout.settings, {
+        fontSize: getActivePresetFontSize(layout.settings.fontSize),
+        fontForText: previewFont,
+        preset: activeFontPreset,
+        startY: layout.bodyStartY,
+      });
+    } else {
+      drawTextToCanvas(ctx, layout.headerLines, layout.settings, {
+        font: previewFont,
+        fontSize: layout.headerFontSize,
+        sourceText: headerPreviewText,
+        startY: layout.settings.pagePadding,
+        useHeaderLetters: true,
+      });
+      drawTextToCanvas(ctx, layout.lines, layout.settings, {
+        font: previewFont,
+        sourceText: previewText,
+        startY: layout.bodyStartY,
+      });
+    }
     drawPreviewTextLayers(ctx, layout.settings, layout.bodyEndY + layout.settings.fontSize * 0.35);
     drawPreviewDecorations(ctx, layout.settings, {
       doodleStrokes: options.doodleStrokes,
@@ -3423,21 +4161,48 @@ export default function TextPreview({
     setShareStatus(`${tool === "quill" ? "Quill" : tool === "line" ? "Line" : "Pen"} doodle ready.`);
   }
 
+  function renderPreviewTextFontOptions() {
+    const customOptions = availableTextFontOptions.filter((option) => option.kind === "custom");
+    const presetOptions = availableTextFontOptions.filter((option) => option.kind === "preset");
+
+    return (
+      <>
+        {customOptions.length > 0 && (
+          <optgroup label="Drawn fonts">
+            {customOptions.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </optgroup>
+        )}
+        <optgroup label="Preset fonts">
+          {presetOptions.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </optgroup>
+      </>
+    );
+  }
+
   function addPreviewTextLayer() {
+    const firstPreset = fontPresets[0] ? getFontPresetOptionId(fontPresets[0].id) : null;
     const alternateFont = availableFonts.find((item) => item.id !== previewFont.id) ?? previewFont;
 
     setPreviewTextLayers((current) => [
       ...current,
       {
-        fontId: alternateFont.id,
+        fontId: firstPreset ?? alternateFont.id,
         id: createPreviewId(),
         sizeScale: 1,
-        text: "additional text",
+        text: "strawberry market",
       },
     ]);
     setActiveDocumentId(null);
     setActiveStyleDrawer("text");
-    setShareStatus("Added preview-only text layer.");
+    setShareStatus("Added preset text layer.");
   }
 
   function updatePreviewTextLayer(layerId: string, patch: Partial<PreviewTextLayer>) {
@@ -3653,9 +4418,11 @@ export default function TextPreview({
     }
 
     if (styleSelectTarget === "stickers" && selectedPreviewSticker) {
+      const selectedStickerIsEyes = isEyePreviewSticker(selectedPreviewSticker);
+
       return (
         <>
-          {styleStickerSleepPanelOpen && (
+          {selectedStickerIsEyes && styleStickerSleepPanelOpen && (
             <label className="style-sticker-sleepiness-panel">
               <Moon aria-hidden="true" />
               <input
@@ -3670,7 +4437,7 @@ export default function TextPreview({
               <output>{Math.round((selectedPreviewSticker.sleepiness ?? 0) * 100)}%</output>
             </label>
           )}
-          {styleStickerRednessPanelOpen && (
+          {selectedStickerIsEyes && styleStickerRednessPanelOpen && (
             <label className="style-sticker-redness-panel">
               <Pipette aria-hidden="true" />
               <input
@@ -3685,7 +4452,7 @@ export default function TextPreview({
               <output>{Math.round((selectedPreviewSticker.redness ?? 0) * 100)}%</output>
             </label>
           )}
-          {styleStickerFacePanelOpen && (
+          {selectedStickerIsEyes && styleStickerFacePanelOpen && (
             <label className="style-sticker-face-panel">
               <SlidersHorizontal aria-hidden="true" />
               <input
@@ -3701,79 +4468,83 @@ export default function TextPreview({
             </label>
           )}
           <div className="style-selection-action-row sticker-actions" aria-label="Selected sticker actions">
-            <button
-              className={`draw-drawer-button style-looking-button ${styleStickerLookMode ? "active-tool" : ""}`}
-              type="button"
-              aria-label="Looking at"
-              onClick={() => {
-                setStyleDrawMode(false);
-                setStyleStickerMoveMode(false);
-                setStyleStickerFacePanelOpen(false);
-                setStyleStickerRednessPanelOpen(false);
-                setStyleStickerSleepPanelOpen(false);
-                setStyleStickerLookMode((current) => !current);
-                setShareStatus(styleStickerLookMode ? "Looking target off." : "Tap the page where the eyes should look.");
-              }}
-            >
-              <MousePointer2 aria-hidden="true" />
-              <span>Looking at</span>
-            </button>
-            <button
-              className={`draw-drawer-button ${styleStickerSleepPanelOpen ? "active-tool" : ""}`}
-              type="button"
-              aria-label="Sleepiness"
-              onClick={() => {
-                setStyleDrawMode(false);
-                setStyleStickerLookMode(false);
-                setStyleStickerMoveMode(false);
-                setStyleStickerFacePanelOpen(false);
-                setStyleStickerRednessPanelOpen(false);
-                setStyleStickerSleepPanelOpen((current) => !current);
-                setShareStatus(styleStickerSleepPanelOpen ? "Sleepiness closed." : "Adjust eye sleepiness.");
-              }}
-            >
-              <Moon aria-hidden="true" />
-              <span>Sleepiness</span>
-            </button>
-            <button
-              className={`draw-drawer-button ${styleStickerRednessPanelOpen ? "active-tool" : ""}`}
-              type="button"
-              aria-label="Redness"
-              onClick={() => {
-                setStyleDrawMode(false);
-                setStyleStickerLookMode(false);
-                setStyleStickerMoveMode(false);
-                setStyleStickerFacePanelOpen(false);
-                setStyleStickerSleepPanelOpen(false);
-                setStyleStickerRednessPanelOpen((current) => !current);
-                setShareStatus(styleStickerRednessPanelOpen ? "Redness closed." : "Adjust cloudy eye redness.");
-              }}
-            >
-              <Pipette aria-hidden="true" />
-              <span>Redness</span>
-            </button>
-            <button
-              className={`draw-drawer-button ${styleStickerFacePanelOpen ? "active-tool" : ""}`}
-              type="button"
-              aria-label="Eyebrows"
-              onClick={() => {
-                setStyleDrawMode(false);
-                setStyleStickerLookMode(false);
-                setStyleStickerMoveMode(false);
-                setStyleStickerRednessPanelOpen(false);
-                setStyleStickerSleepPanelOpen(false);
+            {selectedStickerIsEyes && (
+              <>
+                <button
+                  className={`draw-drawer-button style-looking-button ${styleStickerLookMode ? "active-tool" : ""}`}
+                  type="button"
+                  aria-label="Looking at"
+                  onClick={() => {
+                    setStyleDrawMode(false);
+                    setStyleStickerMoveMode(false);
+                    setStyleStickerFacePanelOpen(false);
+                    setStyleStickerRednessPanelOpen(false);
+                    setStyleStickerSleepPanelOpen(false);
+                    setStyleStickerLookMode((current) => !current);
+                    setShareStatus(styleStickerLookMode ? "Looking target off." : "Tap the page where the eyes should look.");
+                  }}
+                >
+                  <MousePointer2 aria-hidden="true" />
+                  <span>Looking at</span>
+                </button>
+                <button
+                  className={`draw-drawer-button ${styleStickerSleepPanelOpen ? "active-tool" : ""}`}
+                  type="button"
+                  aria-label="Sleepiness"
+                  onClick={() => {
+                    setStyleDrawMode(false);
+                    setStyleStickerLookMode(false);
+                    setStyleStickerMoveMode(false);
+                    setStyleStickerFacePanelOpen(false);
+                    setStyleStickerRednessPanelOpen(false);
+                    setStyleStickerSleepPanelOpen((current) => !current);
+                    setShareStatus(styleStickerSleepPanelOpen ? "Sleepiness closed." : "Adjust eye sleepiness.");
+                  }}
+                >
+                  <Moon aria-hidden="true" />
+                  <span>Sleepiness</span>
+                </button>
+                <button
+                  className={`draw-drawer-button ${styleStickerRednessPanelOpen ? "active-tool" : ""}`}
+                  type="button"
+                  aria-label="Redness"
+                  onClick={() => {
+                    setStyleDrawMode(false);
+                    setStyleStickerLookMode(false);
+                    setStyleStickerMoveMode(false);
+                    setStyleStickerFacePanelOpen(false);
+                    setStyleStickerSleepPanelOpen(false);
+                    setStyleStickerRednessPanelOpen((current) => !current);
+                    setShareStatus(styleStickerRednessPanelOpen ? "Redness closed." : "Adjust cloudy eye redness.");
+                  }}
+                >
+                  <Pipette aria-hidden="true" />
+                  <span>Redness</span>
+                </button>
+                <button
+                  className={`draw-drawer-button ${styleStickerFacePanelOpen ? "active-tool" : ""}`}
+                  type="button"
+                  aria-label="Eyebrows"
+                  onClick={() => {
+                    setStyleDrawMode(false);
+                    setStyleStickerLookMode(false);
+                    setStyleStickerMoveMode(false);
+                    setStyleStickerRednessPanelOpen(false);
+                    setStyleStickerSleepPanelOpen(false);
 
-                if (!styleStickerFacePanelOpen && selectedPreviewSticker.faceMood === undefined) {
-                  updateSelectedPreviewStickerFaceMood(0);
-                }
+                    if (!styleStickerFacePanelOpen && selectedPreviewSticker.faceMood === undefined) {
+                      updateSelectedPreviewStickerFaceMood(0);
+                    }
 
-                setStyleStickerFacePanelOpen((current) => !current);
-                setShareStatus(styleStickerFacePanelOpen ? "Eyebrows closed." : "Adjust eye expression.");
-              }}
-            >
-              <SlidersHorizontal aria-hidden="true" />
-              <span>Eyebrows</span>
-            </button>
+                    setStyleStickerFacePanelOpen((current) => !current);
+                    setShareStatus(styleStickerFacePanelOpen ? "Eyebrows closed." : "Adjust eye expression.");
+                  }}
+                >
+                  <SlidersHorizontal aria-hidden="true" />
+                  <span>Eyebrows</span>
+                </button>
+              </>
+            )}
             <button
               className={`draw-drawer-button ${styleStickerMoveMode ? "active-tool" : ""}`}
               type="button"
@@ -3784,7 +4555,7 @@ export default function TextPreview({
                 setStyleStickerRednessPanelOpen(false);
                 setStyleStickerSleepPanelOpen(false);
                 setStyleStickerMoveMode((current) => !current);
-                setShareStatus(styleStickerMoveMode ? "Sticker move off." : "Drag selected eyes on the page.");
+                setShareStatus(styleStickerMoveMode ? "Sticker move off." : "Drag selected sticker on the page.");
               }}
             >
               <Hand aria-hidden="true" />
@@ -3926,8 +4697,12 @@ export default function TextPreview({
     );
   }
 
-  function renderStyleStickerPreview(expression: EyeExpression) {
-    return <PreviewEyeStickerPreview expression={expression} />;
+  function renderStyleStickerPreview(asset: StyleStickerAsset) {
+    if (asset.src) {
+      return <img src={asset.src} alt="" draggable={false} aria-hidden="true" />;
+    }
+
+    return <PreviewEyeStickerPreview expression={previewStickerExpression} />;
   }
 
   function renderStyleDrawer() {
@@ -4194,11 +4969,7 @@ export default function TextPreview({
                       value={layer.fontId}
                       onChange={(event) => updatePreviewTextLayer(layer.id, { fontId: event.target.value })}
                     >
-                      {availableFonts.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.name}
-                        </option>
-                      ))}
+                      {renderPreviewTextFontOptions()}
                     </select>
                   </label>
 
@@ -4242,7 +5013,7 @@ export default function TextPreview({
               onClick={() => {
                 setStyleSelectTarget("stickers");
                 setStyleStickerMoveMode(false);
-                setShareStatus("Tap eyes on the page to select them.");
+                setShareStatus("Tap a sticker on the page to select it.");
               }}
             >
               <Sticker aria-hidden="true" />
@@ -4277,7 +5048,7 @@ export default function TextPreview({
           {styleSelectTarget === "stickers" && (
             <div className="style-select-edit-panel">
               <p className="style-drawer-empty">
-                {selectedPreviewStickerId ? "Sticker selected." : "Tap an eye sticker on the page, or add eyes from Stickers."}
+                {selectedPreviewStickerId ? "Sticker selected." : "Tap a sticker on the page, or add one from Stickers."}
               </p>
               <button
                 className={`draw-drawer-button full ${styleStickerMoveMode ? "active-tool" : ""}`}
@@ -4286,7 +5057,7 @@ export default function TextPreview({
                 onClick={() => {
                   setStyleDrawMode(false);
                   setStyleStickerMoveMode((current) => !current);
-                  setShareStatus(styleStickerMoveMode ? "Sticker move off." : "Drag selected eyes on the page.");
+                  setShareStatus(styleStickerMoveMode ? "Sticker move off." : "Drag selected sticker on the page.");
                 }}
               >
                 <Hand aria-hidden="true" />
@@ -4354,11 +5125,7 @@ export default function TextPreview({
                         updatePreviewTextLayer(selectedPreviewTextLayer.id, { fontId: event.target.value })
                       }
                     >
-                      {availableFonts.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.name}
-                        </option>
-                      ))}
+                      {renderPreviewTextFontOptions()}
                     </select>
                   </label>
                   <label className="draw-drawer-range">
@@ -4449,16 +5216,21 @@ export default function TextPreview({
       return (
         <div className="draw-control-drawer style-control-drawer" aria-label="Sticker drawer">
           <div className="draw-drawer-grid style-sticker-grid">
-            <button
-              className="draw-drawer-button style-sticker-button style-eyes-button"
-              type="button"
-              aria-label="Drag eyes sticker onto page"
-              draggable={false}
-              onClick={(event) => event.preventDefault()}
-              onPointerDown={(event) => beginStyleStickerDrag(event, previewStickerExpression)}
-            >
-              {renderStyleStickerPreview(previewStickerExpression)}
-            </button>
+            {styleStickerAssets.map((asset) => (
+              <button
+                key={asset.id}
+                className={`draw-drawer-button style-sticker-button ${asset.kind === "eyes" ? "style-eyes-button" : ""}`}
+                type="button"
+                aria-label={`Drag ${asset.label} sticker onto page`}
+                draggable={false}
+                title={asset.label}
+                onClick={(event) => event.preventDefault()}
+                onPointerDown={(event) => beginStyleStickerDrag(event, asset)}
+              >
+                {renderStyleStickerPreview(asset)}
+                {asset.kind !== "eyes" && <span>{asset.label}</span>}
+              </button>
+            ))}
           </div>
         </div>
       );
@@ -4473,17 +5245,8 @@ export default function TextPreview({
     return Number(nextValue.toFixed(precision));
   }
 
-  function updateImageMetric(
-    metric: ImageMetricKey,
-    delta: number,
-    min: number,
-    max: number,
-    precision = 0,
-  ) {
-    setImageSettings((current) => ({
-      ...current,
-      [metric]: getSteppedValue(current[metric], delta, min, max, precision),
-    }));
+  function getClampedMetricValue(value: number, min: number, max: number, precision = 2) {
+    return Number(Math.min(max, Math.max(min, value)).toFixed(precision));
   }
 
   function updateManuscriptMetric(metric: ManuscriptMetricKey, value: number) {
@@ -4491,28 +5254,6 @@ export default function TextPreview({
       ...current,
       [metric]: Math.min(1, Math.max(0, value)),
     }));
-  }
-
-  function updateImageCanvasSize(deltaWidth: number) {
-    setImageSettings((current) => {
-      const requestedWidth = current.canvasWidth + deltaWidth;
-      const requestedScale = requestedWidth / current.canvasWidth;
-      const minScale = Math.max(
-        MIN_IMAGE_CANVAS_WIDTH / current.canvasWidth,
-        MIN_IMAGE_CANVAS_HEIGHT / current.canvasHeight,
-      );
-      const maxScale = Math.min(
-        MAX_IMAGE_CANVAS_WIDTH / current.canvasWidth,
-        MAX_IMAGE_CANVAS_HEIGHT / current.canvasHeight,
-      );
-      const scale = Math.min(maxScale, Math.max(minScale, requestedScale));
-
-      return {
-        ...current,
-        canvasHeight: Math.round(current.canvasHeight * scale),
-        canvasWidth: Math.round(current.canvasWidth * scale),
-      };
-    });
   }
 
   function getAverageGlyphMetric(metric: FontGlyphMetricKey) {
@@ -4537,6 +5278,18 @@ export default function TextPreview({
         : getAverageGlyphMetric(metric);
     const nextValue = getSteppedValue(currentValue, delta, min, max, precision);
 
+    setFontMetricValue(metric, nextValue, min, max, precision);
+  }
+
+  function setFontMetricValue(
+    metric: FontGlyphMetricKey,
+    value: number,
+    min: number,
+    max: number,
+    precision = 2,
+  ) {
+    const nextValue = getClampedMetricValue(value, min, max, precision);
+
     setPreviewFontMetricOverrides((current) => ({
       ...current,
       [metric]: nextValue,
@@ -4559,8 +5312,21 @@ export default function TextPreview({
     max: number,
     precision = 2,
   ) {
-    const currentShapeSettings = previewFont.shapeSettings ?? { heightScale: 1, widthScale: 1 };
+    const currentShapeSettings = previewFont.shapeSettings ?? { heightScale: 1, letterSpacing: 0, widthScale: 1 };
     const nextValue = getSteppedValue(currentShapeSettings[metric], delta, min, max, precision);
+
+    setFontShapeMetricValue(metric, nextValue, min, max, precision);
+  }
+
+  function setFontShapeMetricValue(
+    metric: keyof FontShapeSettings,
+    value: number,
+    min: number,
+    max: number,
+    precision = 2,
+  ) {
+    const currentShapeSettings = previewFont.shapeSettings ?? { heightScale: 1, letterSpacing: 0, widthScale: 1 };
+    const nextValue = getClampedMetricValue(value, min, max, precision);
 
     setPreviewShapeSettings({
       ...currentShapeSettings,
@@ -4569,8 +5335,32 @@ export default function TextPreview({
     setShareStatus("Preview-only font shape updated.");
   }
 
+  function applyFontSpacingToFont() {
+    if (!hasPendingFontSpacingChanges) {
+      return;
+    }
+
+    onApplyFontSpacing({
+      fontMetricOverrides: previewFontMetricOverrides,
+      glyphMetricOverrides: previewGlyphMetricOverrides,
+      guideSettings: previewGuideSettings,
+      shapeSettings: previewFont.shapeSettings ?? { heightScale: 1, letterSpacing: 0, widthScale: 1 },
+    });
+    setPreviewFontMetricOverrides({});
+    setPreviewGlyphMetricOverrides({});
+    setPreviewGuideSettings(null);
+    setPreviewShapeSettings(null);
+    setShareStatus("Applied spacing to the saved font.");
+  }
+
   function updateSpacebarAdvance(delta: number) {
     const nextValue = getSteppedValue(previewSpacebarGlyph.xAdvance, delta, 0.18, 1.2, 2);
+
+    setSpacebarAdvanceValue(nextValue);
+  }
+
+  function setSpacebarAdvanceValue(value: number) {
+    const nextValue = getClampedMetricValue(value, 0.18, 1.2, 2);
 
     setPreviewGlyphMetricOverrides((current) => ({
       ...current,
@@ -4583,19 +5373,39 @@ export default function TextPreview({
   }
 
   function updateSelectedLetterMetric(
-    metric: LetterMetricKey,
+    metric: LetterSettingsSliderId,
     delta: number,
     min: number,
     max: number,
     precision = 2,
   ) {
-    const nextValue = getSteppedValue(settingsGlyph[metric], delta, min, max, precision);
+    const currentValue = metric === "size" ? (settingsGlyph.width + settingsGlyph.height) / 2 : settingsGlyph[metric];
+    const nextValue = getSteppedValue(currentValue, delta, min, max, precision);
+
+    setSelectedLetterMetricValue(metric, nextValue, min, max, precision);
+  }
+
+  function setSelectedLetterMetricValue(
+    metric: LetterSettingsSliderId,
+    value: number,
+    min: number,
+    max: number,
+    precision = 2,
+  ) {
+    const nextValue = getClampedMetricValue(value, min, max, precision);
 
     setPreviewGlyphMetricOverrides((current) => ({
       ...current,
       [settingsGlyph.character]: {
         ...(current[settingsGlyph.character] ?? {}),
-        [metric]: nextValue,
+        ...(metric === "size"
+          ? {
+              height: nextValue,
+              width: nextValue,
+            }
+          : {
+              [metric]: nextValue,
+            }),
       },
     }));
     setShareStatus(`Preview-only "${settingsGlyphLabel}" settings updated.`);
@@ -4604,16 +5414,8 @@ export default function TextPreview({
   function openSelectedLetterEditor() {
     setFullscreenSettingsMenuOpen(false);
     setImageViewerOpen(false);
-    onSelectCharacter(settingsGlyph.character);
+    onOpenCharacterEditor(settingsGlyph.character);
     setShareStatus(`Editing "${settingsGlyphLabel}".`);
-  }
-
-  function openHeaderLetterEditor() {
-    setFullscreenSettingsMenuOpen(false);
-    setImageViewerOpen(false);
-    setActiveSettingsPanel("headerLetter");
-    onSelectCharacter(headerEditorCharacter);
-    setShareStatus(`Editing "${headerEditorLabel}".`);
   }
 
   function openStyleEditor() {
@@ -4661,7 +5463,7 @@ export default function TextPreview({
     const stickerId = getEditablePreviewStickerId();
 
     if (!stickerId) {
-      setShareStatus("Add eyes first.");
+      setShareStatus("Add a sticker first.");
       return;
     }
 
@@ -4677,7 +5479,10 @@ export default function TextPreview({
   function resizeSelectedPreviewSticker(delta: number) {
     updateSelectedPreviewSticker((sticker) => ({
       ...sticker,
-      size: Math.min(0.07, Math.max(0.018, sticker.size + delta)),
+      size: Math.min(
+        getStyleStickerAsset(sticker.kind).maxSize ?? 0.07,
+        Math.max(getStyleStickerAsset(sticker.kind).minSize ?? 0.018, sticker.size + delta),
+      ),
     }));
   }
 
@@ -4685,7 +5490,7 @@ export default function TextPreview({
     const stickerId = getEditablePreviewStickerId();
 
     if (!stickerId) {
-      setShareStatus("Add eyes first.");
+      setShareStatus("Add a sticker first.");
       return;
     }
 
@@ -4702,19 +5507,24 @@ export default function TextPreview({
       setStyleStickerRednessPanelOpen(false);
       setStyleStickerSleepPanelOpen(false);
     }
-    setShareStatus("Deleted eye sticker.");
+    setShareStatus("Deleted sticker.");
   }
 
-  function addPreviewStickerAt(point: PreviewDoodlePoint, expression = previewStickerExpression) {
+  function getDefaultPreviewStickerSize(asset: StyleStickerAsset) {
+    return asset.defaultSize ?? 0.03;
+  }
+
+  function addPreviewStickerAt(point: PreviewDoodlePoint, asset: StyleStickerAsset) {
     const stickerId = createPreviewId();
 
     setPreviewStickers((current) => {
       const nextStickers = [
         ...current,
         {
-          expression,
+          expression: previewStickerExpression,
           id: stickerId,
-          size: 0.03,
+          kind: asset.kind,
+          size: getDefaultPreviewStickerSize(asset),
           x: point.x,
           y: point.y,
         },
@@ -4728,7 +5538,7 @@ export default function TextPreview({
     setSelectedPreviewTextLayerId(null);
     setActiveDocumentId(null);
     scheduleStyleCanvasRender();
-    setShareStatus("Dropped eyes.");
+    setShareStatus(`Dropped ${asset.label}.`);
   }
 
   function cancelStyleStickerDrag() {
@@ -4755,7 +5565,7 @@ export default function TextPreview({
 
     event.preventDefault();
     if (!drag.isDragging) {
-      setShareStatus("Drag eyes onto the page.");
+      setShareStatus("Drag sticker onto the page.");
     }
 
     styleStickerDragRef.current = {
@@ -4765,7 +5575,7 @@ export default function TextPreview({
       y: event.clientY,
     };
     setStyleStickerDragPreview({
-      expression: drag.expression,
+      asset: drag.asset,
       x: event.clientX,
       y: event.clientY,
     });
@@ -4802,11 +5612,11 @@ export default function TextPreview({
       event.clientY <= rect.bottom;
 
     if (!droppedOnCanvas) {
-      setShareStatus("Drop eyes on the page to add them.");
+      setShareStatus("Drop sticker on the page to add it.");
       return;
     }
 
-    addPreviewStickerAt(getStyleCanvasPoint(canvas, event.clientX, event.clientY), drag.expression);
+    addPreviewStickerAt(getStyleCanvasPoint(canvas, event.clientX, event.clientY), drag.asset);
   }
 
   function handleStyleStickerDragCancel(event?: PointerEvent) {
@@ -4819,7 +5629,7 @@ export default function TextPreview({
     cancelStyleStickerDrag();
   }
 
-  function beginStyleStickerDrag(event: ReactPointerEvent<HTMLButtonElement>, expression: EyeExpression) {
+  function beginStyleStickerDrag(event: ReactPointerEvent<HTMLButtonElement>, asset: StyleStickerAsset) {
     event.preventDefault();
     event.stopPropagation();
     cancelStyleStickerDrag();
@@ -4833,7 +5643,7 @@ export default function TextPreview({
     setStyleStickerSleepPanelOpen(false);
 
     styleStickerDragRef.current = {
-      expression,
+      asset,
       isDragging: false,
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -4859,84 +5669,6 @@ export default function TextPreview({
     setShareStatus("Cleared stickers and doodles.");
   }
 
-  function renderImageMetricControl({
-    label,
-    max,
-    metric,
-    min,
-    precision = 0,
-    step,
-    value,
-  }: {
-    label: string;
-    max: number;
-    metric: ImageMetricKey;
-    min: number;
-    precision?: number;
-    step: number;
-    value: number;
-  }) {
-    const displayValue = precision > 0 ? value.toFixed(precision) : value.toString();
-
-    return (
-      <div className="phone-metric-stepper">
-        <div className="phone-metric-readout">
-          <span>{label}</span>
-          <strong>{displayValue}</strong>
-        </div>
-        <div className="phone-metric-buttons">
-          <button
-            className="secondary-button"
-            type="button"
-            onClick={() => updateImageMetric(metric, -step, min, max, precision)}
-            aria-label={`Decrease ${label}`}
-          >
-            Down
-          </button>
-          <button
-            className="secondary-button"
-            type="button"
-            onClick={() => updateImageMetric(metric, step, min, max, precision)}
-            aria-label={`Increase ${label}`}
-          >
-            Up
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  function renderImageSizeControl() {
-    return (
-      <div className="phone-metric-stepper">
-        <div className="phone-metric-readout">
-          <span>Size</span>
-          <strong>
-            {imageSettings.canvasWidth}x{imageSettings.canvasHeight}
-          </strong>
-        </div>
-        <div className="phone-metric-buttons">
-          <button
-            className="secondary-button"
-            type="button"
-            onClick={() => updateImageCanvasSize(-80)}
-            aria-label="Decrease Size"
-          >
-            Down
-          </button>
-          <button
-            className="secondary-button"
-            type="button"
-            onClick={() => updateImageCanvasSize(80)}
-            aria-label="Increase Size"
-          >
-            Up
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   function renderManuscriptRange(label: string, metric: ManuscriptMetricKey) {
     return (
       <label className="draw-drawer-range manuscript-range">
@@ -4954,141 +5686,616 @@ export default function TextPreview({
     );
   }
 
-  function renderLetterMetricControl({
-    label,
-    max,
-    metric,
-    min,
-    precision = 2,
-    step,
-    value,
-  }: {
-    label: string;
-    max: number;
-    metric: LetterMetricKey;
-    min: number;
-    precision?: number;
-    step: number;
-    value: number;
-  }) {
-    const displayValue = precision > 0 ? value.toFixed(precision) : value.toString();
+  function formatMetricValue(value: number, precision = 2) {
+    return precision > 0 ? value.toFixed(precision) : value.toString();
+  }
+
+  function getImageSettingsPresetDefaults() {
+    const presetSettings = exportPresets.find((item) => item.id === imageSettings.exportPreset)?.settings ?? {};
+    const canvasHeight =
+      typeof presetSettings.canvasHeight === "number"
+        ? presetSettings.canvasHeight
+        : defaultPhoneImageSettings.canvasHeight;
+    const canvasWidth =
+      typeof presetSettings.canvasWidth === "number"
+        ? presetSettings.canvasWidth
+        : defaultPhoneImageSettings.canvasWidth;
+    const pagePadding =
+      typeof presetSettings.pagePadding === "number"
+        ? presetSettings.pagePadding
+        : defaultPhoneImageSettings.pagePadding;
+
+    return { canvasHeight, canvasWidth, pagePadding };
+  }
+
+  function getImageSettingsSliderConfig(id: ImageSettingsSliderId): ImageSettingsSliderConfig {
+    const defaults = getImageSettingsPresetDefaults();
+
+    switch (id) {
+      case "size":
+        const min = Math.max(
+          MIN_IMAGE_CANVAS_WIDTH / defaults.canvasWidth,
+          MIN_IMAGE_CANVAS_HEIGHT / defaults.canvasHeight,
+        );
+        const max = Math.min(
+          MAX_IMAGE_CANVAS_WIDTH / defaults.canvasWidth,
+          MAX_IMAGE_CANVAS_HEIGHT / defaults.canvasHeight,
+        );
+
+        return {
+          id,
+          label: "Size",
+          max,
+          min,
+          precision: 2,
+          step: 0.05,
+          value: getClampedMetricValue(imageSettings.canvasWidth / defaults.canvasWidth, min, max, 2),
+        };
+      case "canvasWidth":
+        return {
+          id,
+          label: "Width",
+          max: MAX_IMAGE_CANVAS_WIDTH,
+          min: MIN_IMAGE_CANVAS_WIDTH,
+          precision: 0,
+          step: 80,
+          value: imageSettings.canvasWidth,
+        };
+      case "canvasHeight":
+        return {
+          id,
+          label: "Height",
+          max: MAX_IMAGE_CANVAS_HEIGHT,
+          min: MIN_IMAGE_CANVAS_HEIGHT,
+          precision: 0,
+          step: 80,
+          value: imageSettings.canvasHeight,
+        };
+      case "pagePadding":
+        return {
+          id,
+          label: "Padding",
+          max: 260,
+          min: 0,
+          precision: 0,
+          step: 8,
+          value: imageSettings.pagePadding,
+        };
+    }
+  }
+
+  function setImageSettingsSliderValue(id: ImageSettingsSliderId, value: number) {
+    const config = getImageSettingsSliderConfig(id);
+    const nextValue = getClampedMetricValue(value, config.min, config.max, config.precision);
+
+    if (id === "size") {
+      const defaults = getImageSettingsPresetDefaults();
+
+      setImageSettings((current) => ({
+        ...current,
+        canvasHeight: Math.round(defaults.canvasHeight * nextValue),
+        canvasWidth: Math.round(defaults.canvasWidth * nextValue),
+      }));
+      setShareStatus("Image size updated.");
+      return;
+    }
+
+    setImageSettings((current) => ({
+      ...current,
+      [id]: nextValue,
+    }));
+    setShareStatus(`${config.label} updated.`);
+  }
+
+  function getLetterSettingsSliderConfig(id: LetterSettingsSliderId): LetterSettingsSliderConfig {
+    switch (id) {
+      case "size":
+        return {
+          id,
+          label: "Size",
+          max: 1.8,
+          min: 0.35,
+          precision: 2,
+          step: 0.02,
+          value: Number(((settingsGlyph.width + settingsGlyph.height) / 2).toFixed(2)),
+        };
+      case "width":
+        return {
+          id,
+          label: "Width",
+          max: 1.8,
+          min: 0.35,
+          precision: 2,
+          step: 0.02,
+          value: settingsGlyph.width,
+        };
+      case "xAdvance":
+        return {
+          id,
+          label: "Advance",
+          max: 2,
+          min: 0.12,
+          precision: 2,
+          step: 0.02,
+          value: settingsGlyph.xAdvance,
+        };
+      case "height":
+        return {
+          id,
+          label: "Height",
+          max: 1.8,
+          min: 0.35,
+          precision: 2,
+          step: 0.02,
+          value: settingsGlyph.height,
+        };
+      case "baselineOffset":
+        return {
+          id,
+          label: "Baseline",
+          max: 1.2,
+          min: 0,
+          precision: 2,
+          step: 0.02,
+          value: settingsGlyph.baselineOffset,
+        };
+      case "leftBearing":
+        return {
+          id,
+          label: "Left",
+          max: 1.2,
+          min: -1.2,
+          precision: 2,
+          step: 0.02,
+          value: settingsGlyph.leftBearing,
+        };
+      case "rightBearing":
+        return {
+          id,
+          label: "Right",
+          max: 1.2,
+          min: -1.2,
+          precision: 2,
+          step: 0.02,
+          value: settingsGlyph.rightBearing,
+        };
+    }
+  }
+
+  function getLetterSettingsSliderIcon(id: LetterSettingsSliderId) {
+    switch (id) {
+      case "size":
+        return <Scaling aria-hidden="true" />;
+      case "width":
+        return <MoveHorizontal aria-hidden="true" />;
+      case "xAdvance":
+        return <Ruler aria-hidden="true" />;
+      case "height":
+        return <MoveVertical aria-hidden="true" />;
+      case "baselineOffset":
+        return <Baseline aria-hidden="true" />;
+      case "leftBearing":
+        return <ArrowLeftToLine aria-hidden="true" />;
+      case "rightBearing":
+        return <ArrowRightToLine aria-hidden="true" />;
+    }
+  }
+
+  function getFontSizeScaleBase() {
+    const presetFontSize = exportPresets.find((item) => item.id === imageSettings.exportPreset)?.settings.fontSize;
+
+    return typeof presetFontSize === "number" ? presetFontSize : defaultPhoneImageSettings.fontSize;
+  }
+
+  function getFontSettingsSliderConfig(id: FontSettingsSliderId): FontSettingsSliderConfig {
+    switch (id) {
+      case "size":
+        const sizeBase = getFontSizeScaleBase();
+
+        return {
+          id,
+          label: "Size",
+          max: 1.6,
+          min: 0.55,
+          precision: 2,
+          step: 0.05,
+          value: getClampedMetricValue(imageSettings.fontSize / sizeBase, 0.55, 1.6, 2),
+        };
+      case "height":
+        return {
+          id,
+          label: "Height",
+          max: 1.6,
+          min: 0.55,
+          precision: 2,
+          step: 0.05,
+          value: previewFont.shapeSettings?.heightScale ?? 1,
+        };
+      case "width":
+        return {
+          id,
+          label: "Width",
+          max: 1.6,
+          min: 0.55,
+          precision: 2,
+          step: 0.05,
+          value: previewFont.shapeSettings?.widthScale ?? 1,
+        };
+      case "letterSpacing":
+        return {
+          id,
+          label: "Letter gap",
+          max: 0.6,
+          min: -0.35,
+          precision: 2,
+          step: 0.01,
+          value: previewFont.shapeSettings?.letterSpacing ?? 0,
+        };
+      case "rowSpacing":
+        return {
+          id,
+          label: "Row spacing",
+          max: 2,
+          min: 0.45,
+          precision: 2,
+          step: 0.03,
+          value: imageSettings.lineSpacing,
+        };
+      case "spacebar":
+        return {
+          id,
+          label: "Spacebar",
+          max: 1.2,
+          min: 0.18,
+          precision: 2,
+          step: 0.02,
+          value: previewSpacebarGlyph.xAdvance,
+        };
+    }
+  }
+
+  function setFontSettingsSliderValue(id: FontSettingsSliderId, value: number) {
+    const config = getFontSettingsSliderConfig(id);
+
+    if (id === "size") {
+      const sizeBase = getFontSizeScaleBase();
+
+      setImageSettings((current) => ({
+        ...current,
+        fontSize: Math.round(sizeBase * getClampedMetricValue(value, config.min, config.max, config.precision)),
+      }));
+      setShareStatus("Text size updated.");
+      return;
+    }
+
+    if (id === "height") {
+      setFontShapeMetricValue("heightScale", value, config.min, config.max, config.precision);
+      return;
+    }
+
+    if (id === "width") {
+      setFontShapeMetricValue("widthScale", value, config.min, config.max, config.precision);
+      return;
+    }
+
+    if (id === "letterSpacing") {
+      setFontShapeMetricValue("letterSpacing", value, config.min, config.max, config.precision);
+      return;
+    }
+
+    if (id === "rowSpacing") {
+      setImageSettings((current) => ({
+        ...current,
+        lineSpacing: getClampedMetricValue(value, config.min, config.max, config.precision),
+      }));
+      setShareStatus("Row spacing updated.");
+      return;
+    }
+
+    if (id === "spacebar") {
+      setSpacebarAdvanceValue(value);
+    }
+  }
+
+  function getFontSettingsSliderIcon(id: FontSettingsSliderId) {
+    switch (id) {
+      case "size":
+        return <Scaling aria-hidden="true" />;
+      case "height":
+        return <MoveVertical aria-hidden="true" />;
+      case "width":
+        return <MoveHorizontal aria-hidden="true" />;
+      case "letterSpacing":
+        return <AlignHorizontalSpaceAround aria-hidden="true" />;
+      case "rowSpacing":
+        return <AlignVerticalSpaceAround aria-hidden="true" />;
+      case "spacebar":
+        return <Space aria-hidden="true" />;
+    }
+  }
+
+  function getImageSettingsSliderIcon(id: ImageSettingsSliderId) {
+    switch (id) {
+      case "size":
+        return <Scaling aria-hidden="true" />;
+      case "canvasWidth":
+        return <MoveHorizontal aria-hidden="true" />;
+      case "canvasHeight":
+        return <MoveVertical aria-hidden="true" />;
+      case "pagePadding":
+        return <SlidersHorizontal aria-hidden="true" />;
+    }
+  }
+
+  function getFontSettingsDefaultValue(id: FontSettingsSliderId) {
+    switch (id) {
+      case "size":
+      case "height":
+      case "width":
+        return 1;
+      case "letterSpacing":
+        return 0;
+      case "rowSpacing":
+        return defaultPhoneImageSettings.lineSpacing;
+      case "spacebar":
+        return defaultSpacebarMetrics.xAdvance;
+    }
+  }
+
+  function getImageSettingsDefaultValue(id: ImageSettingsSliderId) {
+    const defaults = getImageSettingsPresetDefaults();
+
+    switch (id) {
+      case "size":
+        return 1;
+      case "canvasWidth":
+        return defaults.canvasWidth;
+      case "canvasHeight":
+        return defaults.canvasHeight;
+      case "pagePadding":
+        return defaults.pagePadding;
+    }
+  }
+
+  function getLetterSettingsDefaultValue(id: LetterSettingsSliderId) {
+    switch (id) {
+      case "size":
+      case "height":
+      case "width":
+        return 1;
+      case "baselineOffset":
+        return defaultGlyphMetrics.baselineOffset;
+      case "leftBearing":
+        return defaultGlyphMetrics.leftBearing;
+      case "rightBearing":
+        return defaultGlyphMetrics.rightBearing;
+      case "xAdvance":
+        return defaultGlyphMetrics.xAdvance;
+    }
+  }
+
+  function renderLetterSliderTrigger(config: LetterSettingsSliderConfig) {
+    const selected = activeLetterSettingsSliderId === config.id;
 
     return (
-      <div className="phone-metric-stepper">
-        <div className="phone-metric-readout">
-          <span>{label}</span>
-          <strong>{displayValue}</strong>
-        </div>
-        <div className="phone-metric-buttons">
+      <div key={config.id} className={`font-slider-slot ${selected ? "is-open" : ""}`}>
+        <button
+          className={`draw-icon-button draw-glass-button font-slider-icon-button ${selected ? "active-tool" : ""}`}
+          type="button"
+          onClick={() => setActiveLetterSettingsSliderId((current) => (current === config.id ? null : config.id))}
+          aria-expanded={selected}
+          aria-label={`${config.label} for ${settingsGlyphLabel}: ${formatMetricValue(config.value, config.precision)}`}
+          title={`${config.label}: ${formatMetricValue(config.value, config.precision)}`}
+        >
+          {getLetterSettingsSliderIcon(config.id)}
+          <span className="font-slider-button-value">
+            {formatMetricValue(config.value, config.precision)}
+          </span>
+        </button>
+      </div>
+    );
+  }
+
+  function renderLetterSettingsSliderDrawer(config: LetterSettingsSliderConfig) {
+    const sliderFill = Math.max(0, Math.min(100, ((config.value - config.min) / (config.max - config.min)) * 100));
+
+    return (
+      <div
+        className="font-slider-drawer letter-slider-drawer"
+        style={{ "--slider-fill": `${sliderFill}%` } as CSSProperties}
+        aria-label={`${config.label} slider for ${settingsGlyphLabel}`}
+      >
+        <div className="font-slider-body font-settings-slider-body">
           <button
-            className="secondary-button"
+            className="draw-icon-button draw-glass-button font-slider-default-button"
             type="button"
-            onClick={() => updateSelectedLetterMetric(metric, -step, min, max, precision)}
-            aria-label={`Decrease ${label} for ${settingsGlyphLabel}`}
+            onClick={() => setSelectedLetterMetricValue(config.id, getLetterSettingsDefaultValue(config.id), config.min, config.max, config.precision)}
+            aria-label={`Default ${config.label} for ${settingsGlyphLabel}`}
+            title="Default"
           >
-            Down
+            <RotateCcw aria-hidden="true" />
+          </button>
+          <input
+            className="font-horizontal-slider"
+            type="range"
+            min={config.min}
+            max={config.max}
+            step={config.step}
+            value={config.value}
+            onChange={(event) =>
+              setSelectedLetterMetricValue(config.id, Number(event.target.value), config.min, config.max, config.precision)
+            }
+            aria-label={`${config.label} value for ${settingsGlyphLabel}`}
+          />
+          <button
+            className="draw-icon-button draw-glass-button font-slider-step-button"
+            type="button"
+            onClick={() =>
+              setSelectedLetterMetricValue(config.id, config.value - config.step, config.min, config.max, config.precision)
+            }
+            aria-label={`Decrease ${config.label} for ${settingsGlyphLabel}`}
+            title={`Decrease ${config.label}`}
+          >
+            <Minus aria-hidden="true" />
           </button>
           <button
-            className="secondary-button"
+            className="draw-icon-button draw-glass-button font-slider-step-button"
             type="button"
-            onClick={() => updateSelectedLetterMetric(metric, step, min, max, precision)}
-            aria-label={`Increase ${label} for ${settingsGlyphLabel}`}
+            onClick={() =>
+              setSelectedLetterMetricValue(config.id, config.value + config.step, config.min, config.max, config.precision)
+            }
+            aria-label={`Increase ${config.label} for ${settingsGlyphLabel}`}
+            title={`Increase ${config.label}`}
           >
-            Up
+            <Plus aria-hidden="true" />
           </button>
         </div>
       </div>
     );
   }
 
-  function renderFontMetricControl({
-    label,
-    max,
-    metric,
-    min,
-    precision = 2,
-    step,
-    value,
-  }: {
-    label: string;
-    max: number;
-    metric: FontGlyphMetricKey;
-    min: number;
-    precision?: number;
-    step: number;
-    value: number;
-  }) {
-    const displayValue = precision > 0 ? value.toFixed(precision) : value.toString();
+  function renderImageSliderTrigger(config: ImageSettingsSliderConfig) {
+    const selected = activeImageSettingsSliderId === config.id;
 
     return (
-      <div className="phone-metric-stepper">
-        <div className="phone-metric-readout">
-          <span>{label}</span>
-          <strong>{displayValue}</strong>
-        </div>
-        <div className="phone-metric-buttons">
+      <div key={config.id} className={`font-slider-slot ${selected ? "is-open" : ""}`}>
+        <button
+          className={`draw-icon-button draw-glass-button font-slider-icon-button ${selected ? "active-tool" : ""}`}
+          type="button"
+          onClick={() => setActiveImageSettingsSliderId((current) => (current === config.id ? null : config.id))}
+          aria-expanded={selected}
+          aria-label={`${config.label}: ${formatMetricValue(config.value, config.precision)}`}
+          title={`${config.label}: ${formatMetricValue(config.value, config.precision)}`}
+        >
+          {getImageSettingsSliderIcon(config.id)}
+          <span className="font-slider-button-value">
+            {formatMetricValue(config.value, config.precision)}
+          </span>
+        </button>
+      </div>
+    );
+  }
+
+  function renderImageSettingsSliderDrawer(config: ImageSettingsSliderConfig) {
+    const sliderFill = Math.max(0, Math.min(100, ((config.value - config.min) / (config.max - config.min)) * 100));
+
+    return (
+      <div
+        className="font-slider-drawer image-slider-drawer"
+        style={{ "--slider-fill": `${sliderFill}%` } as CSSProperties}
+        aria-label={`${config.label} slider`}
+      >
+        <div className="font-slider-body font-settings-slider-body">
           <button
-            className="secondary-button"
+            className="draw-icon-button draw-glass-button font-slider-default-button"
             type="button"
-            onClick={() => updateFontMetric(metric, -step, min, max, precision)}
-            aria-label={`Decrease ${label}`}
+            onClick={() => setImageSettingsSliderValue(config.id, getImageSettingsDefaultValue(config.id))}
+            aria-label={`Default ${config.label}`}
+            title="Default"
           >
-            Down
+            <RotateCcw aria-hidden="true" />
+          </button>
+          <input
+            className="font-horizontal-slider"
+            type="range"
+            min={config.min}
+            max={config.max}
+            step={config.step}
+            value={config.value}
+            onChange={(event) => setImageSettingsSliderValue(config.id, Number(event.target.value))}
+            aria-label={`${config.label} value`}
+          />
+          <button
+            className="draw-icon-button draw-glass-button font-slider-step-button"
+            type="button"
+            onClick={() => setImageSettingsSliderValue(config.id, config.value - config.step)}
+            aria-label={`Decrease ${config.label}`}
+            title={`Decrease ${config.label}`}
+          >
+            <Minus aria-hidden="true" />
           </button>
           <button
-            className="secondary-button"
+            className="draw-icon-button draw-glass-button font-slider-step-button"
             type="button"
-            onClick={() => updateFontMetric(metric, step, min, max, precision)}
-            aria-label={`Increase ${label}`}
+            onClick={() => setImageSettingsSliderValue(config.id, config.value + config.step)}
+            aria-label={`Increase ${config.label}`}
+            title={`Increase ${config.label}`}
           >
-            Up
+            <Plus aria-hidden="true" />
           </button>
         </div>
       </div>
     );
   }
 
-  function renderFontShapeMetricControl({
-    label,
-    max,
-    metric,
-    min,
-    precision = 2,
-    step,
-    value,
-  }: {
-    label: string;
-    max: number;
-    metric: keyof FontShapeSettings;
-    min: number;
-    precision?: number;
-    step: number;
-    value: number;
-  }) {
-    const displayValue = precision > 0 ? value.toFixed(precision) : value.toString();
+  function renderFontSliderTrigger(config: FontSettingsSliderConfig) {
+    const selected = activeFontSettingsSliderId === config.id;
 
     return (
-      <div className="phone-metric-stepper">
-        <div className="phone-metric-readout">
-          <span>{label}</span>
-          <strong>{displayValue}</strong>
-        </div>
-        <div className="phone-metric-buttons">
+      <div key={config.id} className={`font-slider-slot ${selected ? "is-open" : ""}`}>
+        <button
+          className={`draw-icon-button draw-glass-button font-slider-icon-button ${selected ? "active-tool" : ""}`}
+          type="button"
+          onClick={() => setActiveFontSettingsSliderId((current) => (current === config.id ? null : config.id))}
+          aria-expanded={selected}
+          aria-label={`${config.label}: ${formatMetricValue(config.value, config.precision)}`}
+          title={`${config.label}: ${formatMetricValue(config.value, config.precision)}`}
+        >
+          {getFontSettingsSliderIcon(config.id)}
+          <span className="font-slider-button-value">
+            {formatMetricValue(config.value, config.precision)}
+          </span>
+        </button>
+      </div>
+    );
+  }
+
+  function renderFontSettingsSliderDrawer(config: FontSettingsSliderConfig) {
+    const sliderFill = Math.max(0, Math.min(100, ((config.value - config.min) / (config.max - config.min)) * 100));
+
+    return (
+      <div
+        className="font-slider-drawer"
+        style={{ "--slider-fill": `${sliderFill}%` } as CSSProperties}
+        aria-label={`${config.label} slider`}
+      >
+        <div className="font-slider-body font-settings-slider-body">
           <button
-            className="secondary-button"
+            className="draw-icon-button draw-glass-button font-slider-default-button"
             type="button"
-            onClick={() => updateFontShapeMetric(metric, -step, min, max, precision)}
-            aria-label={`Decrease ${label}`}
+            onClick={() => setFontSettingsSliderValue(config.id, getFontSettingsDefaultValue(config.id))}
+            aria-label={`Default ${config.label}`}
+            title="Default"
           >
-            Down
+            <RotateCcw aria-hidden="true" />
+          </button>
+          <input
+            className="font-horizontal-slider"
+            type="range"
+            min={config.min}
+            max={config.max}
+            step={config.step}
+            value={config.value}
+            onChange={(event) => setFontSettingsSliderValue(config.id, Number(event.target.value))}
+            aria-label={`${config.label} value`}
+          />
+          <button
+            className="draw-icon-button draw-glass-button font-slider-step-button"
+            type="button"
+            onClick={() => setFontSettingsSliderValue(config.id, config.value - config.step)}
+            aria-label={`Decrease ${config.label}`}
+            title={`Decrease ${config.label}`}
+          >
+            <Minus aria-hidden="true" />
           </button>
           <button
-            className="secondary-button"
+            className="draw-icon-button draw-glass-button font-slider-step-button"
             type="button"
-            onClick={() => updateFontShapeMetric(metric, step, min, max, precision)}
-            aria-label={`Increase ${label}`}
+            onClick={() => setFontSettingsSliderValue(config.id, config.value + config.step)}
+            aria-label={`Increase ${config.label}`}
+            title={`Increase ${config.label}`}
           >
-            Up
+            <Plus aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -5097,10 +6304,22 @@ export default function TextPreview({
 
   function setFullscreenSettings(panel: SettingsPanel) {
     setActiveSettingsPanel(panel);
+    if (panel !== "font") {
+      setActiveFontSettingsSliderId(null);
+    }
+    if (panel !== "image") {
+      setActiveImageSettingsSliderId(null);
+    }
+    if (panel !== "letter") {
+      setActiveLetterSettingsSliderId(null);
+    }
     setFullscreenSettingsMenuOpen(false);
   }
 
   function closeFullscreenPreview() {
+    setActiveFontSettingsSliderId(null);
+    setActiveImageSettingsSliderId(null);
+    setActiveLetterSettingsSliderId(null);
     setFullscreenSettingsMenuOpen(false);
     setImageViewerOpen(false);
   }
@@ -5120,14 +6339,7 @@ export default function TextPreview({
           type="button"
           onClick={() => setFullscreenSettings("letter")}
         >
-          Letter settings
-        </button>
-        <button
-          className={`secondary-button compact-button ${activeSettingsPanel === "headerLetter" ? "active-tool" : ""}`}
-          type="button"
-          onClick={() => setFullscreenSettings("headerLetter")}
-        >
-          Header Letter settings
+          Letter Tuning
         </button>
         <button
           className={`secondary-button compact-button ${activeSettingsPanel === "image" ? "active-tool" : ""}`}
@@ -5170,51 +6382,20 @@ export default function TextPreview({
     );
   }
 
-  function renderImageLayoutControls(className = "phone-image-tools preview-layout-tools") {
+  function renderImageLayoutControls(className = "phone-image-tools preview-layout-tools image-settings-tools") {
+    const sliderConfigs = imageSettingsSliderOrder.map((id) => getImageSettingsSliderConfig(id));
+    const activeSliderConfig = activeImageSettingsSliderId
+      ? getImageSettingsSliderConfig(activeImageSettingsSliderId)
+      : null;
+
     return (
-      <div className={className}>
-        {renderImageSizeControl()}
-        {renderImageMetricControl({
-          label: "Width",
-          max: MAX_IMAGE_CANVAS_WIDTH,
-          metric: "canvasWidth",
-          min: MIN_IMAGE_CANVAS_WIDTH,
-          step: 80,
-          value: imageSettings.canvasWidth,
-        })}
-        {renderImageMetricControl({
-          label: "Height",
-          max: MAX_IMAGE_CANVAS_HEIGHT,
-          metric: "canvasHeight",
-          min: MIN_IMAGE_CANVAS_HEIGHT,
-          step: 80,
-          value: imageSettings.canvasHeight,
-        })}
-        {renderImageMetricControl({
-          label: "Spacing",
-          max: 2,
-          metric: "lineSpacing",
-          min: 0.45,
-          precision: 2,
-          step: 0.03,
-          value: imageSettings.lineSpacing,
-        })}
-        {renderImageMetricControl({
-          label: "Letters",
-          max: 96,
-          metric: "letterSpacing",
-          min: -48,
-          step: 2,
-          value: imageSettings.letterSpacing,
-        })}
-        {renderImageMetricControl({
-          label: "Padding",
-          max: 260,
-          metric: "pagePadding",
-          min: 0,
-          step: 8,
-          value: imageSettings.pagePadding,
-        })}
+      <div className={className} aria-label="Image settings">
+        <div className={`font-slider-shell image-slider-shell ${activeSliderConfig ? "has-open-slider" : ""}`}>
+          {activeSliderConfig ? renderImageSettingsSliderDrawer(activeSliderConfig) : null}
+          <div className="font-slider-button-row image-slider-button-row" aria-label="Image settings sliders">
+            {sliderConfigs.map((config) => renderImageSliderTrigger(config))}
+          </div>
+        </div>
       </div>
     );
   }
@@ -5247,129 +6428,43 @@ export default function TextPreview({
   }
 
   function renderLetterSettingsControls(className = "phone-image-tools preview-layout-tools letter-settings-tools") {
+    const sliderConfigs = letterSettingsSliderOrder.map((id) => getLetterSettingsSliderConfig(id));
+    const activeSliderConfig = activeLetterSettingsSliderId
+      ? getLetterSettingsSliderConfig(activeLetterSettingsSliderId)
+      : null;
+
     return (
       <div className={className} aria-label={settingsGlyphPanelLabel}>
-        {renderLetterMetricControl({
-          label: "Baseline",
-          max: 1.2,
-          metric: "baselineOffset",
-          min: 0,
-          step: 0.02,
-          value: settingsGlyph.baselineOffset,
-        })}
-        {renderLetterMetricControl({
-          label: "Width",
-          max: 1.8,
-          metric: "width",
-          min: 0.35,
-          step: 0.02,
-          value: settingsGlyph.width,
-        })}
-        {renderLetterMetricControl({
-          label: "Height",
-          max: 1.8,
-          metric: "height",
-          min: 0.35,
-          step: 0.02,
-          value: settingsGlyph.height,
-        })}
-        {renderLetterMetricControl({
-          label: "Advance",
-          max: 2,
-          metric: "xAdvance",
-          min: 0.12,
-          step: 0.02,
-          value: settingsGlyph.xAdvance,
-        })}
-        {renderLetterMetricControl({
-          label: "Left",
-          max: 0.6,
-          metric: "leftBearing",
-          min: -0.5,
-          step: 0.02,
-          value: settingsGlyph.leftBearing,
-        })}
-        {renderLetterMetricControl({
-          label: "Right",
-          max: 0.6,
-          metric: "rightBearing",
-          min: -0.5,
-          step: 0.02,
-          value: settingsGlyph.rightBearing,
-        })}
+        <div className={`font-slider-shell letter-slider-shell ${activeSliderConfig ? "has-open-slider" : ""}`}>
+          {activeSliderConfig ? renderLetterSettingsSliderDrawer(activeSliderConfig) : null}
+          <div className="font-slider-button-row letter-slider-button-row" aria-label={`${settingsGlyphPanelLabel} sliders`}>
+            {sliderConfigs.map((config) => renderLetterSliderTrigger(config))}
+          </div>
+        </div>
       </div>
     );
   }
 
   function renderFontSettingsControls(className = "phone-image-tools preview-layout-tools font-settings-tools") {
+    const sliderConfigs = fontSettingsSliderOrder.map((id) => getFontSettingsSliderConfig(id));
+    const activeSliderConfig = activeFontSettingsSliderId
+      ? getFontSettingsSliderConfig(activeFontSettingsSliderId)
+      : null;
+
     return (
       <div className={className}>
-        {renderFontMetricControl({
-          label: "Baseline",
-          max: 1.2,
-          metric: "baselineOffset",
-          min: 0,
-          step: 0.02,
-          value: previewFont.guideSettings?.baseline ?? getAverageGlyphMetric("baselineOffset"),
-        })}
-        {renderFontShapeMetricControl({
-          label: "Width",
-          max: 1.6,
-          metric: "widthScale",
-          min: 0.55,
-          step: 0.05,
-          value: previewFont.shapeSettings?.widthScale ?? 1,
-        })}
-        {renderFontMetricControl({
-          label: "Advance",
-          max: 2,
-          metric: "xAdvance",
-          min: 0.18,
-          step: 0.02,
-          value: getAverageGlyphMetric("xAdvance"),
-        })}
-        {renderFontMetricControl({
-          label: "Left",
-          max: 0.6,
-          metric: "leftBearing",
-          min: -0.4,
-          step: 0.02,
-          value: getAverageGlyphMetric("leftBearing"),
-        })}
-        {renderFontMetricControl({
-          label: "Right",
-          max: 0.6,
-          metric: "rightBearing",
-          min: -0.4,
-          step: 0.02,
-          value: getAverageGlyphMetric("rightBearing"),
-        })}
-        <div className="phone-metric-stepper">
-          <div className="phone-metric-readout">
-            <span>Spacebar</span>
-            <strong>{previewSpacebarGlyph.xAdvance.toFixed(2)}</strong>
-          </div>
-          <div className="phone-metric-buttons">
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={() => updateSpacebarAdvance(-0.02)}
-              aria-label="Decrease spacebar"
-            >
-              Down
-            </button>
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={() => updateSpacebarAdvance(0.02)}
-              aria-label="Increase spacebar"
-            >
-              Up
-            </button>
+        <div className={`font-slider-shell font-settings-slider-shell ${activeSliderConfig ? "has-open-slider" : ""}`}>
+          {activeSliderConfig ? renderFontSettingsSliderDrawer(activeSliderConfig) : null}
+          <div className="font-slider-button-row" aria-label="Font metric sliders">
+            {sliderConfigs.map((config) => renderFontSliderTrigger(config))}
           </div>
         </div>
       </div>
     );
+  }
+
+  function shouldShowHeaderApplyButton() {
+    return activeSettingsPanel === "font" || activeSettingsPanel === "letter";
   }
 
   function renderPreviewTextMenu() {
@@ -5457,69 +6552,83 @@ export default function TextPreview({
 
       <section
         id="preview-panel"
-        className="studio-panel preview-panel phone-generator-panel"
+        className={`studio-panel preview-panel phone-generator-panel ${
+          !showExportControls && !showPreviewText ? "minimal-preview-panel" : ""
+        }`}
         aria-label="Preview image"
       >
-        <div className="panel-heading preview-dashboard-heading">
-          <div>
-            <p className="eyebrow">Export</p>
-            <h2>Preview image</h2>
+        {showExportControls && (
+          <div className="panel-heading preview-dashboard-heading">
+            <div>
+              <p className="eyebrow">Export</p>
+              <h2>Preview image</h2>
+            </div>
+            <div className="preview-summary-pill">
+              {imageSettings.canvasWidth}x{imageSettings.canvasHeight}
+            </div>
           </div>
-          <div className="preview-summary-pill">
-            {imageSettings.canvasWidth}x{imageSettings.canvasHeight}
-          </div>
-        </div>
+        )}
 
-      <div className="export-preset-grid" aria-label="Export presets">
-        {exportPresets.map((preset) => (
-          <button
-            key={preset.id}
-            className={`secondary-button compact-button ${imageSettings.exportPreset === preset.id ? "active-tool" : ""}`}
-            type="button"
-            onClick={() => applyExportPreset(preset.id)}
-          >
-            {preset.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="phone-image-actions">
-        <button className="primary-button compact-button" type="button" onClick={sharePhoneImage}>
-          Share
-        </button>
-        <button className="secondary-button compact-button" type="button" onClick={downloadPhoneImage}>
-          Export PNG
-        </button>
-      </div>
-      <div className="header-letter-input-group">
-        {renderHeaderPreviewTextBox("preview-input phone-text-input phone-image-text-input phone-header-text-input")}
         <button
-          className="secondary-button compact-button header-letter-draw-button"
+          className={`phone-image-preview phone-image-open-button ${imageSettings.transparent ? "transparent-preview" : ""}`}
           type="button"
-          onClick={openHeaderLetterEditor}
-          aria-label={`Draw ${headerEditorLabel}`}
+          aria-label="Open font settings"
+          onClick={() => {
+            setActiveSettingsPanel("font");
+            setFullscreenSettingsMenuOpen(false);
+            setImageViewerOpen(true);
+          }}
         >
-          <PenLine aria-hidden="true" />
-          <span>Draw {headerEditorLabel}</span>
+          <canvas
+            ref={imageCanvasRef}
+            className="phone-image-canvas"
+            aria-label="Generated preview image"
+          />
         </button>
-      </div>
-      {renderPreviewTextBox("preview-input phone-text-input phone-image-text-input")}
-      <div className="share-status" aria-live="polite">
-        {shareStatus}
-      </div>
 
-      <button
-        className={`phone-image-preview phone-image-open-button ${imageSettings.transparent ? "transparent-preview" : ""}`}
-        type="button"
-        aria-label="Open preview image full screen"
-        onClick={() => setImageViewerOpen(true)}
-      >
-        <canvas
-          ref={imageCanvasRef}
-          className="phone-image-canvas"
-          aria-label="Generated preview image"
-        />
-      </button>
+        {showExportControls && (
+          <>
+            <div className="export-preset-grid" aria-label="Export presets">
+              {exportPresets.map((preset) => (
+                <button
+                  key={preset.id}
+                  className={`secondary-button compact-button ${
+                    imageSettings.exportPreset === preset.id ? "active-tool" : ""
+                  }`}
+                  type="button"
+                  onClick={() => applyExportPreset(preset.id)}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="phone-image-actions">
+              <button className="primary-button compact-button" type="button" onClick={sharePhoneImage}>
+                Share
+              </button>
+              <button className="secondary-button compact-button" type="button" onClick={downloadPhoneImage}>
+                Export PNG
+              </button>
+            </div>
+          </>
+        )}
+
+        {showPreviewText && (
+          <>
+            <div className="header-letter-input-group">
+              <span className="preview-field-label">Header</span>
+              {renderHeaderPreviewTextBox("preview-input phone-text-input phone-image-text-input phone-header-text-input")}
+            </div>
+            <div className="preview-body-input-group">
+              <span className="preview-field-label">Body</span>
+            {renderPreviewTextBox("preview-input phone-text-input phone-image-text-input")}
+            </div>
+            <div className="share-status" aria-live="polite">
+              {shareStatus}
+            </div>
+          </>
+        )}
 
       {styleEditorOpen && (
         <section className="studio-panel phone-style-fullscreen" aria-label="Preview style editor">
@@ -5590,7 +6699,7 @@ export default function TextPreview({
               }}
               aria-hidden="true"
             >
-              {renderStyleStickerPreview(styleStickerDragPreview.expression)}
+              {renderStyleStickerPreview(styleStickerDragPreview.asset)}
             </div>
           )}
         </section>
@@ -5599,7 +6708,69 @@ export default function TextPreview({
       {imageViewerOpen && (
         <section className="studio-panel phone-image-fullscreen" aria-label="Full screen preview image">
           <div className="panel-heading phone-image-fullscreen-heading">
-            <div className="phone-image-menu-wrap">
+            <button
+              className="secondary-button compact-button phone-image-home-button"
+              type="button"
+              aria-label="Home"
+              title="Home"
+              onClick={closeFullscreenPreview}
+            >
+              <Home aria-hidden="true" />
+            </button>
+            <div
+              className={`phone-image-active-settings ${
+                activeSettingsPanel === "letter"
+                  ? "phone-letter-heading-settings"
+                  : ""
+              }`}
+              aria-live="polite"
+            >
+              {activeSettingsPanel === "letter" ? (
+                <>
+                  <span>{settingsGlyphPanelLabel}</span>
+                  <strong className={settingsGlyphIsHeader ? "header-letter-chip" : ""}>
+                    {settingsGlyphLabel}
+                  </strong>
+                  <button className="secondary-button compact-button" type="button" onClick={openSelectedLetterEditor}>
+                    Draw letter
+                  </button>
+                </>
+              ) : (
+                settingsPanelLabels[activeSettingsPanel]
+              )}
+            </div>
+            {shouldShowHeaderApplyButton() ? (
+              <button
+                className="draw-icon-button draw-gold-button font-slider-apply-button phone-image-header-apply-button"
+                type="button"
+                disabled={!hasPendingFontSpacingChanges}
+                onClick={applyFontSpacingToFont}
+                aria-label={
+                  activeSettingsPanel === "font"
+                    ? "Apply to Font"
+                    : `Apply ${settingsGlyphPanelLabel} changes to Font`
+                }
+                title="Apply to Font"
+              >
+                Apply
+              </button>
+            ) : (
+              <span className="phone-image-heading-spacer" aria-hidden="true" />
+            )}
+          </div>
+
+          <div className={`phone-image-fullscreen-surface ${imageSettings.transparent ? "transparent-preview" : ""}`}>
+            <canvas
+              ref={viewerCanvasRef}
+              className="phone-image-canvas phone-image-fullscreen-canvas"
+              aria-label="Full screen generated preview image"
+              onPointerDown={handleFullscreenPreviewPointerDown}
+              onPointerUp={handleFullscreenPreviewPointerUp}
+            />
+          </div>
+
+          <div className="phone-image-fullscreen-bottom-bar">
+            <div className="phone-image-menu-wrap phone-image-bottom-menu-wrap">
               <button
                 className={`secondary-button compact-button phone-image-menu-button ${fullscreenSettingsMenuOpen ? "active-tool" : ""}`}
                 type="button"
@@ -5615,52 +6786,16 @@ export default function TextPreview({
               </button>
               {fullscreenSettingsMenuOpen && renderFullscreenSettingsMenu()}
             </div>
-            <div
-              className={`phone-image-active-settings ${
-                activeSettingsPanel === "letter" || activeSettingsPanel === "headerLetter"
-                  ? "phone-letter-heading-settings"
-                  : ""
-              }`}
-              aria-live="polite"
-            >
-              {activeSettingsPanel === "letter" || activeSettingsPanel === "headerLetter" ? (
-                <>
-                  <span>{settingsGlyphPanelLabel}</span>
-                  <strong className={settingsGlyphIsHeader ? "header-letter-chip" : ""}>
-                    {settingsGlyphLabel}
-                  </strong>
-                  <button className="secondary-button compact-button" type="button" onClick={openSelectedLetterEditor}>
-                    Draw letter
-                  </button>
-                </>
-              ) : (
-                settingsPanelLabels[activeSettingsPanel]
-              )}
+            <div className="phone-image-fullscreen-settings">
+              {activeSettingsPanel === "font" &&
+                renderFontSettingsControls("phone-image-fullscreen-tools preview-layout-tools font-settings-tools")}
+              {activeSettingsPanel === "letter" &&
+                renderLetterSettingsControls("phone-image-fullscreen-tools preview-layout-tools letter-settings-tools")}
+              {activeSettingsPanel === "image" &&
+                renderImageLayoutControls("phone-image-fullscreen-tools preview-layout-tools image-settings-tools")}
+              {activeSettingsPanel === "position" &&
+                renderPositionSettingsControls("alignment-row image-option-row phone-image-fullscreen-options")}
             </div>
-            <button className="secondary-button compact-button" type="button" onClick={closeFullscreenPreview}>
-              Close
-            </button>
-          </div>
-
-          <div className={`phone-image-fullscreen-surface ${imageSettings.transparent ? "transparent-preview" : ""}`}>
-            <canvas
-              ref={viewerCanvasRef}
-              className="phone-image-canvas phone-image-fullscreen-canvas"
-              aria-label="Full screen generated preview image"
-              onPointerDown={handleFullscreenPreviewPointerDown}
-              onPointerUp={handleFullscreenPreviewPointerUp}
-            />
-          </div>
-
-          <div className="phone-image-fullscreen-settings">
-            {activeSettingsPanel === "font" &&
-              renderFontSettingsControls("phone-image-fullscreen-tools preview-layout-tools font-settings-tools")}
-            {(activeSettingsPanel === "letter" || activeSettingsPanel === "headerLetter") &&
-              renderLetterSettingsControls("phone-image-fullscreen-tools preview-layout-tools letter-settings-tools")}
-            {activeSettingsPanel === "image" &&
-              renderImageLayoutControls("phone-image-fullscreen-tools preview-layout-tools")}
-            {activeSettingsPanel === "position" &&
-              renderPositionSettingsControls("alignment-row image-option-row phone-image-fullscreen-options")}
           </div>
         </section>
       )}

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
+import { Check, Feather, Palette, X } from "lucide-react";
 import {
   drawGlyph,
   getFontHeightScale,
@@ -10,19 +11,29 @@ import {
   getGlyphTopForBaseline,
   selectPreviewGlyph,
 } from "../render/glyphRenderer";
+import { fontPresets, getFontPresetById, getFontPresetCanvasFont } from "../data/fontPresets";
+import { fontPalettes, getDefaultFontPaletteTheme } from "../data/palettes";
 import {
   defaultFontCharacterSettings,
   defaultFontGuideSettings,
+  fontHomeSectionOptions,
+  defaultFontWritingStyleSettings,
   defaultFontShapeSettings,
   exportFontSet,
+  fontWritingStyleOptions,
 } from "../storage/fontStorage";
 import type {
   FontCharacterSettings,
   FontGuideSettings,
+  FontHomeSectionId,
+  FontHomeSettings,
+  FontPaletteId,
   FontRenderProfile,
   FontSet,
   FontShapeSettings,
   FontTheme,
+  FontWritingStyleId,
+  FontWritingStyleSettings,
 } from "../types/fontTypes";
 import { clampFontGuideSettings, fontGuideRows } from "../utils/fontGuides";
 import type { FontGuideKey } from "../utils/fontGuides";
@@ -39,6 +50,7 @@ type FontLibraryProps = {
     guideSettings: FontGuideSettings,
     shapeSettings: FontShapeSettings,
   ) => void;
+  onCreatePresetFont: (presetFontId: string) => void;
   onStartDrawing: () => void;
   onRenameFont: (fontId: string, name: string) => void;
   onUpdateFontSettings: (
@@ -46,8 +58,10 @@ type FontLibraryProps = {
     settings: {
       characterSettings?: FontCharacterSettings;
       guideSettings?: FontGuideSettings;
+      homeSettings?: FontHomeSettings;
       shapeSettings?: FontShapeSettings;
       theme?: FontTheme;
+      writingStyleSettings?: FontWritingStyleSettings;
     },
   ) => void;
   onDuplicateFont: (fontId: string) => void;
@@ -55,7 +69,17 @@ type FontLibraryProps = {
   getSavedGlyphCount: (font: FontSet) => number;
 };
 
-function FontNamePreview({ font }: { font: FontSet }) {
+function FontNamePreview({
+  font,
+  variant = "full",
+  showThemeBackground = true,
+  color,
+}: {
+  font: FontSet;
+  variant?: "full" | "compact";
+  showThemeBackground?: boolean;
+  color?: string;
+}) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
@@ -65,71 +89,112 @@ function FontNamePreview({ font }: { font: FontSet }) {
       return;
     }
 
-    const dpr = window.devicePixelRatio || 1;
-    const width = 260;
-    const height = 52;
-    const fontSize = 27;
+    const previewCanvas = canvas;
+    const isCompact = variant === "compact";
+    const height = isCompact ? 34 : 52;
+    const fontSize = isCompact ? 22 : 27;
     const paddingX = 6;
-    const ctx = canvas.getContext("2d");
+    const textTop = isCompact ? 6 : 12;
+    const glyphTop = isCompact ? 6 : 11;
+    const preset = getFontPresetById(font.presetFontId);
+    previewCanvas.style.width = "100%";
+    previewCanvas.style.height = `${height}px`;
 
-    canvas.width = width * dpr;
-    canvas.height = height * dpr;
-    canvas.style.width = "100%";
-    canvas.style.height = `${height}px`;
+    function drawPreview() {
+      const ctx = previewCanvas.getContext("2d");
 
-    if (!ctx) {
-      return;
-    }
-
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, width, height);
-    if (font.renderProfile === "quillParchment") {
-      ctx.fillStyle = font.theme?.backgroundColor ?? "#efe0bd";
-      ctx.fillRect(0, 0, width, height);
-    }
-    ctx.font = `900 ${fontSize}px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
-    ctx.textBaseline = "top";
-    const previewColor = font.renderProfile === "quillParchment" ? font.theme?.inkColor ?? "#2a160d" : "#fff4df";
-    const fontHeightScale = getFontHeightScale(font);
-    const fontWidthScale = getFontWidthScale(font);
-    ctx.fillStyle = previewColor;
-
-    let x = paddingX;
-
-    for (const [characterIndex, character] of [...font.name].entries()) {
-      const glyph = selectPreviewGlyph(font.glyphs, character, `${font.id}|${font.name}|${characterIndex}|${character}`);
-
-      if (glyph) {
-        const scales = getGlyphRenderScales(font, glyph);
-        const scaledBaselineY = 11 + fontSize * 0.76 * fontHeightScale;
-        const glyphX = x + getGlyphLeftBearingOffset(font, glyph, fontSize);
-        const glyphY = getGlyphTopForBaseline(glyph, fontSize, scaledBaselineY, scales.heightScale);
-
-        drawGlyph(ctx, glyph, {
-          x: glyphX,
-          y: glyphY,
-          size: fontSize,
-          color: previewColor,
-          renderProfile: font.renderProfile,
-          heightScale: scales.heightScale,
-          widthScale: scales.widthScale,
-          backgroundTexture: font.theme?.backgroundTexture,
-        });
-        x += getGlyphAdvance(glyph, fontSize, fontWidthScale);
-      } else if (character === " ") {
-        x += fontSize * 0.36;
-      } else {
-        ctx.fillText(character, x, 11);
-        x += ctx.measureText(character).width;
+      if (!ctx) {
+        return;
       }
 
-      if (x > width - 18) {
-        break;
+      const dpr = window.devicePixelRatio || 1;
+      const width = Math.max(1, Math.round(previewCanvas.getBoundingClientRect().width || 260));
+
+      previewCanvas.width = width * dpr;
+      previewCanvas.height = height * dpr;
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+      if (showThemeBackground && font.theme) {
+        ctx.fillStyle = font.theme?.backgroundColor ?? "#efe0bd";
+        ctx.fillRect(0, 0, width, height);
+      }
+      ctx.font = preset
+        ? getFontPresetCanvasFont(preset, fontSize)
+        : `900 ${fontSize}px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+      ctx.textBaseline = "top";
+      const previewColor = color ?? font.theme?.inkColor ?? "#fff4df";
+      const fontHeightScale = getFontHeightScale(font);
+      const fontWidthScale = getFontWidthScale(font);
+      ctx.fillStyle = previewColor;
+
+      if (preset) {
+        ctx.fillText(font.name, paddingX, textTop);
+        return;
+      }
+
+      let x = paddingX;
+
+      for (const [characterIndex, character] of [...font.name].entries()) {
+        const glyph = selectPreviewGlyph(font.glyphs, character, `${font.id}|${font.name}|${characterIndex}|${character}`);
+
+        if (glyph) {
+          const scales = getGlyphRenderScales(font, glyph);
+          const scaledBaselineY = glyphTop + fontSize * 0.76 * fontHeightScale;
+          const glyphX = x + getGlyphLeftBearingOffset(font, glyph, fontSize);
+          const glyphY = getGlyphTopForBaseline(glyph, fontSize, scaledBaselineY, scales.heightScale);
+
+          drawGlyph(ctx, glyph, {
+            x: glyphX,
+            y: glyphY,
+            size: fontSize,
+            color: previewColor,
+            renderProfile: font.renderProfile,
+            heightScale: scales.heightScale,
+            widthScale: scales.widthScale,
+            backgroundTexture: font.theme?.backgroundTexture,
+          });
+          x += getGlyphAdvance(glyph, fontSize, fontWidthScale);
+        } else if (character === " ") {
+          x += fontSize * 0.36;
+        } else {
+          ctx.fillText(character, x, glyphTop);
+          x += ctx.measureText(character).width;
+        }
+
+        if (x > width - 18) {
+          break;
+        }
       }
     }
-  }, [font]);
 
-  return <canvas ref={canvasRef} className="font-name-preview" aria-hidden="true" />;
+    drawPreview();
+    let cancelled = false;
+
+    const resizeObserver = new ResizeObserver(drawPreview);
+    resizeObserver.observe(previewCanvas);
+
+    if (preset && document.fonts) {
+      document.fonts.load(getFontPresetCanvasFont(preset, fontSize)).finally(() => {
+        if (!cancelled) {
+          drawPreview();
+        }
+      });
+    }
+
+    return () => {
+      cancelled = true;
+      resizeObserver.disconnect();
+    };
+  }, [color, font, showThemeBackground, variant]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className={`font-name-preview ${variant === "compact" ? "compact-font-name-preview" : ""}`}
+      aria-hidden="true"
+    />
+  );
 }
 
 function sanitizeFileName(value: string) {
@@ -315,7 +380,7 @@ function FontGuideEditor({
       <div className="font-guide-card">
         <div className="font-guide-heading">
           <div>
-            <p className="eyebrow">Advanced settings</p>
+            <p className="eyebrow">Font settings</p>
             <h2>Drawing lines</h2>
           </div>
           <button className="secondary-button compact-button" type="button" onClick={onClose}>
@@ -368,6 +433,7 @@ export default function FontLibrary({
   activeFontId,
   onSelectFont,
   onCreateFont,
+  onCreatePresetFont,
   onStartDrawing,
   onRenameFont,
   onUpdateFontSettings,
@@ -377,8 +443,6 @@ export default function FontLibrary({
 }: FontLibraryProps) {
   const activeFont = fonts.find((font) => font.id === activeFontId) ?? fonts[0];
   const [createFormOpen, setCreateFormOpen] = useState(false);
-  const [advancedSettingsOpen, setAdvancedSettingsOpen] = useState(false);
-  const [activeAdvancedSettingsOpen, setActiveAdvancedSettingsOpen] = useState(false);
   const [newFontCharacterSettings, setNewFontCharacterSettings] = useState<FontCharacterSettings>({
     ...defaultFontCharacterSettings,
   });
@@ -387,68 +451,36 @@ export default function FontLibrary({
   const [newFontGuideSettings, setNewFontGuideSettings] = useState<FontGuideSettings>({
     ...defaultFontGuideSettings,
   });
-  const [newFontShapeSettings, setNewFontShapeSettings] = useState<FontShapeSettings>({
-    ...defaultFontShapeSettings,
-  });
   const [newFontName, setNewFontName] = useState("");
   const [newFontProfile, setNewFontProfile] = useState<FontRenderProfile>("plain");
-  const [renameValue, setRenameValue] = useState(activeFont.name);
+  const [editingFontId, setEditingFontId] = useState<string | null>(null);
+  const [fontRenameValue, setFontRenameValue] = useState("");
+  const [presetPickerOpen, setPresetPickerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const settingsRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    setRenameValue(activeFont.name);
     setSettingsOpen(false);
-    setActiveAdvancedSettingsOpen(false);
+    setEditingFontId(null);
     setActiveGuideEditorOpen(false);
+    setPresetPickerOpen(false);
   }, [activeFont.id, activeFont.name]);
-
-  useEffect(() => {
-    if (!settingsOpen) {
-      return;
-    }
-
-    function handlePointerDown(event: PointerEvent) {
-      const target = event.target;
-
-      if (!(target instanceof Node) || settingsRef.current?.contains(target)) {
-        return;
-      }
-
-      setSettingsOpen(false);
-    }
-
-    document.addEventListener("pointerdown", handlePointerDown);
-
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-    };
-  }, [settingsOpen]);
 
   function handleCreateFont() {
     const name = newFontName.trim() || (newFontProfile === "quillParchment" ? "Quill on Parchment" : `Font ${fonts.length + 1}`);
-    onCreateFont(name, newFontProfile, newFontCharacterSettings, newFontGuideSettings, newFontShapeSettings);
+    onCreateFont(name, newFontProfile, newFontCharacterSettings, newFontGuideSettings, defaultFontShapeSettings);
     setNewFontName("");
     setNewFontProfile("plain");
-    setAdvancedSettingsOpen(false);
     setNewFontCharacterSettings({ ...defaultFontCharacterSettings });
     setNewFontGuideSettings({ ...defaultFontGuideSettings });
-    setNewFontShapeSettings({ ...defaultFontShapeSettings });
     setGuideEditorOpen(false);
     setCreateFormOpen(false);
+    setPresetPickerOpen(false);
   }
 
   function updateNewFontCharacterSetting(key: keyof FontCharacterSettings, value: boolean) {
     setNewFontCharacterSettings((current) => ({
       ...current,
       [key]: value,
-    }));
-  }
-
-  function updateNewFontShapeSetting(key: keyof FontShapeSettings, value: number) {
-    setNewFontShapeSettings((current) => ({
-      ...current,
-      [key]: Number(value.toFixed(2)),
     }));
   }
 
@@ -461,204 +493,89 @@ export default function FontLibrary({
     });
   }
 
-  function updateActiveFontShapeSetting(key: keyof FontShapeSettings, value: number) {
+  function updateActiveHomeSection(sectionId: FontHomeSectionId, visible: boolean) {
     onUpdateFontSettings(activeFont.id, {
-      shapeSettings: {
-        ...(activeFont.shapeSettings ?? defaultFontShapeSettings),
-        [key]: Number(value.toFixed(2)),
+      homeSettings: {
+        visibleSections: {
+          ...activeFont.homeSettings.visibleSections,
+          [sectionId]: visible,
+        },
       },
     });
   }
 
-  function handleRenameFont() {
-    const name = renameValue.trim();
+  function updateActiveWritingStyle(styleId: FontWritingStyleId, enabled: boolean) {
+    const currentSettings = activeFont.writingStyleSettings ?? defaultFontWritingStyleSettings;
+    const enabledStyles = {
+      ...currentSettings.enabledStyles,
+      [styleId]: enabled,
+    };
 
-    if (name) {
-      onRenameFont(activeFont.id, name);
+    if (!enabledStyles.draw && !enabledStyles.build) {
+      return;
     }
+
+    onUpdateFontSettings(activeFont.id, {
+      writingStyleSettings: {
+        enabledStyles,
+      },
+    });
   }
 
-  return (
-    <section className="studio-panel library-panel" aria-label="Font library">
-      <div className="font-list">
-        {fonts.map((font) => (
-          <div
-            key={font.id}
-            className={`font-row ${font.id === activeFontId ? "selected" : ""}`}
+  function updateActivePalette(paletteId: FontPaletteId) {
+    onUpdateFontSettings(activeFont.id, {
+      theme: getDefaultFontPaletteTheme(paletteId),
+    });
+  }
+
+  function beginRenameFont(font: FontSet) {
+    setEditingFontId(font.id);
+    setFontRenameValue(font.name);
+  }
+
+  function handleRenameFont(fontId: string) {
+    const name = fontRenameValue.trim();
+
+    if (name) {
+      onRenameFont(fontId, name);
+    }
+
+    setEditingFontId(null);
+  }
+
+  function handleUsePresetFont(presetFontId: string) {
+    onCreatePresetFont(presetFontId);
+    setPresetPickerOpen(false);
+    setCreateFormOpen(false);
+    setSettingsOpen(false);
+  }
+
+  function renderPresetPicker() {
+    if (!presetPickerOpen) {
+      return null;
+    }
+
+    return (
+      <div className="font-preset-picker" aria-label="Preset fonts">
+        {fontPresets.map((preset) => (
+          <button
+            key={preset.id}
+            className="font-preset-option"
+            type="button"
+            onClick={() => handleUsePresetFont(preset.id)}
           >
-            <button
-              type="button"
-              className="font-select-button"
-              onClick={() => {
-                onSelectFont(font.id);
-                setRenameValue(font.name);
-              }}
-              aria-label={`Select ${font.name}`}
-            >
-              <FontNamePreview font={font} />
-              <strong>{getSavedGlyphCount(font)} saved</strong>
-            </button>
-            {font.id === activeFontId && (
-              <div className="font-settings-wrap" ref={settingsRef}>
-                <button
-                  className={`font-settings-button ${settingsOpen ? "active-tool" : ""}`}
-                  type="button"
-                  aria-label="Font settings"
-                  aria-expanded={settingsOpen}
-                  onClick={() => setSettingsOpen((current) => !current)}
-                >
-                  <span className="hamburger-lines" aria-hidden="true">
-                    <span />
-                    <span />
-                    <span />
-                  </span>
-                </button>
-                {settingsOpen && (
-                  <div className="font-settings-menu" role="menu">
-                    <label>
-                      Rename
-                      <input
-                        value={renameValue}
-                        onChange={(event) => setRenameValue(event.target.value)}
-                      />
-                    </label>
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      onClick={() => {
-                        handleRenameFont();
-                        setSettingsOpen(false);
-                      }}
-                    >
-                      Rename
-                    </button>
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      onClick={() => {
-                        onDuplicateFont(activeFont.id);
-                        setSettingsOpen(false);
-                      }}
-                    >
-                      Duplicate
-                    </button>
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          await downloadFontJson(activeFont);
-                        } finally {
-                          setSettingsOpen(false);
-                        }
-                      }}
-                    >
-                      Export JSON
-                    </button>
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      aria-expanded={activeAdvancedSettingsOpen}
-                      onClick={() => setActiveAdvancedSettingsOpen((current) => !current)}
-                    >
-                      Advanced settings
-                    </button>
-                    {activeAdvancedSettingsOpen && (
-                      <div className="advanced-font-options active-font-options">
-                        <label className="font-option-check">
-                          <input
-                            type="checkbox"
-                            checked={(activeFont.characterSettings ?? defaultFontCharacterSettings).showForgotten}
-                            onChange={(event) => updateActiveFontCharacterSetting("showForgotten", event.target.checked)}
-                          />
-                          <span>Forgotten</span>
-                        </label>
-                        <label className="font-option-check">
-                          <input
-                            type="checkbox"
-                            checked={(activeFont.characterSettings ?? defaultFontCharacterSettings).showHeaderLetters}
-                            onChange={(event) => updateActiveFontCharacterSetting("showHeaderLetters", event.target.checked)}
-                          />
-                          <span>Header Letters</span>
-                        </label>
-                        <label className="font-option-check">
-                          <input
-                            type="checkbox"
-                            checked={(activeFont.characterSettings ?? defaultFontCharacterSettings).showSpacebar}
-                            onChange={(event) => updateActiveFontCharacterSetting("showSpacebar", event.target.checked)}
-                          />
-                          <span>Space Bar</span>
-                        </label>
-                        <label className="font-option-slider">
-                          <span>
-                            Height
-                            <output>{(activeFont.shapeSettings ?? defaultFontShapeSettings).heightScale.toFixed(2)}x</output>
-                          </span>
-                          <input
-                            type="range"
-                            min="0.55"
-                            max="1.6"
-                            step="0.01"
-                            value={(activeFont.shapeSettings ?? defaultFontShapeSettings).heightScale}
-                            onChange={(event) => updateActiveFontShapeSetting("heightScale", Number(event.target.value))}
-                          />
-                        </label>
-                        <label className="font-option-slider">
-                          <span>
-                            Width
-                            <output>{(activeFont.shapeSettings ?? defaultFontShapeSettings).widthScale.toFixed(2)}x</output>
-                          </span>
-                          <input
-                            type="range"
-                            min="0.55"
-                            max="1.6"
-                            step="0.01"
-                            value={(activeFont.shapeSettings ?? defaultFontShapeSettings).widthScale}
-                            onChange={(event) => updateActiveFontShapeSetting("widthScale", Number(event.target.value))}
-                          />
-                        </label>
-                        <button
-                          className="secondary-button compact-button font-guide-launch"
-                          type="button"
-                          onClick={() => setActiveGuideEditorOpen(true)}
-                        >
-                          Adjust drawing lines
-                        </button>
-                        <div className="font-guide-summary">
-                          <span>Height {Math.round(activeFont.guideSettings.xHeight * 100)}%</span>
-                          <span>Baseline {Math.round(activeFont.guideSettings.baseline * 100)}%</span>
-                          <span>Left {Math.round(activeFont.guideSettings.leftBound * 100)}%</span>
-                          <span>Right {Math.round(activeFont.guideSettings.rightBound * 100)}%</span>
-                        </div>
-                      </div>
-                    )}
-                    <button
-                      className="danger-button"
-                      type="button"
-                      disabled={fonts.length <= 1}
-                      onClick={() => {
-                        onDeleteFont(activeFont.id);
-                        setSettingsOpen(false);
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+            <span style={{ fontFamily: `"${preset.family}", serif` }}>{preset.label}</span>
+            <small>{preset.license}</small>
+          </button>
         ))}
       </div>
+    );
+  }
 
-      <div className="library-actions">
-        <button className="primary-button start-drawing-button" type="button" onClick={onStartDrawing}>
-          Start drawing
-        </button>
-      </div>
-
+  function renderCreateFontForm(className = "library-form settings-create-font-form") {
+    return (
       <form
-        className={`library-form ${createFormOpen ? "expanded" : "collapsed"}`}
+        className={`${className} ${createFormOpen ? "expanded" : "collapsed"}`}
         onSubmit={(event) => {
           event.preventDefault();
           handleCreateFont();
@@ -690,93 +607,316 @@ export default function FontLibrary({
                 </button>
               ))}
             </div>
-            <button
-              className="secondary-button compact-button advanced-font-toggle"
-              type="button"
-              aria-expanded={advancedSettingsOpen}
-              onClick={() => setAdvancedSettingsOpen((current) => !current)}
-            >
-              Advanced settings
+            <div className="advanced-font-options">
+              <label className="font-option-check">
+                <input
+                  type="checkbox"
+                  checked={newFontCharacterSettings.showForgotten}
+                  onChange={(event) => updateNewFontCharacterSetting("showForgotten", event.target.checked)}
+                />
+                <span>Eth, Thorn, Ash (upper/lower)</span>
+              </label>
+              <label className="font-option-check">
+                <input
+                  type="checkbox"
+                  checked={newFontCharacterSettings.showHeaderLetters}
+                  onChange={(event) => updateNewFontCharacterSetting("showHeaderLetters", event.target.checked)}
+                />
+                <span>Header Letters</span>
+              </label>
+              <label className="font-option-check">
+                <input
+                  type="checkbox"
+                  checked={newFontCharacterSettings.showSpacebar}
+                  onChange={(event) => updateNewFontCharacterSetting("showSpacebar", event.target.checked)}
+                />
+                <span>Space Bar</span>
+              </label>
+              <button
+                className="secondary-button compact-button font-guide-launch"
+                type="button"
+                onClick={() => setGuideEditorOpen(true)}
+              >
+                Adjust drawing lines
+              </button>
+              <div className="font-guide-summary">
+                <span>Height {Math.round(newFontGuideSettings.xHeight * 100)}%</span>
+                <span>Baseline {Math.round(newFontGuideSettings.baseline * 100)}%</span>
+                <span>Left {Math.round(newFontGuideSettings.leftBound * 100)}%</span>
+                <span>Right {Math.round(newFontGuideSettings.rightBound * 100)}%</span>
+              </div>
+            </div>
+            <button className="primary-button" type="submit">
+              Create
             </button>
-            {advancedSettingsOpen && (
-              <div className="advanced-font-options">
+          </>
+        ) : (
+          <div className="font-create-actions">
+            <button
+              className="primary-button create-font-toggle"
+              type="button"
+              onClick={() => {
+                setCreateFormOpen(true);
+                setPresetPickerOpen(false);
+              }}
+            >
+              Create new font
+            </button>
+            <button
+              className={`secondary-button create-font-toggle use-preset-toggle ${presetPickerOpen ? "active-tool" : ""}`}
+              type="button"
+              onClick={() => {
+                setCreateFormOpen(false);
+                setPresetPickerOpen((open) => !open);
+              }}
+            >
+              Use preset
+            </button>
+          </div>
+        )}
+      </form>
+    );
+  }
+
+  return (
+    <section className="studio-panel library-panel font-profile-panel" aria-label="Font profile">
+      <div className="font-list">
+        <div className="font-row selected active-profile-row">
+          <button
+            type="button"
+            className="font-select-button active-font-preview-button"
+            onClick={() => setSettingsOpen(true)}
+            aria-label={`Open ${activeFont.name} font profile`}
+          >
+            <FontNamePreview font={activeFont} />
+          </button>
+        </div>
+      </div>
+
+      {settingsOpen && (
+        <section className="font-profile-fullscreen" aria-label="Font profile">
+          <div className="font-profile-fullscreen-heading">
+            <div>
+              <p className="eyebrow">Font profile</p>
+              <h2>{activeFont.name}</h2>
+            </div>
+            <button className="secondary-button compact-button" type="button" onClick={() => setSettingsOpen(false)}>
+              Close
+            </button>
+          </div>
+
+          <div className="font-settings-menu font-profile-fullscreen-menu" role="menu">
+            <div className="font-settings-section">
+              <strong>Change font</strong>
+              <div className="settings-font-list">
+                {fonts.map((font) => (
+                  editingFontId === font.id ? (
+                    <form
+                      key={font.id}
+                      className={`settings-font-option settings-font-rename-row ${
+                        font.id === activeFontId ? "selected" : ""
+                      }`}
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        handleRenameFont(font.id);
+                      }}
+                    >
+                      <input
+                        autoFocus
+                        aria-label={`Rename ${font.name}`}
+                        value={fontRenameValue}
+                        onChange={(event) => setFontRenameValue(event.target.value)}
+                      />
+                      <button className="font-rename-icon-button" type="submit" aria-label="Save font name">
+                        <Check aria-hidden="true" />
+                      </button>
+                      <button
+                        className="font-rename-icon-button"
+                        type="button"
+                        aria-label="Cancel rename"
+                        onClick={() => setEditingFontId(null)}
+                      >
+                        <X aria-hidden="true" />
+                      </button>
+                    </form>
+                  ) : (
+                    <div
+                      key={font.id}
+                      className={`settings-font-option ${font.id === activeFontId ? "selected" : ""}`}
+                    >
+                      <button
+                        className="settings-font-select-button"
+                        type="button"
+                        onClick={() => {
+                          onSelectFont(font.id);
+                          setSettingsOpen(false);
+                        }}
+                        aria-label={`Select ${font.name}`}
+                      >
+                        <FontNamePreview font={font} variant="compact" showThemeBackground={false} color="#fff4df" />
+                      </button>
+                      <button
+                        className="settings-font-edit-button"
+                        type="button"
+                        aria-label={`Rename ${font.name}`}
+                        onClick={() => beginRenameFont(font)}
+                      >
+                        <Feather aria-hidden="true" />
+                      </button>
+                    </div>
+                  )
+                ))}
+              </div>
+              {renderCreateFontForm()}
+              {renderPresetPicker()}
+            </div>
+            <div className="font-settings-section">
+              <strong>Writing style</strong>
+              <div className="home-section-toggle-list">
+                {fontWritingStyleOptions.map((option) => (
+                  <label key={option.id} className="font-option-check">
+                    <input
+                      type="checkbox"
+                      checked={(activeFont.writingStyleSettings ?? defaultFontWritingStyleSettings).enabledStyles[option.id]}
+                      onChange={(event) => updateActiveWritingStyle(option.id, event.target.checked)}
+                    />
+                    <span>{option.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="font-settings-section">
+              <strong>Palette</strong>
+              <div className="font-palette-selector" aria-label="Font palette">
+                {fontPalettes.map((palette) => {
+                  const selected = activeFont.theme?.paletteId === palette.id;
+                  const swatches = [...palette.main, ...palette.accents, palette.ink];
+
+                  return (
+                    <button
+                      key={palette.id}
+                      className={`font-palette-option ${selected ? "selected" : ""}`}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => updateActivePalette(palette.id)}
+                    >
+                      <Palette aria-hidden="true" />
+                      <span className="font-palette-copy">
+                        <strong>{palette.label}</strong>
+                        <span>{palette.ink.label} ink</span>
+                      </span>
+                      <span className="font-palette-swatches" aria-hidden="true">
+                        {swatches.map((swatch) => (
+                          <span key={`${palette.id}-${swatch.label}`} style={{ backgroundColor: swatch.color }} />
+                        ))}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="font-settings-section">
+              <strong>Home screen</strong>
+              <div className="home-section-toggle-list">
+                {fontHomeSectionOptions.map((option) => (
+                  <label key={option.id} className="font-option-check">
+                    <input
+                      type="checkbox"
+                      checked={activeFont.homeSettings.visibleSections[option.id]}
+                      onChange={(event) => updateActiveHomeSection(option.id, event.target.checked)}
+                    />
+                    <span>{option.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="font-settings-section">
+              <strong>Characters</strong>
+              <div className="advanced-font-options active-font-options">
                 <label className="font-option-check">
                   <input
                     type="checkbox"
-                    checked={newFontCharacterSettings.showForgotten}
-                    onChange={(event) => updateNewFontCharacterSetting("showForgotten", event.target.checked)}
+                    checked={(activeFont.characterSettings ?? defaultFontCharacterSettings).showForgotten}
+                    onChange={(event) => updateActiveFontCharacterSetting("showForgotten", event.target.checked)}
                   />
-                  <span>Forgotten</span>
+                  <span>Eth, Thorn, Ash (upper/lower)</span>
                 </label>
                 <label className="font-option-check">
                   <input
                     type="checkbox"
-                    checked={newFontCharacterSettings.showHeaderLetters}
-                    onChange={(event) => updateNewFontCharacterSetting("showHeaderLetters", event.target.checked)}
+                    checked={(activeFont.characterSettings ?? defaultFontCharacterSettings).showHeaderLetters}
+                    onChange={(event) => updateActiveFontCharacterSetting("showHeaderLetters", event.target.checked)}
                   />
                   <span>Header Letters</span>
                 </label>
                 <label className="font-option-check">
                   <input
                     type="checkbox"
-                    checked={newFontCharacterSettings.showSpacebar}
-                    onChange={(event) => updateNewFontCharacterSetting("showSpacebar", event.target.checked)}
+                    checked={(activeFont.characterSettings ?? defaultFontCharacterSettings).showSpacebar}
+                    onChange={(event) => updateActiveFontCharacterSetting("showSpacebar", event.target.checked)}
                   />
                   <span>Space Bar</span>
                 </label>
                 <button
                   className="secondary-button compact-button font-guide-launch"
                   type="button"
-                  onClick={() => setGuideEditorOpen(true)}
+                  onClick={() => setActiveGuideEditorOpen(true)}
                 >
                   Adjust drawing lines
                 </button>
-                <label className="font-option-slider">
-                  <span>
-                    Height
-                    <output>{newFontShapeSettings.heightScale.toFixed(2)}x</output>
-                  </span>
-                  <input
-                    type="range"
-                    min="0.55"
-                    max="1.6"
-                    step="0.01"
-                    value={newFontShapeSettings.heightScale}
-                    onChange={(event) => updateNewFontShapeSetting("heightScale", Number(event.target.value))}
-                  />
-                </label>
-                <label className="font-option-slider">
-                  <span>
-                    Width
-                    <output>{newFontShapeSettings.widthScale.toFixed(2)}x</output>
-                  </span>
-                  <input
-                    type="range"
-                    min="0.55"
-                    max="1.6"
-                    step="0.01"
-                    value={newFontShapeSettings.widthScale}
-                    onChange={(event) => updateNewFontShapeSetting("widthScale", Number(event.target.value))}
-                  />
-                </label>
                 <div className="font-guide-summary">
-                  <span>Height {Math.round(newFontGuideSettings.xHeight * 100)}%</span>
-                  <span>Baseline {Math.round(newFontGuideSettings.baseline * 100)}%</span>
-                  <span>Left {Math.round(newFontGuideSettings.leftBound * 100)}%</span>
-                  <span>Right {Math.round(newFontGuideSettings.rightBound * 100)}%</span>
+                  <span>Height {Math.round(activeFont.guideSettings.xHeight * 100)}%</span>
+                  <span>Baseline {Math.round(activeFont.guideSettings.baseline * 100)}%</span>
+                  <span>Left {Math.round(activeFont.guideSettings.leftBound * 100)}%</span>
+                  <span>Right {Math.round(activeFont.guideSettings.rightBound * 100)}%</span>
                 </div>
               </div>
-            )}
-            <button className="primary-button" type="submit">
-              Create
+            </div>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => {
+                onDuplicateFont(activeFont.id);
+                setSettingsOpen(false);
+              }}
+            >
+              Duplicate
             </button>
-          </>
-        ) : (
-          <button className="primary-button create-font-toggle" type="button" onClick={() => setCreateFormOpen(true)}>
-            Create new font
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={async () => {
+                try {
+                  await downloadFontJson(activeFont);
+                } finally {
+                  setSettingsOpen(false);
+                }
+              }}
+            >
+              Export JSON
+            </button>
+            <button
+              className="danger-button"
+              type="button"
+              disabled={fonts.length <= 1}
+              onClick={() => {
+                onDeleteFont(activeFont.id);
+                setSettingsOpen(false);
+              }}
+            >
+              Delete
+            </button>
+          </div>
+        </section>
+      )}
+
+      {activeFont.homeSettings.visibleSections.drawActions && (
+        <div className="library-actions">
+          <button className="primary-button start-drawing-button" type="button" onClick={onStartDrawing}>
+            Start drawing
           </button>
-        )}
-      </form>
+        </div>
+      )}
 
       {guideEditorOpen && (
         <FontGuideEditor

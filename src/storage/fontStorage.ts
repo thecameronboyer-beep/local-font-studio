@@ -1,4 +1,5 @@
 import { fontCharacters, spacebar } from "../data/characterSets";
+import { getDefaultFontPaletteTheme } from "../data/palettes";
 import type {
   BackgroundStyle,
   BackgroundTexture,
@@ -9,11 +10,16 @@ import type {
   ConstructionSegmentType,
   FontCharacterSettings,
   FontGuideSettings,
+  FontHomeSectionId,
+  FontHomeSettings,
+  FontPaletteId,
   FontRenderProfile,
   FontSet,
   FontShapeSettings,
   FontStudioData,
   FontTheme,
+  FontWritingStyleId,
+  FontWritingStyleSettings,
   GlyphInkEffect,
   Glyph,
   GlyphDecoration,
@@ -33,7 +39,7 @@ import type {
 const STORAGE_KEY = "local-font-studio:data:v1";
 const BACKUP_STORAGE_KEY = "local-font-studio:backups:v1";
 const CORRUPT_STORAGE_KEY = "local-font-studio:data:corrupt:v1";
-const CURRENT_STORAGE_VERSION = 2;
+const CURRENT_STORAGE_VERSION = 3;
 const MAX_ACTIVITY_ENTRIES = 80;
 const MAX_BACKUPS = 12;
 const AUTO_BACKUP_INTERVAL_MS = 5 * 60 * 1000;
@@ -56,7 +62,7 @@ export const defaultGlyphMetrics = {
   width: 1,
   height: 1,
   xAdvance: 0.74,
-  baselineOffset: 0.76,
+  baselineOffset: 0.75,
   leftBearing: 0.08,
   rightBearing: 0.08,
 };
@@ -85,10 +91,46 @@ export const defaultFontCharacterSettings: FontCharacterSettings = {
 
 export const defaultFontShapeSettings: FontShapeSettings = {
   heightScale: 1,
+  letterSpacing: 0,
   widthScale: 1,
 };
 
+export const fontHomeSectionOptions: Array<{ id: FontHomeSectionId; label: string }> = [
+  { id: "drawActions", label: "Draw actions" },
+  { id: "exportControls", label: "Export controls" },
+  { id: "previewText", label: "Preview text" },
+  { id: "glyphQueue", label: "Glyph queue" },
+];
+
+export const defaultFontHomeSettings: FontHomeSettings = {
+  visibleSections: Object.fromEntries(fontHomeSectionOptions.map((option) => [option.id, false])) as Record<
+    FontHomeSectionId,
+    boolean
+  >,
+};
+
+export const fontWritingStyleOptions: Array<{ id: FontWritingStyleId; label: string }> = [
+  { id: "draw", label: "Draw" },
+  { id: "build", label: "Build" },
+];
+
+export const defaultFontWritingStyleSettings: FontWritingStyleSettings = {
+  enabledStyles: Object.fromEntries(fontWritingStyleOptions.map((option) => [option.id, true])) as Record<
+    FontWritingStyleId,
+    boolean
+  >,
+};
+
 export const defaultFontGuideSettings: FontGuideSettings = {
+  ascender: 0.15,
+  baseline: 0.75,
+  descender: 0.95,
+  leftBound: 0.1,
+  rightBound: 0.9,
+  xHeight: 0.4,
+};
+
+const legacyDefaultFontGuideSettings: FontGuideSettings = {
   ascender: 0.14,
   baseline: 0.76,
   descender: 0.9,
@@ -125,6 +167,7 @@ export function createFontSet(
   shapeSettings: FontShapeSettings = defaultFontShapeSettings,
 ): FontSet {
   const safeGuideSettings = normalizeGuideSettings(guideSettings, defaultFontGuideSettings);
+  const safeShapeSettings = normalizeShapeSettings(shapeSettings, defaultFontShapeSettings);
   const glyphs = fontCharacters.reduce<Record<string, Glyph>>((map, character) => {
     const glyph = createEmptyGlyph(character);
     map[character] = character === spacebar
@@ -145,9 +188,17 @@ export function createFontSet(
     glyphs,
     createdAt: now,
     guideSettings: { ...safeGuideSettings },
-    ...(renderProfile === "quillParchment" ? { renderProfile, theme: quillParchmentTheme } : {}),
-    shapeSettings: { ...shapeSettings },
+    homeSettings: {
+      visibleSections: { ...defaultFontHomeSettings.visibleSections },
+    },
+    ...(renderProfile === "quillParchment"
+      ? { renderProfile, theme: quillParchmentTheme }
+      : { theme: getDefaultFontPaletteTheme() }),
+    shapeSettings: { ...safeShapeSettings },
     updatedAt: now,
+    writingStyleSettings: {
+      enabledStyles: { ...defaultFontWritingStyleSettings.enabledStyles },
+    },
   };
 }
 
@@ -216,6 +267,30 @@ function normalizeRenderProfile(value: unknown): FontRenderProfile | undefined {
   return value === "quillParchment" ? "quillParchment" : undefined;
 }
 
+function normalizePaletteId(value: unknown): FontPaletteId | undefined {
+  return value === "strawberryMarket" ? "strawberryMarket" : undefined;
+}
+
+function normalizeBackgroundStyle(value: unknown): BackgroundStyle {
+  return value === "solid" ||
+    value === "paper" ||
+    value === "parchment" ||
+    value === "manuscript" ||
+    value === "midnight" ||
+    value === "rage" ||
+    value === "blush" ||
+    value === "sage" ||
+    value === "sky" ||
+    value === "lavender" ||
+    value === "strawberryRed" ||
+    value === "berryPink" ||
+    value === "strawberryCream" ||
+    value === "lined" ||
+    value === "grid"
+    ? value
+    : "paper";
+}
+
 function normalizeBackgroundTexture(value: unknown): BackgroundTexture {
   return value === "clean" || value === "fiber" || value === "canvas" || value === "woven"
     ? value
@@ -250,6 +325,17 @@ function normalizeGuideSettings(value: unknown, fallback: FontGuideSettings): Fo
     return fallback;
   }
 
+  if (
+    value.ascender === legacyDefaultFontGuideSettings.ascender &&
+    value.xHeight === legacyDefaultFontGuideSettings.xHeight &&
+    value.baseline === legacyDefaultFontGuideSettings.baseline &&
+    value.descender === legacyDefaultFontGuideSettings.descender &&
+    value.leftBound === legacyDefaultFontGuideSettings.leftBound &&
+    value.rightBound === legacyDefaultFontGuideSettings.rightBound
+  ) {
+    return fallback;
+  }
+
   const ascender = safeNumber(value.ascender, fallback.ascender, 0.04, 0.72);
   const xHeight = safeNumber(value.xHeight, fallback.xHeight, 0.08, 0.82);
   const baseline = safeNumber(value.baseline, fallback.baseline, 0.12, 0.92);
@@ -280,8 +366,43 @@ function normalizeShapeSettings(value: unknown, fallback: FontShapeSettings): Fo
 
   return {
     heightScale: safeNumber(value.heightScale, fallback.heightScale, 0.55, 1.6),
+    letterSpacing: safeNumber(value.letterSpacing, fallback.letterSpacing, -0.35, 0.6),
     widthScale: safeNumber(value.widthScale, fallback.widthScale, 0.55, 1.6),
   };
+}
+
+function normalizeHomeSettings(value: unknown): FontHomeSettings {
+  const visibleSections = { ...defaultFontHomeSettings.visibleSections };
+
+  if (!isRecord(value) || !isRecord(value.visibleSections)) {
+    return { visibleSections };
+  }
+
+  for (const option of fontHomeSectionOptions) {
+    const rawVisible = value.visibleSections[option.id];
+    visibleSections[option.id] = typeof rawVisible === "boolean" ? rawVisible : false;
+  }
+
+  return { visibleSections };
+}
+
+function normalizeWritingStyleSettings(value: unknown): FontWritingStyleSettings {
+  const enabledStyles = { ...defaultFontWritingStyleSettings.enabledStyles };
+
+  if (isRecord(value) && isRecord(value.enabledStyles)) {
+    for (const option of fontWritingStyleOptions) {
+      const rawEnabled = value.enabledStyles[option.id];
+      enabledStyles[option.id] = typeof rawEnabled === "boolean" ? rawEnabled : true;
+    }
+  }
+
+  if (!enabledStyles.draw && !enabledStyles.build) {
+    return {
+      enabledStyles: { ...defaultFontWritingStyleSettings.enabledStyles },
+    };
+  }
+
+  return { enabledStyles };
 }
 
 function normalizePoint(point: unknown): GlyphPoint | null {
@@ -547,12 +668,26 @@ function normalizeFont(font: unknown, usedFontIds: Set<string>, fallbackName: st
   const rawId = safeString(font.id, createId("font"));
   const id = usedFontIds.has(rawId) ? createId("font") : rawId;
   usedFontIds.add(id);
+  const normalizedRenderProfile = normalizeRenderProfile(font.renderProfile);
 
   const rawGlyphs = isRecord(font.glyphs) ? font.glyphs : {};
   const glyphs = fontCharacters.reduce<Record<string, Glyph>>((map, character) => {
     map[character] = normalizeGlyph(rawGlyphs[character], character);
     return map;
   }, {});
+  const normalizedPaletteId = isRecord(font.theme) ? normalizePaletteId(font.theme.paletteId) : undefined;
+  const normalizedTheme = isRecord(font.theme)
+    ? {
+        accentColor: safeString(font.theme.accentColor, "#82d0bc"),
+        backgroundColor: safeString(font.theme.backgroundColor, "#f3dfb6"),
+        backgroundStyle: normalizeBackgroundStyle(font.theme.backgroundStyle),
+        backgroundTexture: normalizeBackgroundTexture(font.theme.backgroundTexture),
+        inkColor: safeString(font.theme.inkColor, "#191512"),
+        ...(normalizedPaletteId ? { paletteId: normalizedPaletteId } : {}),
+      }
+    : normalizedRenderProfile
+      ? quillParchmentTheme
+      : getDefaultFontPaletteTheme();
 
   return {
     id,
@@ -561,20 +696,13 @@ function normalizeFont(font: unknown, usedFontIds: Set<string>, fallbackName: st
     glyphs,
     createdAt: safeString(font.createdAt, now),
     guideSettings: normalizeGuideSettings(font.guideSettings, defaultFontGuideSettings),
-    ...(normalizeRenderProfile(font.renderProfile) ? { renderProfile: "quillParchment" as const } : {}),
+    homeSettings: normalizeHomeSettings(font.homeSettings),
+    ...(typeof font.presetFontId === "string" && font.presetFontId ? { presetFontId: font.presetFontId } : {}),
+    ...(normalizedRenderProfile ? { renderProfile: "quillParchment" as const } : {}),
     shapeSettings: normalizeShapeSettings(font.shapeSettings, defaultFontShapeSettings),
-    ...(isRecord(font.theme)
-      ? {
-          theme: {
-            accentColor: safeString(font.theme.accentColor, "#82d0bc"),
-            backgroundColor: safeString(font.theme.backgroundColor, "#f3dfb6"),
-            backgroundStyle: safeString(font.theme.backgroundStyle, "paper") as BackgroundStyle,
-            backgroundTexture: normalizeBackgroundTexture(font.theme.backgroundTexture),
-            inkColor: safeString(font.theme.inkColor, "#191512"),
-          },
-        }
-      : {}),
+    theme: normalizedTheme,
     updatedAt: safeString(font.updatedAt, now),
+    writingStyleSettings: normalizeWritingStyleSettings(font.writingStyleSettings),
   };
 }
 
@@ -828,6 +956,12 @@ export function cloneFontSet(font: FontSet, existingFonts: FontSet[], requestedN
       ]),
     ),
     createdAt: now,
+    homeSettings: {
+      visibleSections: { ...font.homeSettings.visibleSections },
+    },
+    writingStyleSettings: {
+      enabledStyles: { ...font.writingStyleSettings.enabledStyles },
+    },
     updatedAt: now,
   };
 }

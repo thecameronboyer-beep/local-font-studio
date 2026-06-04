@@ -98,6 +98,9 @@ export type BackgroundStyle =
   | "sage"
   | "sky"
   | "lavender"
+  | "strawberryRed"
+  | "berryPink"
+  | "strawberryCream"
   | "lined"
   | "grid";
 
@@ -105,12 +108,15 @@ export type BackgroundTexture = "clean" | "grain" | "fiber" | "canvas" | "woven"
 
 export type FontRenderProfile = "plain" | "quillParchment";
 
+export type FontPaletteId = "strawberryMarket";
+
 export type FontTheme = {
   accentColor: string;
   backgroundColor: string;
   backgroundStyle: BackgroundStyle;
   backgroundTexture: BackgroundTexture;
   inkColor: string;
+  paletteId?: FontPaletteId;
 };
 
 export type FontCharacterSettings = {
@@ -121,7 +127,24 @@ export type FontCharacterSettings = {
 
 export type FontShapeSettings = {
   heightScale: number;
+  letterSpacing: number;
   widthScale: number;
+};
+
+export type FontHomeSectionId =
+  | "drawActions"
+  | "exportControls"
+  | "glyphQueue"
+  | "previewText";
+
+export type FontHomeSettings = {
+  visibleSections: Record<FontHomeSectionId, boolean>;
+};
+
+export type FontWritingStyleId = "draw" | "build";
+
+export type FontWritingStyleSettings = {
+  enabledStyles: Record<FontWritingStyleId, boolean>;
 };
 
 export type FontGuideSettings = {
@@ -140,10 +163,28 @@ export type FontSet = {
   glyphs: Record<string, Glyph>;
   createdAt: string;
   guideSettings: FontGuideSettings;
+  homeSettings: FontHomeSettings;
+  presetFontId?: string;
   renderProfile?: FontRenderProfile;
   shapeSettings: FontShapeSettings;
   theme?: FontTheme;
   updatedAt: string;
+  writingStyleSettings: FontWritingStyleSettings;
+};
+
+export type AppliedFontMetricOverrides = Partial<
+  Pick<Glyph, "baselineOffset" | "leftBearing" | "rightBearing" | "xAdvance">
+>;
+
+export type AppliedLetterMetricOverrides = Partial<
+  Pick<Glyph, "baselineOffset" | "height" | "leftBearing" | "rightBearing" | "width" | "xAdvance">
+>;
+
+export type FontSpacingApplyDraft = {
+  fontMetricOverrides: AppliedFontMetricOverrides;
+  glyphMetricOverrides: Record<string, AppliedLetterMetricOverrides>;
+  guideSettings: FontGuideSettings | null;
+  shapeSettings: FontShapeSettings;
 };
 
 export type ProjectActivityType =
@@ -173,7 +214,7 @@ export type ProjectActivity = {
 export type ProjectActivityDraft = Omit<ProjectActivity, "createdAt" | "id">;
 
 export type FontStudioData = {
-  version: 2;
+  version: 3;
   activeFontId: string;
   activityLog: ProjectActivity[];
   fonts: FontSet[];
@@ -205,7 +246,7 @@ export type ProjectExportFile = {
   app: "local-font-studio";
   data: FontStudioData;
   exportedAt: string;
-  schemaVersion: 2;
+  schemaVersion: 3;
 };
 
 export type FontExportFile = {
@@ -213,7 +254,7 @@ export type FontExportFile = {
   exportType: "font";
   exportedAt: string;
   font: FontSet;
-  schemaVersion: 2;
+  schemaVersion: 3;
 };
 
 export type SavedImage = {

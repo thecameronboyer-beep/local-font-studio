@@ -6,6 +6,7 @@ import GlyphGrid from "./components/GlyphGrid";
 import SavedImagesPanel from "./components/SavedImagesPanel";
 import TextPreview from "./components/TextPreview";
 import { getVisibleCharacters, isHeaderLetter, spacebar } from "./data/characterSets";
+import { fontPresets } from "./data/fontPresets";
 import { hasDrawnGlyph } from "./render/glyphRenderer";
 import {
   cloneFontSet,
@@ -20,11 +21,14 @@ import { loadSavedImages, saveSavedImages } from "./storage/savedImageStorage";
 import type {
   FontCharacterSettings,
   FontGuideSettings,
+  FontHomeSettings,
   FontRenderProfile,
+  FontSpacingApplyDraft,
   FontShapeSettings,
   FontSet,
   FontStudioData,
   FontTheme,
+  FontWritingStyleSettings,
   Glyph,
   GlyphVariant,
   ProjectActivityDraft,
@@ -66,7 +70,6 @@ export default function App() {
   const spacebarGlyph = activeFont.glyphs[spacebar] ?? createEmptyGlyph(spacebar);
   const activeCharacters = useMemo(() => getVisibleCharacters(activeFont), [activeFont]);
   const selectedCharacterIndex = activeCharacters.indexOf(selectedCharacter);
-  const activeSavedGlyphCount = useMemo(() => getSavedGlyphCount(activeFont), [activeFont]);
 
   function getSavedGlyphCount(font: FontSet) {
     return Object.values(font.glyphs).filter((glyph) => hasDrawnGlyph(glyph)).length;
@@ -116,6 +119,72 @@ export default function App() {
     setEditorFullScreen(true);
   }
 
+  function handlePreviewSelectCharacter(character: string) {
+    setSelectedCharacter(character);
+  }
+
+  function handleApplyPreviewFontSpacing(draft: FontSpacingApplyDraft) {
+    const now = new Date().toISOString();
+    const nextData: FontStudioData = {
+      ...studioData,
+      fonts: studioData.fonts.map((font) => {
+        if (font.id !== activeFont.id) {
+          return font;
+        }
+
+        const glyphs = Object.entries(font.glyphs).reduce<Record<string, Glyph>>(
+          (nextGlyphs, [character, glyph]) => {
+            const globalOverrides = character === spacebar ? {} : draft.fontMetricOverrides;
+            const glyphOverrides = draft.glyphMetricOverrides[character] ?? {};
+            const metricOverrides = {
+              ...globalOverrides,
+              ...glyphOverrides,
+            };
+
+            nextGlyphs[character] = Object.keys(metricOverrides).length === 0
+              ? glyph
+              : {
+                  ...glyph,
+                  ...metricOverrides,
+                  variants: glyph.variants?.map((variant) => ({
+                    ...variant,
+                    ...metricOverrides,
+                    updatedAt: now,
+                  })),
+                  updatedAt: now,
+                };
+
+            return nextGlyphs;
+          },
+          {},
+        );
+
+        return {
+          ...font,
+          glyphs,
+          guideSettings: draft.guideSettings ?? font.guideSettings,
+          shapeSettings: {
+            ...font.shapeSettings,
+            ...draft.shapeSettings,
+          },
+          updatedAt: now,
+        };
+      }),
+    };
+
+    persist(nextData, {
+      details: {
+        globalAdvance: draft.fontMetricOverrides.xAdvance ?? null,
+        letterSpacing: draft.shapeSettings.letterSpacing,
+        spacebarAdvance: draft.glyphMetricOverrides[spacebar]?.xAdvance ?? null,
+        widthScale: draft.shapeSettings.widthScale,
+      },
+      fontId: activeFont.id,
+      message: `Applied spacing settings to "${activeFont.name}".`,
+      type: "metrics_batch",
+    });
+  }
+
   function handleStartDrawing() {
     const firstMissingCharacter =
       activeCharacters.find((character) => !hasDrawnGlyph(activeFont.glyphs[character] ?? createEmptyGlyph(character))) ??
@@ -127,17 +196,6 @@ export default function App() {
     setSavedImagesOpen(false);
     setSidebarOpen(false);
     setEditorFullScreen(true);
-  }
-
-  function handleOpenHome() {
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  function handleOpenExport() {
-    document.getElementById("preview-panel")?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
   }
 
   function selectCharacterByOffset(offset: number) {
@@ -173,6 +231,48 @@ export default function App() {
     });
   }
 
+  function handleCreatePresetFont(presetFontId: string) {
+    const preset = fontPresets.find((item) => item.id === presetFontId);
+
+    if (!preset) {
+      return;
+    }
+
+    const existingPresetFont = studioData.fonts.find((font) => font.presetFontId === preset.id);
+
+    if (existingPresetFont) {
+      persist({
+        ...studioData,
+        activeFontId: existingPresetFont.id,
+      });
+      return;
+    }
+
+    const font = createFontSet(preset.label);
+    const presetFont: FontSet = {
+      ...font,
+      name: preset.label,
+      presetFontId: preset.id,
+      homeSettings: {
+        visibleSections: {
+          ...font.homeSettings.visibleSections,
+          drawActions: false,
+          glyphQueue: false,
+        },
+      },
+    };
+
+    persist({
+      ...studioData,
+      activeFontId: presetFont.id,
+      fonts: [...studioData.fonts, presetFont],
+    }, {
+      fontId: presetFont.id,
+      message: `Added preset font "${presetFont.name}".`,
+      type: "font_create",
+    });
+  }
+
   function handleRenameFont(fontId: string, name: string) {
     const now = new Date().toISOString();
 
@@ -199,8 +299,10 @@ export default function App() {
     settings: {
       characterSettings?: FontCharacterSettings;
       guideSettings?: FontGuideSettings;
+      homeSettings?: FontHomeSettings;
       shapeSettings?: FontShapeSettings;
       theme?: FontTheme;
+      writingStyleSettings?: FontWritingStyleSettings;
     },
   ) {
     const now = new Date().toISOString();
@@ -214,9 +316,11 @@ export default function App() {
               ...settings,
               characterSettings: settings.characterSettings ?? font.characterSettings,
               guideSettings: settings.guideSettings ?? font.guideSettings,
+              homeSettings: settings.homeSettings ?? font.homeSettings,
               shapeSettings: settings.shapeSettings ?? font.shapeSettings,
               theme: settings.theme ?? font.theme,
               updatedAt: now,
+              writingStyleSettings: settings.writingStyleSettings ?? font.writingStyleSettings,
             }
           : font,
       ),
@@ -499,27 +603,7 @@ export default function App() {
 
       <header className="app-header">
         <div className="app-title-block">
-          <p className="eyebrow">Tablet drawing desk</p>
-          <h1>Font Studio</h1>
-        </div>
-        <div className="app-header-actions" aria-label="Studio modes">
-          <div className="app-status-pill">
-            <span>{activeFont.name}</span>
-            <strong>
-              {activeSavedGlyphCount}/{activeCharacters.length} drawn
-            </strong>
-          </div>
-          <nav className="mode-switcher" aria-label="Primary workspace modes">
-            <button className="mode-button active" type="button" onClick={handleOpenHome}>
-              Home
-            </button>
-            <button className="mode-button" type="button" onClick={handleStartDrawing}>
-              Draw
-            </button>
-            <button className="mode-button" type="button" onClick={handleOpenExport}>
-              Export
-            </button>
-          </nav>
+          <h1>Quill</h1>
         </div>
       </header>
 
@@ -531,6 +615,7 @@ export default function App() {
             onSelectFont={handleSelectFont}
             onStartDrawing={handleStartDrawing}
             onCreateFont={handleCreateFont}
+            onCreatePresetFont={handleCreatePresetFont}
             onRenameFont={handleRenameFont}
             onUpdateFontSettings={handleUpdateFontSettings}
             onDuplicateFont={handleDuplicateFont}
@@ -540,22 +625,27 @@ export default function App() {
           <TextPreview
             font={activeFont}
             fonts={studioData.fonts}
+            onApplyFontSpacing={handleApplyPreviewFontSpacing}
+            onOpenCharacterEditor={handleSelectCharacter}
             onRecordExport={handleRecordPreviewExport}
             onSaveImage={handleSaveImage}
-            onSelectCharacter={handleSelectCharacter}
+            onSelectCharacter={handlePreviewSelectCharacter}
             headerPreviewText={headerPreviewText}
             onHeaderPreviewTextChange={setHeaderPreviewText}
+            visibleHomeSections={activeFont.homeSettings.visibleSections}
             previewText={previewText}
             onPreviewTextChange={setPreviewText}
             selectedGlyph={selectedGlyph}
             spacebarGlyph={spacebarGlyph}
           />
-          <FontMetricsPanel
-            font={activeFont}
-            previewText={previewText}
-            selectedCharacter={selectedCharacter}
-            onSelectCharacter={handleSelectCharacter}
-          />
+          {activeFont.homeSettings.visibleSections.glyphQueue && (
+            <FontMetricsPanel
+              font={activeFont}
+              previewText={previewText}
+              selectedCharacter={selectedCharacter}
+              onSelectCharacter={handleSelectCharacter}
+            />
+          )}
         </div>
       </div>
 

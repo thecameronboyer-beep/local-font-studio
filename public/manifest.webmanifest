@@ -1,6 +1,6 @@
 {
-  "name": "Local Font Studio",
-  "short_name": "Font Studio",
+  "name": "Quill",
+  "short_name": "Quill",
   "description": "Create local hand-drawn font sets and preview them with saved vector strokes.",
   "start_url": ".",
   "scope": ".",

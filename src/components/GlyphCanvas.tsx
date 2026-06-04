@@ -688,6 +688,17 @@ export default function GlyphCanvas({
       return;
     }
 
+    if (["strawberryRed", "berryPink", "strawberryCream"].includes(backgroundStyle)) {
+      const gradient = ctx.createLinearGradient(0, 0, renderSize.width, renderSize.height);
+      gradient.addColorStop(0, "#fffaf5");
+      gradient.addColorStop(0.5, backgroundColor);
+      gradient.addColorStop(1, backgroundAccentColor);
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, renderSize.width, renderSize.height);
+      drawSelectedBackgroundTexture(ctx, renderSize);
+      return;
+    }
+
     ctx.fillStyle = backgroundColor;
     ctx.fillRect(0, 0, renderSize.width, renderSize.height);
 

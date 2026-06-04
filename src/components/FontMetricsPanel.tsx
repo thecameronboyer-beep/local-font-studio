@@ -45,7 +45,7 @@ export default function FontMetricsPanel({
         ? [{ id: "header" as const, label: "Header Letters", characters: headerLetters }]
         : []),
       ...(font.characterSettings.showForgotten
-        ? [{ id: "forgotten" as const, label: "Forgotten", characters: forgotten }]
+        ? [{ id: "forgotten" as const, label: "Eth, Thorn, Ash", characters: forgotten }]
         : []),
       ...(font.characterSettings.showSpacebar
         ? [{ id: "spacebar" as const, label: "Space Bar", characters: [spacebar] }]
