@@ -875,6 +875,7 @@ export default function TextPreview({
   const [selectedPreviewDoodleId, setSelectedPreviewDoodleId] = useState<string | null>(null);
   const [selectedPreviewStickerId, setSelectedPreviewStickerId] = useState<string | null>(null);
   const [selectedPreviewTextLayerId, setSelectedPreviewTextLayerId] = useState<string | null>(null);
+  const [selectedTextMetricsOpen, setSelectedTextMetricsOpen] = useState(false);
   const [shareStatus, setShareStatus] = useState("");
   const [previewFontMetricOverrides, setPreviewFontMetricOverrides] = useState<Partial<Pick<Glyph, FontGlyphMetricKey>>>({});
   const [previewGlyphMetricOverrides, setPreviewGlyphMetricOverrides] = useState<Record<string, LetterMetricOverrides>>({});
@@ -1094,6 +1095,12 @@ export default function TextPreview({
   useEffect(() => {
     previewStickersRef.current = previewStickers;
   }, [previewStickers]);
+
+  useEffect(() => {
+    setSelectedTextMetricsOpen(false);
+    setActiveFontSettingsSliderId(null);
+    setFontEffectsMenuOpen(false);
+  }, [selectedPreviewTextLayerId]);
 
   useEffect(() => {
     setActiveFontSettingsSliderId(null);
@@ -5092,6 +5099,9 @@ export default function TextPreview({
       return;
     }
 
+    setSelectedTextMetricsOpen(false);
+    setActiveFontSettingsSliderId(null);
+    setFontEffectsMenuOpen(false);
     setStyleSelectModeActive(false);
     setStyleSelectMenuOpen(false);
     setStyleStickerMoveMode(false);
@@ -5101,6 +5111,83 @@ export default function TextPreview({
     setStyleDrawMode(false);
     setActiveStyleDrawer("text");
     setShareStatus("Editing selected text.");
+  }
+
+  function toggleSelectedTextMetrics() {
+    const nextOpen = !selectedTextMetricsOpen;
+
+    setActiveFontSettingsSliderId(null);
+    setFontEffectsMenuOpen(false);
+    setSelectedTextMetricsOpen(nextOpen);
+    setShareStatus(nextOpen ? "Text metrics open." : "Text options shown.");
+  }
+
+  function renderSelectedTextOptionsRow() {
+    if (!selectedPreviewTextLayer) {
+      return null;
+    }
+
+    return (
+      <div
+        className={`phone-image-action-row selected-text-option-row ${
+          selectedTextMetricsOpen ? "metrics-open" : ""
+        }`}
+        aria-label="Selected text options"
+      >
+        <button
+          className={`draw-icon-button draw-glass-button selected-text-option-button ${
+            selectedTextMetricsOpen ? "active-tool" : ""
+          }`}
+          type="button"
+          aria-pressed={selectedTextMetricsOpen}
+          onClick={toggleSelectedTextMetrics}
+        >
+          <Ruler aria-hidden="true" />
+          <span>Metrics</span>
+        </button>
+
+        {selectedTextMetricsOpen ? (
+          renderFontSettingsControls(
+            "phone-image-fullscreen-tools preview-layout-tools font-settings-tools selected-text-metrics-tools",
+          )
+        ) : (
+          <>
+            <button
+              className="draw-icon-button draw-glass-button selected-text-option-button"
+              type="button"
+              onClick={openSelectedTextLayerEditor}
+            >
+              <TypeIcon aria-hidden="true" />
+              <span>Edit</span>
+            </button>
+            <button
+              className="draw-icon-button draw-glass-button selected-text-option-button"
+              type="button"
+              onClick={() => resizeSelectedPreviewTextLayer(0.05)}
+            >
+              <Plus aria-hidden="true" />
+              <span>Bigger</span>
+            </button>
+            <button
+              className="draw-icon-button draw-glass-button selected-text-option-button"
+              type="button"
+              onClick={() => resizeSelectedPreviewTextLayer(-0.05)}
+            >
+              <Minus aria-hidden="true" />
+              <span>Smaller</span>
+            </button>
+            <button
+              className="draw-icon-button draw-glass-button selected-text-option-button danger-action"
+              type="button"
+              onClick={() => removePreviewTextLayer(selectedPreviewTextLayer.id)}
+            >
+              <Trash2 aria-hidden="true" />
+              <span>Delete</span>
+            </button>
+          </>
+        )}
+      </div>
+    );
   }
 
   function renderStyleSelectionActions() {
@@ -5270,30 +5357,7 @@ export default function TextPreview({
     }
 
     if (styleSelectTarget === "text" && selectedPreviewTextLayer) {
-      return (
-        <div className="style-selection-action-row" aria-label="Selected text actions">
-          <button className="draw-drawer-button" type="button" onClick={openSelectedTextLayerEditor}>
-            <TypeIcon aria-hidden="true" />
-            <span>Edit</span>
-          </button>
-          <button className="draw-drawer-button" type="button" onClick={() => resizeSelectedPreviewTextLayer(0.05)}>
-            <Plus aria-hidden="true" />
-            <span>Bigger</span>
-          </button>
-          <button className="draw-drawer-button" type="button" onClick={() => resizeSelectedPreviewTextLayer(-0.05)}>
-            <Minus aria-hidden="true" />
-            <span>Smaller</span>
-          </button>
-          <button
-            className="draw-drawer-button danger-action"
-            type="button"
-            onClick={() => removePreviewTextLayer(selectedPreviewTextLayer.id)}
-          >
-            <Trash2 aria-hidden="true" />
-            <span>Delete</span>
-          </button>
-        </div>
-      );
+      return renderSelectedTextOptionsRow();
     }
 
     if (styleSelectTarget === "doodles" && selectedPreviewDoodle) {
@@ -7488,23 +7552,31 @@ export default function TextPreview({
 
   function renderFontCategoryControls() {
     const textLayerDrawerOpen = activeStyleDrawer === "text";
+    const selectedTextOptionsVisible =
+      styleSelectModeActive &&
+      styleSelectTarget === "text" &&
+      Boolean(selectedPreviewTextLayer) &&
+      !styleSelectMenuOpen &&
+      !fullscreenSelectMenuOpen;
 
     return (
       <div className="phone-image-panel-stack font-panel-controls" aria-label="Text controls">
         {fullscreenSelectMenuOpen ? renderFullscreenSelectPopover() : null}
-        <div className="phone-image-action-row">
-          {renderFontSettingsControls("phone-image-fullscreen-tools preview-layout-tools font-settings-tools")}
-          <button
-            className="draw-icon-button draw-gold-button font-slider-apply-button"
-            type="button"
-            disabled={!hasPendingFontSpacingChanges}
-            onClick={applyFontSpacingToFont}
-            aria-label="Apply to Font"
-            title="Apply to Font"
-          >
-            Apply
-          </button>
-        </div>
+        {!selectedTextOptionsVisible ? (
+          <div className="phone-image-action-row">
+            {renderFontSettingsControls("phone-image-fullscreen-tools preview-layout-tools font-settings-tools")}
+            <button
+              className="draw-icon-button draw-gold-button font-slider-apply-button"
+              type="button"
+              disabled={!hasPendingFontSpacingChanges}
+              onClick={applyFontSpacingToFont}
+              aria-label="Apply to Font"
+              title="Apply to Font"
+            >
+              Apply
+            </button>
+          </div>
+        ) : null}
         {textLayerDrawerOpen && renderStyleDrawer()}
         {renderStyleSelectionActions()}
       </div>

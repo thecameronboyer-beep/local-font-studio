@@ -4793,6 +4793,44 @@ h1 {
   white-space: nowrap;
 }
 
+.selected-text-option-row {
+  align-items: end;
+}
+
+.selected-text-option-button {
+  display: grid;
+  grid-template-rows: 17px auto;
+  place-items: center;
+  gap: 2px;
+  flex: 0 0 68px;
+  width: 68px;
+  min-height: 42px;
+  padding: 3px 5px 4px;
+  font-size: 0.6rem;
+  line-height: 1;
+}
+
+.selected-text-option-button svg {
+  width: 15px;
+  height: 15px;
+}
+
+.selected-text-option-button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selected-text-option-row.metrics-open .selected-text-option-button {
+  flex-basis: 72px;
+  width: 72px;
+}
+
+.selected-text-metrics-tools {
+  flex: 0 0 auto;
+}
+
 .phone-image-category-row {
   grid-row: 2;
   display: grid;
