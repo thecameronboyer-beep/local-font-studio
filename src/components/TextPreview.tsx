@@ -1130,7 +1130,12 @@ export default function TextPreview({
     }
 
     function closeSettingsSliderOnOutsidePointer(event: PointerEvent) {
-      if (event.target instanceof Element && event.target.closest(".font-slider-shell, .image-slider-shell, .letter-slider-shell")) {
+      if (
+        event.target instanceof Element &&
+        event.target.closest(
+          ".font-slider-shell, .image-slider-shell, .letter-slider-shell, .font-slider-drawer, .selected-text-option-row",
+        )
+      ) {
         return;
       }
 
