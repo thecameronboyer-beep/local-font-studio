@@ -7029,7 +7029,7 @@ export default function TextPreview({
   function chooseFullscreenSelectTarget(target: StyleSelectTarget) {
     setFullscreenActionPanelOpen(true);
     setActiveSettingsPanel("font");
-    setFullscreenSelectMenuOpen(true);
+    setFullscreenSelectMenuOpen(false);
     setActiveFontSettingsSliderId(null);
     setFontEffectsMenuOpen(false);
     setActiveImageSettingsSliderId(null);
