@@ -857,6 +857,7 @@ export default function TextPreview({
   const [documentName, setDocumentName] = useState("Untitled preview");
   const [fontEffectsMenuOpen, setFontEffectsMenuOpen] = useState(false);
   const [fullscreenActionPanelOpen, setFullscreenActionPanelOpen] = useState(true);
+  const [fullscreenAddMenuOpen, setFullscreenAddMenuOpen] = useState(false);
   const [fullscreenSelectMenuOpen, setFullscreenSelectMenuOpen] = useState(false);
   const [otherBackgroundsOpen, setOtherBackgroundsOpen] = useState(false);
   const [imageStyleDrawerOpen, setImageStyleDrawerOpen] = useState(false);
@@ -4830,7 +4831,8 @@ export default function TextPreview({
       },
     ]);
     setActiveDocumentId(null);
-    setActiveStyleDrawer("text");
+    setActiveStyleDrawer(null);
+    setFullscreenAddMenuOpen(false);
     setShareStatus("Added preset text layer.");
   }
 
@@ -6098,6 +6100,7 @@ export default function TextPreview({
     styleActiveDoodleRef.current = null;
     styleActiveStrokeRef.current = null;
     styleMovingStickerRef.current = null;
+    setFullscreenAddMenuOpen(false);
     setStyleDrawMode(false);
     setStyleSelectMenuOpen(false);
     setStyleSelectModeActive(false);
@@ -6986,6 +6989,7 @@ export default function TextPreview({
     setFontEffectsMenuOpen(false);
     setImageStyleDrawerOpen(false);
     setActiveStyleDrawer(null);
+    setFullscreenAddMenuOpen(false);
     setFullscreenSelectMenuOpen(false);
     setStyleDrawMode(false);
     setStyleSelectMenuOpen(false);
@@ -7005,6 +7009,7 @@ export default function TextPreview({
 
     setFullscreenActionPanelOpen(true);
     setActiveSettingsPanel("font");
+    setFullscreenAddMenuOpen(false);
     setActiveFontSettingsSliderId(null);
     setFontEffectsMenuOpen(false);
     setActiveImageSettingsSliderId(null);
@@ -7028,6 +7033,7 @@ export default function TextPreview({
   function chooseFullscreenSelectTarget(target: StyleSelectTarget) {
     setFullscreenActionPanelOpen(true);
     setActiveSettingsPanel("font");
+    setFullscreenAddMenuOpen(false);
     setFullscreenSelectMenuOpen(false);
     setActiveFontSettingsSliderId(null);
     setFontEffectsMenuOpen(false);
@@ -7099,6 +7105,10 @@ export default function TextPreview({
       if (activeStyleDrawer === "text") {
         setActiveStyleDrawer(null);
       }
+    }
+
+    if (panel !== "decor") {
+      setFullscreenAddMenuOpen(false);
     }
 
     if (panel !== "image") {
@@ -7420,6 +7430,7 @@ export default function TextPreview({
   }
 
   function openDecorDrawer(drawer: Exclude<StyleDrawer, "text" | null>) {
+    setFullscreenAddMenuOpen(false);
     setStyleDrawMode(false);
     setStyleSelectMenuOpen(false);
     setStyleStickerLookMode(false);
@@ -7434,10 +7445,37 @@ export default function TextPreview({
     });
   }
 
+  function openFullscreenAddPopover() {
+    const currentlyOpen = activeSettingsPanel === "decor" && fullscreenActionPanelOpen && fullscreenAddMenuOpen;
+
+    setFullscreenActionPanelOpen(true);
+    setActiveSettingsPanel("decor");
+    setFullscreenSelectMenuOpen(false);
+    setActiveFontSettingsSliderId(null);
+    setFontEffectsMenuOpen(false);
+    setActiveImageSettingsSliderId(null);
+    setCanvasFormatDrawerOpen(false);
+    setImageStyleDrawerOpen(false);
+    setActiveLetterSettingsSliderId(null);
+    setActiveStyleDrawer(null);
+    setStyleDrawMode(false);
+    setStyleSelectMenuOpen(false);
+    setStyleSelectModeActive(false);
+    setStyleStickerLookMode(false);
+    setStyleStickerMoveMode(false);
+    setStyleStickerFacePanelOpen(false);
+    setStyleStickerRednessPanelOpen(false);
+    setStyleStickerSleepPanelOpen(false);
+    styleActiveDoodleRef.current = null;
+    styleActiveStrokeRef.current = null;
+    styleMovingStickerRef.current = null;
+    setFullscreenAddMenuOpen(!currentlyOpen);
+  }
+
   function renderDecorCategoryControls() {
     return (
       <div className="phone-image-panel-stack decor-panel-controls add-panel-controls" aria-label="Add controls">
-        {activeStyleDrawer !== "text" ? (
+        {fullscreenAddMenuOpen ? (
           <div className="phone-image-add-popover" aria-label="Add options">
             <button
               className="secondary-button compact-button phone-image-add-option"
@@ -7539,6 +7577,11 @@ export default function TextPreview({
               onClick={() => {
                 if (isSelectPanel) {
                   openFullscreenSelectPopover();
+                  return;
+                }
+
+                if (option.id === "decor") {
+                  openFullscreenAddPopover();
                   return;
                 }
 
