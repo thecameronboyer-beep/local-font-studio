@@ -7678,11 +7678,12 @@ export default function TextPreview({
       styleSelectTarget === "text" &&
       !styleSelectMenuOpen &&
       !fullscreenSelectMenuOpen;
+    const fontMetricControlsVisible = !textSelectControlsVisible && !fullscreenSelectMenuOpen;
 
     return (
       <div className="phone-image-panel-stack font-panel-controls" aria-label="Text controls">
         {fullscreenSelectMenuOpen ? renderFullscreenSelectPopover() : null}
-        {!textSelectControlsVisible ? (
+        {fontMetricControlsVisible ? (
           <div className="phone-image-action-row">
             {renderFontSettingsControls("phone-image-fullscreen-tools preview-layout-tools font-settings-tools")}
             <button
