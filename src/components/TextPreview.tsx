@@ -5248,6 +5248,7 @@ export default function TextPreview({
     const activeSliderConfig = activeFontSettingsSliderId
       ? metricConfigs.find((config) => config.id === activeFontSettingsSliderId) ?? null
       : null;
+    const selectedTextMetricsActive = selectedTextMetricsOpen || Boolean(selectedTextMetricGroup);
     const selectedTextEffectsVisible = fontEffectsMenuOpen;
     const activeEffectCount = previewTextEffectOptions.filter((option) => imageSettings.textEffects[option.id]).length;
 
@@ -5273,18 +5274,20 @@ export default function TextPreview({
               <span>Metrics</span>
             </button>
 
-            <button
-              className={`draw-icon-button draw-glass-button selected-text-option-button ${
-                activeEffectCount > 0 ? "active-tool" : ""
-              }`}
-              type="button"
-              aria-expanded={selectedTextEffectsVisible}
-              aria-label={`Text effects${activeEffectCount > 0 ? `: ${activeEffectCount} active` : ""}`}
-              onClick={toggleSelectedTextEffects}
-            >
-              <Sparkles aria-hidden="true" />
-              <span>Effects</span>
-            </button>
+            {!selectedTextMetricsActive ? (
+              <button
+                className={`draw-icon-button draw-glass-button selected-text-option-button ${
+                  activeEffectCount > 0 ? "active-tool" : ""
+                }`}
+                type="button"
+                aria-expanded={selectedTextEffectsVisible}
+                aria-label={`Text effects${activeEffectCount > 0 ? `: ${activeEffectCount} active` : ""}`}
+                onClick={toggleSelectedTextEffects}
+              >
+                <Sparkles aria-hidden="true" />
+                <span>Effects</span>
+              </button>
+            ) : null}
 
             {selectedTextMetricsOpen ? renderSelectedTextMetricsPopover() : null}
             {metricConfigs.map((config) => {
