@@ -4975,6 +4975,10 @@ h1 {
   font-weight: 900;
 }
 
+.phone-image-category-spacer {
+  min-height: var(--phone-image-category-row-height);
+}
+
 .phone-image-category-row .compact-button.active-tool::before {
   content: "";
   position: absolute;

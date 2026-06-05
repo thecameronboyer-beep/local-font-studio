@@ -7937,6 +7937,10 @@ export default function TextPreview({
     return (
       <div className="phone-image-category-row" aria-label="Preview edit categories">
         {fullscreenPanelOptions.map((option) => {
+          if (option.id === "letter") {
+            return <div key={option.id} className="phone-image-category-spacer" aria-hidden="true" />;
+          }
+
           const isSelectPanel = option.id === "font";
           const selected = option.id === "font"
             ? activeSettingsPanel === "font" && fullscreenActionPanelOpen
