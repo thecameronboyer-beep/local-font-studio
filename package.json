@@ -15,6 +15,7 @@
     "android:build:debug": "npm run android:sync && node scripts/build-android-debug.mjs",
     "prepreview": "npm run check:workspace",
     "preview": "vite preview --host 127.0.0.1",
+    "publish:browser": "npm run build && node scripts/publish-browser-docs.mjs",
     "preserve:dist": "npm run check:workspace",
     "serve:dist": "node scripts/serve-dist.mjs",
     "preverify:renderer": "npm run check:workspace",

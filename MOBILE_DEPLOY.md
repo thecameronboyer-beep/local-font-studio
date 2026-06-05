@@ -11,6 +11,22 @@ For a real Android APK, use the GitHub Actions workflow described in `docs/andro
 npm run build
 ```
 
+## Browser Link
+
+The public browser version is served from:
+
+```text
+https://thecameronboyer-beep.github.io/local-font-studio/
+```
+
+To publish the current browser build to that link:
+
+```bash
+npm run publish:browser
+```
+
+That command builds `dist`, then copies the generated app files into `docs` for GitHub Pages.
+
 Upload the contents of:
 
 ```text
