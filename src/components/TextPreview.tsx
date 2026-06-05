@@ -262,12 +262,15 @@ type PreviewDoodlePoint = {
 };
 
 type PreviewDoodleStroke = {
+  baseSize?: number;
   color: string;
+  heightScale?: number;
   id: string;
   inkEffect: GlyphInkEffect;
   points: PreviewDoodlePoint[];
   size: number;
   tool: StyleDoodleTool;
+  widthScale?: number;
 };
 
 type PreviewSticker = {
@@ -2183,6 +2186,61 @@ export default function TextPreview({
     return Math.max(0.35, sticker.heightScale ?? 1);
   }
 
+  function getPreviewDoodleWidthScale(stroke: PreviewDoodleStroke) {
+    return Math.max(0.35, stroke.widthScale ?? 1);
+  }
+
+  function getPreviewDoodleHeightScale(stroke: PreviewDoodleStroke) {
+    return Math.max(0.35, stroke.heightScale ?? 1);
+  }
+
+  function getPreviewDoodleBounds(stroke: PreviewDoodleStroke) {
+    const firstPoint = stroke.points[0];
+
+    if (!firstPoint) {
+      return null;
+    }
+
+    return stroke.points.reduce(
+      (bounds, point) => ({
+        maxX: Math.max(bounds.maxX, point.x),
+        maxY: Math.max(bounds.maxY, point.y),
+        minX: Math.min(bounds.minX, point.x),
+        minY: Math.min(bounds.minY, point.y),
+      }),
+      {
+        maxX: firstPoint.x,
+        maxY: firstPoint.y,
+        minX: firstPoint.x,
+        minY: firstPoint.y,
+      },
+    );
+  }
+
+  function getPreviewDoodleRenderPoints(stroke: PreviewDoodleStroke) {
+    const widthScale = getPreviewDoodleWidthScale(stroke);
+    const heightScale = getPreviewDoodleHeightScale(stroke);
+
+    if (widthScale === 1 && heightScale === 1) {
+      return stroke.points;
+    }
+
+    const bounds = getPreviewDoodleBounds(stroke);
+
+    if (!bounds) {
+      return stroke.points;
+    }
+
+    const centerX = (bounds.minX + bounds.maxX) / 2;
+    const centerY = (bounds.minY + bounds.maxY) / 2;
+
+    return stroke.points.map((point) => ({
+      ...point,
+      x: centerX + (point.x - centerX) * widthScale,
+      y: centerY + (point.y - centerY) * heightScale,
+    }));
+  }
+
   function getPreviewImageStickerCanvasBox(
     sticker: PreviewSticker,
     renderSettings: PreviewImageSettings,
@@ -2281,10 +2339,11 @@ export default function TextPreview({
       }
 
       const hitRadius = Math.max(0.018, stroke.size * 4.5);
-      const distances = stroke.points.length === 1
-        ? [Math.hypot(point.x - stroke.points[0].x, point.y - stroke.points[0].y)]
-        : stroke.points.slice(1).map((strokePoint, index) =>
-            getDistanceToSegment(point, stroke.points[index], strokePoint),
+      const renderPoints = getPreviewDoodleRenderPoints(stroke);
+      const distances = renderPoints.length === 1
+        ? [Math.hypot(point.x - renderPoints[0].x, point.y - renderPoints[0].y)]
+        : renderPoints.slice(1).map((strokePoint, index) =>
+            getDistanceToSegment(point, renderPoints[index], strokePoint),
           );
       const distance = Math.min(...distances);
 
@@ -2465,6 +2524,7 @@ export default function TextPreview({
     styleActiveStrokeTimeRef.current = event.timeStamp;
     event.currentTarget.setPointerCapture(event.pointerId);
     styleActiveDoodleRef.current = {
+      baseSize: styleDoodleBrushSize / Math.max(1, imageSettings.canvasWidth),
       color: imageSettings.inkColor,
       id: strokeId,
       inkEffect: styleDoodleInkEffect,
@@ -3796,7 +3856,7 @@ export default function TextPreview({
         color: stroke.color,
         id: stroke.id,
         inkEffect: stroke.inkEffect,
-        points: stroke.points,
+        points: getPreviewDoodleRenderPoints(stroke),
         size: Math.max(0.001, stroke.size),
         strokeTool: stroke.tool === "quill" ? "quill" : "pen",
       };
@@ -4552,6 +4612,32 @@ export default function TextPreview({
     ctx.stroke();
   }
 
+  function drawPreviewDoodleSelectionTarget(
+    ctx: CanvasRenderingContext2D,
+    stroke: PreviewDoodleStroke,
+    renderSettings: PreviewImageSettings,
+    tone: PreviewTextSelectionTone,
+  ) {
+    const [firstPoint, ...restPoints] = getPreviewDoodleRenderPoints(stroke);
+
+    if (!firstPoint) {
+      return;
+    }
+
+    ctx.save();
+    ctx.strokeStyle = tone === "active" ? "#4f9f8e" : "rgba(130, 208, 188, 0.58)";
+    ctx.lineWidth = Math.max(8, stroke.size * renderSettings.canvasWidth * 2.5);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(firstPoint.x * renderSettings.canvasWidth, firstPoint.y * renderSettings.canvasHeight);
+    restPoints.forEach((point) => {
+      ctx.lineTo(point.x * renderSettings.canvasWidth, point.y * renderSettings.canvasHeight);
+    });
+    ctx.stroke();
+    ctx.restore();
+  }
+
   function drawPreviewSelectionOutlines(ctx: CanvasRenderingContext2D, renderSettings: PreviewImageSettings) {
     ctx.save();
     ctx.strokeStyle = "#82d0bc";
@@ -4580,18 +4666,24 @@ export default function TextPreview({
       }
     }
 
-    const selectedDoodle = selectedPreviewDoodleId
-      ? previewDoodles.find((stroke) => stroke.id === selectedPreviewDoodleId)
-      : null;
+    const showSelectedDoodleOutline =
+      styleSelectModeActive &&
+      styleSelectTarget === "doodles" &&
+      !styleSelectMenuOpen &&
+      !fullscreenSelectMenuOpen;
 
-    if (selectedDoodle && selectedDoodle.points.length > 0) {
-      const [firstPoint, ...restPoints] = selectedDoodle.points;
-      ctx.beginPath();
-      ctx.moveTo(firstPoint.x * renderSettings.canvasWidth, firstPoint.y * renderSettings.canvasHeight);
-      restPoints.forEach((point) => {
-        ctx.lineTo(point.x * renderSettings.canvasWidth, point.y * renderSettings.canvasHeight);
-      });
-      ctx.stroke();
+    if (showSelectedDoodleOutline) {
+      const selectedDoodle = selectedPreviewDoodleId
+        ? previewDoodles.find((stroke) => stroke.id === selectedPreviewDoodleId) ?? null
+        : null;
+
+      previewDoodles
+        .filter((stroke) => stroke.id !== selectedPreviewDoodleId)
+        .forEach((stroke) => drawPreviewDoodleSelectionTarget(ctx, stroke, renderSettings, "available"));
+
+      if (selectedDoodle) {
+        drawPreviewDoodleSelectionTarget(ctx, selectedDoodle, renderSettings, "active");
+      }
     }
 
     const showSelectedTextOutline =
@@ -5663,6 +5755,18 @@ export default function TextPreview({
     return selectedSticker ?? [...previewStickers].reverse().find(filterSticker) ?? null;
   }
 
+  function getCurrentStyleSelectDoodle() {
+    if (styleSelectTarget !== "doodles") {
+      return null;
+    }
+
+    const selectedDoodle = selectedPreviewDoodleId
+      ? previewDoodles.find((stroke) => stroke.id === selectedPreviewDoodleId) ?? null
+      : null;
+
+    return selectedDoodle ?? previewDoodles.at(-1) ?? null;
+  }
+
   function getStickerMetricConfig(id: StickerMetricId): StickerMetricConfig {
     const sticker = getCurrentStyleSelectSticker();
     const asset = sticker ? getStyleStickerAsset(sticker.kind) : null;
@@ -5708,6 +5812,48 @@ export default function TextPreview({
     }
   }
 
+  function getDoodleMetricConfig(id: StickerMetricId): StickerMetricConfig {
+    const doodle = getCurrentStyleSelectDoodle();
+    const defaultSize = Math.max(0.001, doodle?.baseSize ?? doodle?.size ?? styleDoodleBrushSize / Math.max(1, imageSettings.canvasWidth));
+    const disabled = !doodle;
+
+    switch (id) {
+      case "size":
+        return {
+          disabled,
+          id,
+          label: "Size",
+          max: 2.5,
+          min: 0.35,
+          precision: 2,
+          step: 0.05,
+          value: doodle ? getClampedMetricValue(doodle.size / defaultSize, 0.35, 2.5, 2) : 1,
+        };
+      case "height":
+        return {
+          disabled,
+          id,
+          label: "Height",
+          max: 1.8,
+          min: 0.35,
+          precision: 2,
+          step: 0.05,
+          value: doodle ? getPreviewDoodleHeightScale(doodle) : 1,
+        };
+      case "width":
+        return {
+          disabled,
+          id,
+          label: "Width",
+          max: 1.8,
+          min: 0.35,
+          precision: 2,
+          step: 0.05,
+          value: doodle ? getPreviewDoodleWidthScale(doodle) : 1,
+        };
+    }
+  }
+
   function setSelectedStickerMetricValue(id: StickerMetricId, value: number) {
     const config = getStickerMetricConfig(id);
     const filterSticker = getStyleSelectStickerFilter();
@@ -5739,6 +5885,63 @@ export default function TextPreview({
     setShareStatus(`${config.label} updated.`);
   }
 
+  function setSelectedDoodleMetricValue(id: StickerMetricId, value: number) {
+    const config = getDoodleMetricConfig(id);
+    const doodleId = getCurrentStyleSelectDoodle()?.id ?? null;
+
+    if (!doodleId) {
+      setShareStatus("Draw a doodle first.");
+      return;
+    }
+
+    setSelectedPreviewDoodleId(doodleId);
+    setPreviewDoodles((current) => {
+      const nextDoodles = current.map((stroke) => {
+        if (stroke.id !== doodleId) {
+          return stroke;
+        }
+
+        const nextValue = getClampedMetricValue(value, config.min, config.max, config.precision);
+        const baseSize = Math.max(0.001, stroke.baseSize ?? stroke.size);
+
+        if (id === "size") {
+          return {
+            ...stroke,
+            baseSize,
+            size: baseSize * nextValue,
+          };
+        }
+
+        if (id === "height") {
+          return {
+            ...stroke,
+            heightScale: nextValue,
+          };
+        }
+
+        return {
+          ...stroke,
+          widthScale: nextValue,
+        };
+      });
+
+      previewDoodlesRef.current = nextDoodles;
+      return nextDoodles;
+    });
+    setActiveDocumentId(null);
+    scheduleStyleCanvasRender();
+    setShareStatus(`${config.label} updated.`);
+  }
+
+  function setSelectedDecorMetricValue(id: StickerMetricId, value: number) {
+    if (styleSelectTarget === "doodles") {
+      setSelectedDoodleMetricValue(id, value);
+      return;
+    }
+
+    setSelectedStickerMetricValue(id, value);
+  }
+
   function getStickerMetricIcon(id: StickerMetricId) {
     switch (id) {
       case "size":
@@ -5764,7 +5967,7 @@ export default function TextPreview({
             className="draw-icon-button draw-glass-button font-slider-default-button"
             type="button"
             disabled={config.disabled}
-            onClick={() => setSelectedStickerMetricValue(config.id, 1)}
+            onClick={() => setSelectedDecorMetricValue(config.id, 1)}
             aria-label={`Default ${config.label}`}
             title="Default"
           >
@@ -5778,14 +5981,14 @@ export default function TextPreview({
             step={config.step}
             value={config.value}
             disabled={config.disabled}
-            onChange={(event) => setSelectedStickerMetricValue(config.id, Number(event.target.value))}
+            onChange={(event) => setSelectedDecorMetricValue(config.id, Number(event.target.value))}
             aria-label={`${config.label} value`}
           />
           <button
             className="draw-icon-button draw-glass-button font-slider-step-button"
             type="button"
             disabled={config.disabled}
-            onClick={() => setSelectedStickerMetricValue(config.id, config.value - config.step)}
+            onClick={() => setSelectedDecorMetricValue(config.id, config.value - config.step)}
             aria-label={`Decrease ${config.label}`}
             title={`Decrease ${config.label}`}
           >
@@ -5795,7 +5998,7 @@ export default function TextPreview({
             className="draw-icon-button draw-glass-button font-slider-step-button"
             type="button"
             disabled={config.disabled}
-            onClick={() => setSelectedStickerMetricValue(config.id, config.value + config.step)}
+            onClick={() => setSelectedDecorMetricValue(config.id, config.value + config.step)}
             aria-label={`Increase ${config.label}`}
             title={`Increase ${config.label}`}
           >
@@ -5807,7 +6010,9 @@ export default function TextPreview({
   }
 
   function renderSelectedStickerOptionsRow() {
-    const metricConfigs = (["size", "height", "width"] as StickerMetricId[]).map((id) => getStickerMetricConfig(id));
+    const metricConfigs = (["size", "height", "width"] as StickerMetricId[]).map((id) =>
+      styleSelectTarget === "doodles" ? getDoodleMetricConfig(id) : getStickerMetricConfig(id),
+    );
     const activeSliderConfig = activeStickerMetricId
       ? metricConfigs.find((config) => config.id === activeStickerMetricId) ?? null
       : null;
@@ -5868,37 +6073,12 @@ export default function TextPreview({
       return null;
     }
 
-    if (styleSelectTarget === "stickers" || styleSelectTarget === "ornaments") {
+    if (styleSelectTarget === "stickers" || styleSelectTarget === "ornaments" || styleSelectTarget === "doodles") {
       return renderSelectedStickerOptionsRow();
     }
 
     if (styleSelectTarget === "text") {
       return renderSelectedTextOptionsRow();
-    }
-
-    if (styleSelectTarget === "doodles" && selectedPreviewDoodle) {
-      return (
-        <div className="style-selection-action-row compact" aria-label="Selected doodle actions">
-          <button className="draw-drawer-button danger-action" type="button" onClick={deleteSelectedPreviewDoodle}>
-            <Trash2 aria-hidden="true" />
-            <span>Delete</span>
-          </button>
-          <button
-            className="draw-drawer-button"
-            type="button"
-            onClick={() => {
-              previewDoodlesRef.current = [];
-              setPreviewDoodles([]);
-              setSelectedPreviewDoodleId(null);
-              scheduleStyleCanvasRender();
-              setShareStatus("Cleared doodle strokes.");
-            }}
-          >
-            <Trash2 aria-hidden="true" />
-            <span>Clear all</span>
-          </button>
-        </div>
-      );
     }
 
     return null;
@@ -8131,7 +8311,12 @@ export default function TextPreview({
     const textLayerDrawerOpen = activeStyleDrawer === "text";
     const selectTargetControlsVisible =
       styleSelectModeActive &&
-      (styleSelectTarget === "text" || styleSelectTarget === "stickers" || styleSelectTarget === "ornaments") &&
+      (
+        styleSelectTarget === "text" ||
+        styleSelectTarget === "stickers" ||
+        styleSelectTarget === "ornaments" ||
+        styleSelectTarget === "doodles"
+      ) &&
       !styleSelectMenuOpen &&
       !fullscreenSelectMenuOpen;
     const fontMetricControlsVisible = !selectTargetControlsVisible && !fullscreenSelectMenuOpen;
