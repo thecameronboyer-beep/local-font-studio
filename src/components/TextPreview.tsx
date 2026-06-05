@@ -117,6 +117,7 @@ type LetterMetricKey = "baselineOffset" | "height" | "leftBearing" | "rightBeari
 type LetterSettingsSliderId = LetterMetricKey | "size";
 type LetterMetricOverrides = AppliedLetterMetricOverrides;
 type ImageSettingsSliderId = "canvasHeight" | "canvasWidth" | "pagePadding" | "size";
+type StickerMetricId = "height" | "size" | "width";
 type ManuscriptMetricKey = "manuscriptAge" | "manuscriptEdges" | "manuscriptFibers" | "manuscriptInkSoak" | "manuscriptRuling" | "manuscriptStains";
 type SettingsPanel = "decor" | "font" | "image" | "letter" | "position";
 type FontSettingsSliderId = "height" | "letterSpacing" | "rowSpacing" | "size" | "spacebar" | "width";
@@ -140,6 +141,16 @@ type LetterSettingsSliderConfig = {
 };
 type ImageSettingsSliderConfig = {
   id: ImageSettingsSliderId;
+  label: string;
+  max: number;
+  min: number;
+  precision: number;
+  step: number;
+  value: number;
+};
+type StickerMetricConfig = {
+  disabled: boolean;
+  id: StickerMetricId;
   label: string;
   max: number;
   min: number;
@@ -262,12 +273,14 @@ type PreviewDoodleStroke = {
 type PreviewSticker = {
   expression: EyeExpression;
   faceMood?: number;
+  heightScale?: number;
   id: string;
   kind?: PreviewStickerKind;
   lookAt?: PreviewDoodlePoint;
   redness?: number;
   sleepiness?: number;
   size: number;
+  widthScale?: number;
   x: number;
   y: number;
 };
@@ -1021,6 +1034,8 @@ export default function TextPreview({
   const [styleSelectMenuOpen, setStyleSelectMenuOpen] = useState(false);
   const [styleSelectModeActive, setStyleSelectModeActive] = useState(false);
   const [styleSelectTarget, setStyleSelectTarget] = useState<StyleSelectTarget>("stickers");
+  const [selectedStickerMetricsOpen, setSelectedStickerMetricsOpen] = useState(false);
+  const [activeStickerMetricId, setActiveStickerMetricId] = useState<StickerMetricId | null>(null);
   const [styleStickerDragPreview, setStyleStickerDragPreview] = useState<StyleStickerDragPreview | null>(null);
   const [styleStickerFacePanelOpen, setStyleStickerFacePanelOpen] = useState(false);
   const [styleStickerLookMode, setStyleStickerLookMode] = useState(false);
@@ -1270,7 +1285,7 @@ export default function TextPreview({
   }, [font.id]);
 
   useEffect(() => {
-    if (!activeFontSettingsSliderId && !activeImageSettingsSliderId && !activeLetterSettingsSliderId) {
+    if (!activeFontSettingsSliderId && !activeImageSettingsSliderId && !activeLetterSettingsSliderId && !activeStickerMetricId) {
       return undefined;
     }
 
@@ -1278,7 +1293,7 @@ export default function TextPreview({
       if (
         event.target instanceof Element &&
         event.target.closest(
-          ".font-slider-shell, .image-slider-shell, .letter-slider-shell, .font-slider-drawer, .selected-text-option-row",
+          ".font-slider-shell, .image-slider-shell, .letter-slider-shell, .font-slider-drawer, .selected-text-option-row, .selected-sticker-option-row",
         )
       ) {
         return;
@@ -1287,11 +1302,12 @@ export default function TextPreview({
       setActiveFontSettingsSliderId(null);
       setActiveImageSettingsSliderId(null);
       setActiveLetterSettingsSliderId(null);
+      setActiveStickerMetricId(null);
     }
 
     document.addEventListener("pointerdown", closeSettingsSliderOnOutsidePointer);
     return () => document.removeEventListener("pointerdown", closeSettingsSliderOnOutsidePointer);
-  }, [activeFontSettingsSliderId, activeImageSettingsSliderId, activeLetterSettingsSliderId]);
+  }, [activeFontSettingsSliderId, activeImageSettingsSliderId, activeLetterSettingsSliderId, activeStickerMetricId]);
 
   useEffect(() => {
     return () => {
@@ -2176,6 +2192,14 @@ export default function TextPreview({
     return asset.aspectRatio ?? 1;
   }
 
+  function getPreviewStickerWidthScale(sticker: PreviewSticker) {
+    return Math.max(0.35, sticker.widthScale ?? 1);
+  }
+
+  function getPreviewStickerHeightScale(sticker: PreviewSticker) {
+    return Math.max(0.35, sticker.heightScale ?? 1);
+  }
+
   function getPreviewImageStickerCanvasBox(
     sticker: PreviewSticker,
     renderSettings: PreviewImageSettings,
@@ -2186,8 +2210,10 @@ export default function TextPreview({
       return null;
     }
 
-    const width = Math.max(1, sticker.size * renderSettings.canvasWidth);
-    const height = width / getImageStickerAspectRatio(asset);
+    const baseWidth = Math.max(1, sticker.size * renderSettings.canvasWidth);
+    const baseHeight = baseWidth / getImageStickerAspectRatio(asset);
+    const width = baseWidth * getPreviewStickerWidthScale(sticker);
+    const height = baseHeight * getPreviewStickerHeightScale(sticker);
 
     return {
       height,
@@ -2241,11 +2267,12 @@ export default function TextPreview({
         );
       }
 
-      const hitRadius = Math.max(0.06, sticker.size * 2.8);
-      return Math.hypot(point.x - sticker.x, point.y - sticker.y) <= hitRadius;
+      const hitRadiusX = Math.max(0.06, sticker.size * 2.8 * getPreviewStickerWidthScale(sticker));
+      const hitRadiusY = Math.max(0.06, sticker.size * 2.8 * getPreviewStickerHeightScale(sticker));
+      return Math.hypot((point.x - sticker.x) / hitRadiusX, (point.y - sticker.y) / hitRadiusY) <= 1;
     });
 
-    return hitSticker?.id ?? (fallbackToEditableSticker ? getEditablePreviewStickerId() : null);
+    return hitSticker?.id ?? (fallbackToEditableSticker ? getEditablePreviewStickerId(previewStickers, filterSticker) : null);
   }
 
   function getDistanceToSegment(point: PreviewDoodlePoint, start: PreviewDoodlePoint, end: PreviewDoodlePoint) {
@@ -3152,6 +3179,13 @@ export default function TextPreview({
         return;
       }
 
+      const centerX = sticker.x * renderSettings.canvasWidth;
+      const centerY = sticker.y * renderSettings.canvasHeight;
+
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.scale(getPreviewStickerWidthScale(sticker), getPreviewStickerHeightScale(sticker));
+      ctx.translate(-centerX, -centerY);
       drawGlyphDecoration(
         ctx,
         {
@@ -3168,6 +3202,7 @@ export default function TextPreview({
         renderSettings.canvasWidth,
         renderSettings.canvasHeight,
       );
+      ctx.restore();
     });
   }
 
@@ -3231,6 +3266,9 @@ export default function TextPreview({
     const sleepiness = Math.min(1, Math.max(0, sticker.sleepiness ?? 0));
 
     ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.scale(getPreviewStickerWidthScale(sticker), getPreviewStickerHeightScale(sticker));
+    ctx.translate(-centerX, -centerY);
     ctx.lineWidth = outlineWidth;
     ctx.strokeStyle = "#17110b";
     ctx.fillStyle = "#fffdf4";
@@ -4487,6 +4525,50 @@ export default function TextPreview({
     );
   }
 
+  function drawPreviewStickerSelectionTarget(
+    ctx: CanvasRenderingContext2D,
+    sticker: PreviewSticker,
+    renderSettings: PreviewImageSettings,
+    tone: PreviewTextSelectionTone,
+  ) {
+    if (tone === "active") {
+      ctx.fillStyle = "rgba(58, 126, 114, 0.2)";
+      ctx.strokeStyle = "#4f9f8e";
+    } else {
+      ctx.fillStyle = "rgba(130, 208, 188, 0.06)";
+      ctx.strokeStyle = "rgba(130, 208, 188, 0.58)";
+    }
+
+    const imageBox = getPreviewImageStickerCanvasBox(sticker, renderSettings);
+
+    if (imageBox) {
+      const padding = Math.max(8, renderSettings.canvasWidth / 140);
+      ctx.fillRect(
+        imageBox.x - padding,
+        imageBox.y - padding,
+        imageBox.width + padding * 2,
+        imageBox.height + padding * 2,
+      );
+      ctx.strokeRect(
+        imageBox.x - padding,
+        imageBox.y - padding,
+        imageBox.width + padding * 2,
+        imageBox.height + padding * 2,
+      );
+      return;
+    }
+
+    const x = sticker.x * renderSettings.canvasWidth;
+    const y = sticker.y * renderSettings.canvasHeight;
+    const radiusX = Math.max(22, sticker.size * renderSettings.canvasWidth * 2.9 * getPreviewStickerWidthScale(sticker));
+    const radiusY = Math.max(22, sticker.size * renderSettings.canvasWidth * 2.9 * getPreviewStickerHeightScale(sticker));
+
+    ctx.beginPath();
+    ctx.ellipse(x, y, radiusX, radiusY, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+
   function drawPreviewSelectionOutlines(ctx: CanvasRenderingContext2D, renderSettings: PreviewImageSettings) {
     ctx.save();
     ctx.strokeStyle = "#82d0bc";
@@ -4494,35 +4576,24 @@ export default function TextPreview({
     ctx.lineWidth = Math.max(2, renderSettings.canvasWidth / 480);
     ctx.setLineDash([Math.max(6, renderSettings.canvasWidth / 90), Math.max(4, renderSettings.canvasWidth / 140)]);
 
-    const selectedSticker = selectedPreviewStickerId
-      ? previewStickers.find((sticker) => sticker.id === selectedPreviewStickerId)
-      : null;
+    const showSelectedStickerOutline =
+      styleSelectModeActive &&
+      (styleSelectTarget === "stickers" || styleSelectTarget === "ornaments") &&
+      !styleSelectMenuOpen &&
+      !fullscreenSelectMenuOpen;
 
-    if (selectedSticker) {
-      const imageBox = getPreviewImageStickerCanvasBox(selectedSticker, renderSettings);
+    if (showSelectedStickerOutline) {
+      const filterSticker = getStyleSelectStickerFilter();
+      const selectedSticker = selectedPreviewStickerId
+        ? previewStickers.find((sticker) => sticker.id === selectedPreviewStickerId && filterSticker(sticker)) ?? null
+        : null;
 
-      if (imageBox) {
-        const padding = Math.max(8, renderSettings.canvasWidth / 140);
-        ctx.fillRect(
-          imageBox.x - padding,
-          imageBox.y - padding,
-          imageBox.width + padding * 2,
-          imageBox.height + padding * 2,
-        );
-        ctx.strokeRect(
-          imageBox.x - padding,
-          imageBox.y - padding,
-          imageBox.width + padding * 2,
-          imageBox.height + padding * 2,
-        );
-      } else {
-        const x = selectedSticker.x * renderSettings.canvasWidth;
-        const y = selectedSticker.y * renderSettings.canvasHeight;
-        const radius = Math.max(22, selectedSticker.size * renderSettings.canvasWidth * 2.9);
-        ctx.beginPath();
-        ctx.arc(x, y, radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
+      previewStickers
+        .filter((sticker) => filterSticker(sticker) && sticker.id !== selectedPreviewStickerId)
+        .forEach((sticker) => drawPreviewStickerSelectionTarget(ctx, sticker, renderSettings, "available"));
+
+      if (selectedSticker) {
+        drawPreviewStickerSelectionTarget(ctx, selectedSticker, renderSettings, "active");
       }
     }
 
@@ -5253,9 +5324,23 @@ export default function TextPreview({
     setSelectedTextMetricsOpen(false);
     setSelectedTextMetricGroup(null);
     setActiveFontSettingsSliderId(null);
+    setSelectedStickerMetricsOpen(false);
+    setActiveStickerMetricId(null);
     setFontEffectsMenuOpen(false);
 
-    if (target !== "stickers" && target !== "ornaments") {
+    if (target === "stickers") {
+      setSelectedPreviewStickerId((current) =>
+        current && previewStickers.some((sticker) => sticker.id === current && isEyePreviewSticker(sticker))
+          ? current
+          : null,
+      );
+    } else if (target === "ornaments") {
+      setSelectedPreviewStickerId((current) =>
+        current && previewStickers.some((sticker) => sticker.id === current && !isEyePreviewSticker(sticker))
+          ? current
+          : null,
+      );
+    } else {
       setSelectedPreviewStickerId(null);
     }
 
@@ -5285,7 +5370,7 @@ export default function TextPreview({
 
     return (
       <div className="style-select-popover" aria-label="Select target menu">
-        {(["stickers", "text", "doodles"] as StyleSelectTarget[]).map((target) => (
+        {(["stickers", "ornaments", "text", "doodles"] as StyleSelectTarget[]).map((target) => (
           <button
             key={target}
             className={`draw-drawer-button ${styleSelectTarget === target ? "active-tool" : ""}`}
@@ -5392,6 +5477,8 @@ export default function TextPreview({
     const nextOpen = !selectedTextMetricsOpen;
 
     setActiveFontSettingsSliderId(null);
+    setActiveStickerMetricId(null);
+    setSelectedStickerMetricsOpen(false);
     setFontEffectsMenuOpen(false);
     setSelectedTextMetricsOpen(nextOpen);
     setShareStatus(nextOpen ? "Choose size or spacing metrics." : "Text metrics closed.");
@@ -5401,6 +5488,8 @@ export default function TextPreview({
     const nextOpen = !fontEffectsMenuOpen;
 
     setActiveFontSettingsSliderId(null);
+    setActiveStickerMetricId(null);
+    setSelectedStickerMetricsOpen(false);
     setSelectedTextMetricsOpen(false);
     setSelectedTextMetricGroup(null);
     setFontEffectsMenuOpen(nextOpen);
@@ -5411,6 +5500,8 @@ export default function TextPreview({
     setSelectedTextMetricGroup(group);
     setSelectedTextMetricsOpen(false);
     setActiveFontSettingsSliderId(null);
+    setActiveStickerMetricId(null);
+    setSelectedStickerMetricsOpen(false);
     setFontEffectsMenuOpen(false);
     setShareStatus(group === "size" ? "Size metrics shown." : "Spacing metrics shown.");
   }
@@ -5569,170 +5660,232 @@ export default function TextPreview({
     );
   }
 
+  function getStyleSelectStickerFilter(target = styleSelectTarget) {
+    return (sticker: PreviewSticker) => (
+      target === "ornaments" ? !isEyePreviewSticker(sticker) : isEyePreviewSticker(sticker)
+    );
+  }
+
+  function getCurrentStyleSelectSticker() {
+    if (styleSelectTarget !== "stickers" && styleSelectTarget !== "ornaments") {
+      return null;
+    }
+
+    const filterSticker = getStyleSelectStickerFilter();
+    const selectedSticker = selectedPreviewStickerId
+      ? previewStickers.find((sticker) => sticker.id === selectedPreviewStickerId && filterSticker(sticker)) ?? null
+      : null;
+
+    return selectedSticker ?? [...previewStickers].reverse().find(filterSticker) ?? null;
+  }
+
+  function getStickerMetricConfig(id: StickerMetricId): StickerMetricConfig {
+    const sticker = getCurrentStyleSelectSticker();
+    const asset = sticker ? getStyleStickerAsset(sticker.kind) : null;
+    const defaultSize = asset ? getDefaultPreviewStickerSize(asset) : 0.03;
+    const sizeMin = asset ? (asset.minSize ?? 0.018) / defaultSize : 0.6;
+    const sizeMax = asset ? (asset.maxSize ?? 0.07) / defaultSize : 2;
+    const disabled = !sticker;
+
+    switch (id) {
+      case "size":
+        return {
+          disabled,
+          id,
+          label: "Size",
+          max: sizeMax,
+          min: sizeMin,
+          precision: 2,
+          step: 0.05,
+          value: sticker ? getClampedMetricValue(sticker.size / defaultSize, sizeMin, sizeMax, 2) : 1,
+        };
+      case "height":
+        return {
+          disabled,
+          id,
+          label: "Height",
+          max: 1.8,
+          min: 0.35,
+          precision: 2,
+          step: 0.05,
+          value: sticker ? getPreviewStickerHeightScale(sticker) : 1,
+        };
+      case "width":
+        return {
+          disabled,
+          id,
+          label: "Width",
+          max: 1.8,
+          min: 0.35,
+          precision: 2,
+          step: 0.05,
+          value: sticker ? getPreviewStickerWidthScale(sticker) : 1,
+        };
+    }
+  }
+
+  function setSelectedStickerMetricValue(id: StickerMetricId, value: number) {
+    const config = getStickerMetricConfig(id);
+    const filterSticker = getStyleSelectStickerFilter();
+
+    updateSelectedPreviewSticker((sticker) => {
+      const nextValue = getClampedMetricValue(value, config.min, config.max, config.precision);
+
+      if (id === "size") {
+        const asset = getStyleStickerAsset(sticker.kind);
+        return {
+          ...sticker,
+          size: getDefaultPreviewStickerSize(asset) * nextValue,
+        };
+      }
+
+      if (id === "height") {
+        return {
+          ...sticker,
+          heightScale: nextValue,
+        };
+      }
+
+      return {
+        ...sticker,
+        widthScale: nextValue,
+      };
+    }, filterSticker);
+    setActiveDocumentId(null);
+    setShareStatus(`${config.label} updated.`);
+  }
+
+  function getStickerMetricIcon(id: StickerMetricId) {
+    switch (id) {
+      case "size":
+        return <Scaling aria-hidden="true" />;
+      case "height":
+        return <MoveVertical aria-hidden="true" />;
+      case "width":
+        return <MoveHorizontal aria-hidden="true" />;
+    }
+  }
+
+  function renderStickerMetricSliderDrawer(config: StickerMetricConfig) {
+    const sliderFill = Math.max(0, Math.min(100, ((config.value - config.min) / (config.max - config.min)) * 100));
+
+    return (
+      <div
+        className="font-slider-drawer sticker-slider-drawer"
+        style={{ "--slider-fill": `${sliderFill}%` } as CSSProperties}
+        aria-label={`${config.label} slider`}
+      >
+        <div className="font-slider-body font-settings-slider-body">
+          <button
+            className="draw-icon-button draw-glass-button font-slider-default-button"
+            type="button"
+            disabled={config.disabled}
+            onClick={() => setSelectedStickerMetricValue(config.id, 1)}
+            aria-label={`Default ${config.label}`}
+            title="Default"
+          >
+            <RotateCcw aria-hidden="true" />
+          </button>
+          <input
+            className="font-horizontal-slider"
+            type="range"
+            min={config.min}
+            max={config.max}
+            step={config.step}
+            value={config.value}
+            disabled={config.disabled}
+            onChange={(event) => setSelectedStickerMetricValue(config.id, Number(event.target.value))}
+            aria-label={`${config.label} value`}
+          />
+          <button
+            className="draw-icon-button draw-glass-button font-slider-step-button"
+            type="button"
+            disabled={config.disabled}
+            onClick={() => setSelectedStickerMetricValue(config.id, config.value - config.step)}
+            aria-label={`Decrease ${config.label}`}
+            title={`Decrease ${config.label}`}
+          >
+            <Minus aria-hidden="true" />
+          </button>
+          <button
+            className="draw-icon-button draw-glass-button font-slider-step-button"
+            type="button"
+            disabled={config.disabled}
+            onClick={() => setSelectedStickerMetricValue(config.id, config.value + config.step)}
+            aria-label={`Increase ${config.label}`}
+            title={`Increase ${config.label}`}
+          >
+            <Plus aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  function renderSelectedStickerOptionsRow() {
+    const metricConfigs = (["size", "height", "width"] as StickerMetricId[]).map((id) => getStickerMetricConfig(id));
+    const activeSliderConfig = activeStickerMetricId
+      ? metricConfigs.find((config) => config.id === activeStickerMetricId) ?? null
+      : null;
+    const targetLabel = getStyleSelectTargetLabel(styleSelectTarget);
+
+    return (
+      <div
+        className={`phone-image-action-row selected-text-option-row selected-sticker-option-row ${
+          selectedStickerMetricsOpen ? "metrics-open" : ""
+        }`}
+        aria-label={`Selected ${targetLabel.toLowerCase()} options`}
+      >
+        {activeSliderConfig ? renderStickerMetricSliderDrawer(activeSliderConfig) : null}
+        <button
+          className={`draw-icon-button draw-glass-button selected-text-option-button ${
+            selectedStickerMetricsOpen ? "active-tool" : ""
+          }`}
+          type="button"
+          aria-pressed={selectedStickerMetricsOpen}
+          onClick={() => {
+            const nextOpen = !selectedStickerMetricsOpen;
+            setSelectedStickerMetricsOpen(nextOpen);
+            setActiveStickerMetricId(null);
+            setShareStatus(nextOpen ? `${targetLabel} metrics shown.` : `${targetLabel} metrics closed.`);
+          }}
+        >
+          <Ruler aria-hidden="true" />
+          <span>Metrics</span>
+        </button>
+
+        {selectedStickerMetricsOpen ? metricConfigs.map((config) => {
+          const selected = activeStickerMetricId === config.id;
+
+          return (
+            <button
+              key={config.id}
+              className={`draw-icon-button draw-glass-button selected-text-inline-metric-button ${
+                selected ? "active-tool" : ""
+              }`}
+              type="button"
+              disabled={config.disabled}
+              aria-expanded={selected}
+              aria-label={`${targetLabel} ${config.label}: ${formatMetricValue(config.value, config.precision)}`}
+              onClick={() => setActiveStickerMetricId((current) => (current === config.id ? null : config.id))}
+            >
+              {getStickerMetricIcon(config.id)}
+              <span>{config.label}</span>
+              <strong>{formatMetricValue(config.value, config.precision)}</strong>
+            </button>
+          );
+        }) : null}
+      </div>
+    );
+  }
+
   function renderStyleSelectionActions() {
     if (!styleSelectModeActive || styleSelectMenuOpen || fullscreenSelectMenuOpen) {
       return null;
     }
 
-    if ((styleSelectTarget === "stickers" || styleSelectTarget === "ornaments") && selectedPreviewSticker) {
-      const selectedStickerIsEyes = isEyePreviewSticker(selectedPreviewSticker);
-
-      return (
-        <>
-          {selectedStickerIsEyes && styleStickerSleepPanelOpen && (
-            <label className="style-sticker-sleepiness-panel">
-              <Moon aria-hidden="true" />
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.01"
-                value={selectedPreviewSticker.sleepiness ?? 0}
-                onInput={(event) => updateSelectedPreviewStickerSleepiness(Number(event.currentTarget.value))}
-                onChange={(event) => updateSelectedPreviewStickerSleepiness(Number(event.target.value))}
-              />
-              <output>{Math.round((selectedPreviewSticker.sleepiness ?? 0) * 100)}%</output>
-            </label>
-          )}
-          {selectedStickerIsEyes && styleStickerRednessPanelOpen && (
-            <label className="style-sticker-redness-panel">
-              <Pipette aria-hidden="true" />
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.01"
-                value={selectedPreviewSticker.redness ?? 0}
-                onInput={(event) => updateSelectedPreviewStickerRedness(Number(event.currentTarget.value))}
-                onChange={(event) => updateSelectedPreviewStickerRedness(Number(event.target.value))}
-              />
-              <output>{Math.round((selectedPreviewSticker.redness ?? 0) * 100)}%</output>
-            </label>
-          )}
-          {selectedStickerIsEyes && styleStickerFacePanelOpen && (
-            <label className="style-sticker-face-panel">
-              <SlidersHorizontal aria-hidden="true" />
-              <input
-                type="range"
-                min="-1"
-                max="1"
-                step="0.01"
-                value={selectedPreviewSticker.faceMood ?? 0}
-                onInput={(event) => updateSelectedPreviewStickerFaceMood(Number(event.currentTarget.value))}
-                onChange={(event) => updateSelectedPreviewStickerFaceMood(Number(event.target.value))}
-              />
-              <output>{getStickerFaceMoodLabel(selectedPreviewSticker.faceMood ?? 0)}</output>
-            </label>
-          )}
-          <div className="style-selection-action-row sticker-actions" aria-label="Selected sticker actions">
-            {selectedStickerIsEyes && (
-              <>
-                <button
-                  className={`draw-drawer-button style-looking-button ${styleStickerLookMode ? "active-tool" : ""}`}
-                  type="button"
-                  aria-label="Looking at"
-                  onClick={() => {
-                    setStyleDrawMode(false);
-                    setStyleStickerMoveMode(false);
-                    setStyleStickerFacePanelOpen(false);
-                    setStyleStickerRednessPanelOpen(false);
-                    setStyleStickerSleepPanelOpen(false);
-                    setStyleStickerLookMode((current) => !current);
-                    setShareStatus(styleStickerLookMode ? "Looking target off." : "Tap the page where the eyes should look.");
-                  }}
-                >
-                  <MousePointer2 aria-hidden="true" />
-                  <span>Looking at</span>
-                </button>
-                <button
-                  className={`draw-drawer-button ${styleStickerSleepPanelOpen ? "active-tool" : ""}`}
-                  type="button"
-                  aria-label="Sleepiness"
-                  onClick={() => {
-                    setStyleDrawMode(false);
-                    setStyleStickerLookMode(false);
-                    setStyleStickerMoveMode(false);
-                    setStyleStickerFacePanelOpen(false);
-                    setStyleStickerRednessPanelOpen(false);
-                    setStyleStickerSleepPanelOpen((current) => !current);
-                    setShareStatus(styleStickerSleepPanelOpen ? "Sleepiness closed." : "Adjust eye sleepiness.");
-                  }}
-                >
-                  <Moon aria-hidden="true" />
-                  <span>Sleepiness</span>
-                </button>
-                <button
-                  className={`draw-drawer-button ${styleStickerRednessPanelOpen ? "active-tool" : ""}`}
-                  type="button"
-                  aria-label="Redness"
-                  onClick={() => {
-                    setStyleDrawMode(false);
-                    setStyleStickerLookMode(false);
-                    setStyleStickerMoveMode(false);
-                    setStyleStickerFacePanelOpen(false);
-                    setStyleStickerSleepPanelOpen(false);
-                    setStyleStickerRednessPanelOpen((current) => !current);
-                    setShareStatus(styleStickerRednessPanelOpen ? "Redness closed." : "Adjust cloudy eye redness.");
-                  }}
-                >
-                  <Pipette aria-hidden="true" />
-                  <span>Redness</span>
-                </button>
-                <button
-                  className={`draw-drawer-button ${styleStickerFacePanelOpen ? "active-tool" : ""}`}
-                  type="button"
-                  aria-label="Eyebrows"
-                  onClick={() => {
-                    setStyleDrawMode(false);
-                    setStyleStickerLookMode(false);
-                    setStyleStickerMoveMode(false);
-                    setStyleStickerRednessPanelOpen(false);
-                    setStyleStickerSleepPanelOpen(false);
-
-                    if (!styleStickerFacePanelOpen && selectedPreviewSticker.faceMood === undefined) {
-                      updateSelectedPreviewStickerFaceMood(0);
-                    }
-
-                    setStyleStickerFacePanelOpen((current) => !current);
-                    setShareStatus(styleStickerFacePanelOpen ? "Eyebrows closed." : "Adjust eye expression.");
-                  }}
-                >
-                  <SlidersHorizontal aria-hidden="true" />
-                  <span>Eyebrows</span>
-                </button>
-              </>
-            )}
-            <button
-              className={`draw-drawer-button ${styleStickerMoveMode ? "active-tool" : ""}`}
-              type="button"
-              onClick={() => {
-                setStyleDrawMode(false);
-                setStyleStickerLookMode(false);
-                setStyleStickerFacePanelOpen(false);
-                setStyleStickerRednessPanelOpen(false);
-                setStyleStickerSleepPanelOpen(false);
-                setStyleStickerMoveMode((current) => !current);
-                setShareStatus(styleStickerMoveMode ? "Sticker move off." : "Drag selected sticker on the page.");
-              }}
-            >
-              <Hand aria-hidden="true" />
-              <span>Move</span>
-            </button>
-            <button className="draw-drawer-button" type="button" onClick={() => resizeSelectedPreviewSticker(0.004)}>
-              <Plus aria-hidden="true" />
-              <span>Bigger</span>
-            </button>
-            <button className="draw-drawer-button" type="button" onClick={() => resizeSelectedPreviewSticker(-0.004)}>
-              <Minus aria-hidden="true" />
-              <span>Smaller</span>
-            </button>
-            <button className="draw-drawer-button danger-action" type="button" onClick={deleteSelectedPreviewSticker}>
-              <Trash2 aria-hidden="true" />
-              <span>Delete</span>
-            </button>
-          </div>
-        </>
-      );
+    if (styleSelectTarget === "stickers" || styleSelectTarget === "ornaments") {
+      return renderSelectedStickerOptionsRow();
     }
 
     if (styleSelectTarget === "text") {
@@ -6649,6 +6802,8 @@ export default function TextPreview({
     setStyleStickerFacePanelOpen(false);
     setStyleStickerRednessPanelOpen(false);
     setStyleStickerSleepPanelOpen(false);
+    setSelectedStickerMetricsOpen(false);
+    setActiveStickerMetricId(null);
     setFontEffectsMenuOpen(false);
   }
 
@@ -6666,22 +6821,33 @@ export default function TextPreview({
     setStyleStickerFacePanelOpen(false);
     setStyleStickerRednessPanelOpen(false);
     setStyleStickerSleepPanelOpen(false);
+    setSelectedStickerMetricsOpen(false);
+    setActiveStickerMetricId(null);
   }
 
   function toggleStyleDrawer(drawer: Exclude<StyleDrawer, null>) {
     setActiveStyleDrawer((current) => (current === drawer ? null : drawer));
   }
 
-  function getEditablePreviewStickerId(stickers = previewStickers) {
-    if (selectedPreviewStickerId && stickers.some((sticker) => sticker.id === selectedPreviewStickerId)) {
+  function getEditablePreviewStickerId(
+    stickers = previewStickers,
+    filterSticker: (sticker: PreviewSticker) => boolean = () => true,
+  ) {
+    if (
+      selectedPreviewStickerId &&
+      stickers.some((sticker) => sticker.id === selectedPreviewStickerId && filterSticker(sticker))
+    ) {
       return selectedPreviewStickerId;
     }
 
-    return stickers.at(-1)?.id ?? null;
+    return stickers.filter(filterSticker).at(-1)?.id ?? null;
   }
 
-  function updateSelectedPreviewSticker(updater: (sticker: PreviewSticker) => PreviewSticker) {
-    const stickerId = getEditablePreviewStickerId();
+  function updateSelectedPreviewSticker(
+    updater: (sticker: PreviewSticker) => PreviewSticker,
+    filterSticker: (sticker: PreviewSticker) => boolean = () => true,
+  ) {
+    const stickerId = getEditablePreviewStickerId(previewStickers, filterSticker);
 
     if (!stickerId) {
       setShareStatus("Add a sticker first.");
@@ -7559,6 +7725,8 @@ export default function TextPreview({
     setStyleStickerSleepPanelOpen(false);
     setSelectedTextMetricsOpen(false);
     setSelectedTextMetricGroup(null);
+    setSelectedStickerMetricsOpen(false);
+    setActiveStickerMetricId(null);
     setActiveFontSettingsSliderId(null);
     setFontEffectsMenuOpen(false);
     styleActiveDoodleRef.current = null;
@@ -7596,6 +7764,8 @@ export default function TextPreview({
     setStyleStickerSleepPanelOpen(false);
     setSelectedTextMetricsOpen(false);
     setSelectedTextMetricGroup(null);
+    setSelectedStickerMetricsOpen(false);
+    setActiveStickerMetricId(null);
     setActiveFontSettingsSliderId(null);
     setFontEffectsMenuOpen(false);
     styleActiveDoodleRef.current = null;
@@ -7629,6 +7799,8 @@ export default function TextPreview({
     setStyleStickerSleepPanelOpen(false);
     setSelectedTextMetricsOpen(false);
     setSelectedTextMetricGroup(null);
+    setSelectedStickerMetricsOpen(false);
+    setActiveStickerMetricId(null);
 
     if (target === "stickers") {
       setSelectedPreviewStickerId((current) =>
@@ -7680,6 +7852,8 @@ export default function TextPreview({
       setSelectedPreviewTextLayerId(null);
       setSelectedTextMetricsOpen(false);
       setSelectedTextMetricGroup(null);
+      setSelectedStickerMetricsOpen(false);
+      setActiveStickerMetricId(null);
 
       if (activeStyleDrawer === "text") {
         setActiveStyleDrawer(null);
@@ -7713,7 +7887,11 @@ export default function TextPreview({
       }
       setStyleDrawMode(false);
       setStyleSelectMenuOpen(false);
-      setStyleSelectModeActive(panel === "font" && styleSelectTarget === "text" && styleSelectModeActive);
+      setStyleSelectModeActive(
+        panel === "font" &&
+          (styleSelectTarget === "text" || styleSelectTarget === "stickers" || styleSelectTarget === "ornaments") &&
+          styleSelectModeActive,
+      );
       setStyleStickerLookMode(false);
       setStyleStickerMoveMode(false);
       setStyleStickerFacePanelOpen(false);
@@ -7962,12 +8140,12 @@ export default function TextPreview({
 
   function renderFontCategoryControls() {
     const textLayerDrawerOpen = activeStyleDrawer === "text";
-    const textSelectControlsVisible =
+    const selectTargetControlsVisible =
       styleSelectModeActive &&
-      styleSelectTarget === "text" &&
+      (styleSelectTarget === "text" || styleSelectTarget === "stickers" || styleSelectTarget === "ornaments") &&
       !styleSelectMenuOpen &&
       !fullscreenSelectMenuOpen;
-    const fontMetricControlsVisible = !textSelectControlsVisible && !fullscreenSelectMenuOpen;
+    const fontMetricControlsVisible = !selectTargetControlsVisible && !fullscreenSelectMenuOpen;
 
     return (
       <div className="phone-image-panel-stack font-panel-controls" aria-label="Text controls">
@@ -8027,6 +8205,8 @@ export default function TextPreview({
     setStyleStickerFacePanelOpen(false);
     setStyleStickerRednessPanelOpen(false);
     setStyleStickerSleepPanelOpen(false);
+    setSelectedStickerMetricsOpen(false);
+    setActiveStickerMetricId(null);
     setActiveStyleDrawer((current) => {
       const nextDrawer = current === drawer ? null : drawer;
       setStyleSelectModeActive(nextDrawer === "select");
@@ -8058,6 +8238,8 @@ export default function TextPreview({
     setStyleStickerSleepPanelOpen(false);
     setSelectedTextMetricsOpen(false);
     setSelectedTextMetricGroup(null);
+    setSelectedStickerMetricsOpen(false);
+    setActiveStickerMetricId(null);
     styleActiveDoodleRef.current = null;
     styleActiveStrokeRef.current = null;
     styleMovingStickerRef.current = null;
