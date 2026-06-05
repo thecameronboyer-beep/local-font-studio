@@ -5,28 +5,36 @@ Main files
 ----------
 - src\components\TextPreview.tsx
 - src\render\glyphRenderer.ts
-- src\utils\nativeFiles.ts
-- src\storage\savedImageStorage.ts
 - src\data\fontPresets.ts
 - src\data\palettes.ts
+- src\utils\nativeFiles.ts
+- src\storage\savedImageStorage.ts
+- src\styles.css
 
-What this category does
------------------------
-This category covers the fullscreen preview surface, the two-row mobile editing panel, preview image settings, text effects, text layout, export/share, saved preview documents, and applying preview metric changes back to the font.
+What this category covers
+-------------------------
+This category covers the compose preview home surface, fullscreen preview editor, canvas settings, text layout, font and letter tuning, preview documents, export/share, saved images, and custom vs preset font rendering.
 
-TextPreview is the largest source file in the app. It is effectively the image-composition studio.
-
-Primary inputs from App
------------------------
+TextPreview inputs from App
+---------------------------
 - font: active FontSet.
-- fonts: all fonts, for added text layer font choices.
+- fonts: all FontSets for text-layer font choices.
 - previewText and onPreviewTextChange.
 - headerPreviewText and onHeaderPreviewTextChange.
+- visibleHomeSections.
+- selectedGlyph and spacebarGlyph.
 - onApplyFontSpacing.
 - onOpenCharacterEditor.
 - onSelectCharacter.
 - onSaveImage.
 - onRecordExport.
+
+Home visibility
+---------------
+TextPreview uses activeFont.homeSettings.visibleSections:
+- exportControls controls the export heading, preset buttons, and Share/Export PNG actions.
+- previewText controls Header and Body text inputs plus share status.
+- If both are false, the panel uses minimal-preview-panel styling.
 
 PreviewImageSettings
 --------------------
@@ -48,171 +56,152 @@ PreviewImageSettings extends PreviewSettings with:
 - transparent.
 - textEffects.
 
-Default fullscreen format
--------------------------
+Default image settings
+----------------------
 defaultPhoneImageSettings:
-- 1080 x 1920.
-- phone export preset.
-- font size 118.
-- page padding 92.
+- canvasWidth 1080.
+- canvasHeight 1920.
+- exportPreset "phone".
+- fontSize 118.
+- pagePadding 92.
+- lineSpacing 1.18.
 - autoFit true.
-- default theme from the default font palette.
-- text effects off by default.
+- transparent false.
+- theme from getDefaultFontPaletteTheme.
+- all text effects false.
 
 Export presets
 --------------
-The source currently defines these preset ids:
-- phone.
-- social.
-- portrait.
-- landscape.
-- longSkinny exists in the type/source, but the UI has been moving away from exposing it.
+Current exportPresets:
+- phone: 1080 x 1920.
+- social: 1080 x 1080.
+- portrait: 2550 x 3300.
+- landscape: 3300 x 2550.
+- custom: keeps current dimensions.
 
-Important planning note: if fully removing longSkinny, remove it from the type, exportPresets list, layout special cases, CSS labels, and any stored-preview normalization fallback.
+The ExportPresetId type still includes "longSkinny", and TextPreview/CSS still contain long-skinny helper behavior. If that format is fully removed or restored, update the type, helpers, CSS, stored-preview normalization, and UI together.
 
-Two-row fullscreen editing panel
---------------------------------
-The fullscreen preview uses bottom categories:
+Fullscreen categories
+---------------------
+The bottom category tabs are:
 - Canvas.
-- Font.
+- Select.
 - Letter.
 - Position.
-- Decor.
+- Add.
 
-Bottom row:
-- stable category tabs.
-- clicking the selected bottom category hides the action row.
-- clicking a different category changes the top/action row.
-
-Top/action row:
-- category-aware controls.
-- should not move the preview canvas when opened or closed.
-- uses horizontal overflow or drawers for sub-controls where needed.
+The source-level settings panels are:
+- image.
+- font.
+- letter.
+- position.
+- decor.
 
 Canvas category
 ---------------
-Includes:
-- Format button.
-- Format drawer that opens vertically.
-- size/width/height/padding controls.
-- page/background style controls.
-- transparent/background/manuscript controls.
-
-Format is intentionally a same-size button as category buttons and has no ruler icon.
+Controls canvas format, size, width, height, padding, page style, background, transparency, and manuscript controls. Manuscript uses parchment texture and extra sliders for age, edges, fibers, ink soak, ruling, and stains.
 
 Font category
 -------------
-Includes:
-- font size.
+Controls preview-only font settings:
+- size.
 - width.
 - height.
 - letter gap.
 - row spacing.
 - spacebar.
 - text effects.
-- added text-layer controls.
-- Apply for font tuning.
+- font/source choices for added text layers.
+- Apply to persist font tuning.
 
-Preview text effects
---------------------
-textEffects are preview-only and apply to header, body, and added text layers:
+Text effects
+------------
+Preview text effects are:
 - texture.
 - shadow.
 - outline.
 - smooth.
 - thicken.
 
-They do not mutate saved glyphs, font metrics, stickers, doodles, or page background.
-
-Effects are rendered through an offscreen text layer and composited:
-- texture: subtle ink distress/flecking on text alpha.
-- shadow: soft dark offset behind text.
-- outline: accent-colored outline around text.
-- smooth: tiny blur-and-overlay pass.
-- thicken: small multi-offset stamp pass.
+They are preview-only. They are composited through an offscreen text layer and affect header, body, and added text layers.
 
 Letter category
 ---------------
-Includes:
-- selected-letter tuning sliders.
-- draw/edit selected letter.
-- apply-to-font action for relevant preview metric edits.
-
-Letter metric override keys:
-- baselineOffset.
+Controls the selected glyph's preview-only metrics:
+- size.
+- width.
 - height.
+- baselineOffset.
 - leftBearing.
 - rightBearing.
-- width.
 - xAdvance.
-- size.
+
+It can open the selected glyph in GlyphEditor and can apply metric changes back to the saved font.
 
 Position category
 -----------------
-Includes:
-- alignment.
-- Fit/auto-fit controls.
+Controls alignment and fit behavior. TextPreview has placement data for selectable text targets, so header/body/text layers can move independently.
 
-It is intentionally structured so future baseline curve or row positioning controls can be added without another layout rewrite.
-
-Decor category
---------------
-Includes:
-- Doodle.
-- Stickers.
-- Ornaments.
-- selection/edit controls.
-- clear/delete actions.
-
-Decor is documented in more detail in 08-Decor-Doodles-Stickers-Text-Layers.txt.
-
-Preview document model
+Preview font rendering
 ----------------------
-Preview documents are stored separately from the main font project and can preserve:
-- document name.
-- preview settings.
-- doodles.
-- stickers.
-- text layers.
+Custom fonts:
+- build lines with measureCharacter and measureTextRun.
+- draw through drawTextToCanvas and drawGlyph.
+- use selectPreviewGlyph for variants.
 
-Storage key:
-- local-font-studio:preview-documents:v1
+Preset fonts:
+- build lines with measurePresetTextRun and preset wrap helpers.
+- draw with drawPresetTextToCanvas.
+- apply backing FontSet metrics through getPresetCharacterMetrics.
+
+Important current behavior: font and letter tuning works with preset fonts too. Do not patch only the custom glyph branch when fixing spacing, hit testing, or export layout.
+
+Render flow
+-----------
+The main export path is:
+1. getPhoneImageLayout computes fitted layout and text lines.
+2. renderPhoneImageToCanvas sets canvas dimensions.
+3. drawPreviewBackground draws the page.
+4. drawPreviewContentToCanvas draws rules, text layers, and decor.
+5. drawPreviewTextLayerWithEffects composites header/body/text effects.
+6. drawPreviewDecorations adds doodles, stickers, and ornaments.
+7. drawPreviewSelectionOutlines can draw editor selection targets in fullscreen.
+
+Manuscript rendering
+--------------------
+For manuscript backgrounds, content is drawn to an offscreen canvas. drawManuscriptInkLayer multiplies, blurs, offsets, and interrupts ink according to manuscriptInkSoak so the text looks integrated into the page.
+
+Preview documents
+-----------------
+Saved preview documents store:
+- id.
+- name.
+- text.
+- headerText.
+- settings.
+- textLayers.
+- textTargetPlacements.
+- updatedAt.
+
+TextPreview stores up to 16 recent documents in localStorage under local-font-studio:preview-documents:v1.
 
 Export and share
 ----------------
-TextPreview renders to canvas, converts to PNG, and can:
-- download in browser.
-- save into saved images.
-- share/save through Capacitor native APIs on mobile.
+Browser:
+- downloadPhoneImage converts the canvas to PNG Blob and clicks a link.
+- save image can create a SavedImage data URL.
 
-nativeFiles.ts provides:
-- isNativeFilePlatform.
-- saveNativeFileToDocuments.
-- shareNativeFile.
+Native Capacitor:
+- saveNativeFileToDocuments writes PNGs to Documents / Local Font Studio.
+- shareNativeFile writes a cache file and opens Android sharing.
 
-Preview rendering flow
-----------------------
-The rough flow is:
-1. Normalize imageSettings.
-2. Calculate scaled canvas settings when needed for live preview.
-3. Render the background.
-4. Layout header and body text.
-5. Draw glyphs or preset font fallback.
-6. Composite preview-only text effects.
-7. Draw preview doodles, stickers, ornaments, and text layers.
-8. Use the same render function for live preview and export so they match.
+Saved images
+------------
+onSaveImage sends SavedImageDraft to App, which stores it through savedImageStorage.ts. SavedImagesPanel can later share, save, or delete the image.
 
 Planning notes
 --------------
-TextPreview mixes a lot of responsibilities. For future work, plan carefully around categories:
-- image settings.
-- font/letter metric draft controls.
-- text layout and rendering.
-- decor layers.
-- export/share.
-- saved preview documents.
-
-Preview-only changes should not update FontSet unless the user explicitly taps Apply.
-
-If the preview moves when drawers open, look first at CSS in 10-CSS-Layout-And-Responsive-UI.txt, especially fullscreen preview layout, fixed bottom panel sizing, and safe-area padding.
-
+- TextPreview is very large. Plan changes by category and render phase.
+- Preview-only font/letter changes should not mutate FontSet until Apply is clicked.
+- Preset and custom rendering must stay in parity for measurement, hit targets, export, and tuning.
+- Fullscreen layout changes must be checked against the CSS bottom-panel sizing in styles.css.

@@ -1,5 +1,5 @@
-Glyph Editor, Drawing, and Building
-===================================
+Glyph Editor Drawing and Building
+=================================
 
 Main files
 ----------
@@ -7,113 +7,98 @@ Main files
 - src\components\GlyphCanvas.tsx
 - src\components\GlyphConstructionCanvas.tsx
 - src\components\SpacingControls.tsx
-- src\components\GlyphGrid.tsx
-- src\components\FontMetricsPanel.tsx
 - src\utils\fontGuides.ts
+- src\storage\fontStorage.ts
+- src\types\fontTypes.ts
+- src\styles.css
 
-What this category does
------------------------
-This category covers per-letter editing: drawing strokes, building vector-like shapes, tuning glyph metrics, creating glyph variants, adding glyph-level decorations, editing guides, navigating between characters, and saving glyphs.
+What this category covers
+-------------------------
+This category covers fullscreen glyph editing, freehand design mode, build/construction mode, variants, undo/redo, ink tools, stickers, guides, nudge/center controls, per-glyph metrics, and save flows.
 
-GlyphEditor
------------
-GlyphEditor is the controller for a single selected glyph.
+GlyphEditor responsibilities
+----------------------------
+GlyphEditor owns the editable draft state for one glyph and passes low-level drawing state into GlyphCanvas or GlyphConstructionCanvas. It also renders the toolbars, drawers, live preview, variation controls, and save actions.
 
-Important concepts:
-- draftGlyph: local editable copy of the current glyph.
-- activeVariation: base, new, or a variant index.
-- editorMode: draw or construction.
-- brushSize, inkColor, inkEffect, highlightColor.
-- ink presets: primary, secondary, tertiary.
-- construction ink presets.
-- tool: pen, quill, line, eraser, eyes, select, pan.
+Important editor state
+----------------------
+- draftGlyph: cloned editable glyph.
+- activeVariation: "base", "new", or a variant index.
+- editorMode: "draw" or "construction".
+- tool: pen, quill, line, eraser, eyes, select, or pan.
+- constructionTool: select, point, or delete.
+- brushSize and construction thickness.
+- inkColor, highlightColor, inkEffect.
 - smoothingMode: raw, gentle, strong.
-- selectMode: move stroke, edit point, smooth circle, spread circle.
-- selectedStrokeId and selectedDecorationId.
-- viewOffset and viewScale.
-- activeFullscreenDrawer for mobile/fullscreen tool drawers.
-- guide controls and construction controls.
+- eraserMode: stroke or point.
+- selectMode: moveStroke, editPoint, smoothCircle, spreadCircle.
+- viewScale and viewOffset.
+- showGuides.
+- selectedStrokeId, selectedDecorationId, construction selection.
+- history stacks for undo/redo.
+- ink preset slots and construction ink preset slots.
+- fullscreen drawer state for ink, background, guides, more, construction add/ink/paths/settings/more.
 
-Save paths:
-- Save base updates the base Glyph.
-- Save variation updates an existing variation or creates a new one.
-- Save and next saves then moves to the next character.
+Writing-style constraints
+-------------------------
+The active font's writingStyleSettings controls whether draw and build modes are available. FontLibrary prevents disabling both modes. GlyphEditor reconciles editorMode when one mode is unavailable and hides the mode switch when only one style is enabled.
 
-Glyph variants
---------------
-Each Glyph can have variants. Preview rendering can choose among variants using a deterministic seed so repeated letters can look less identical.
+Draw mode
+---------
+GlyphCanvas handles the actual pointer interaction on a responsive canvas. It supports:
+- pen and quill strokes.
+- straight line strokes.
+- eraser by whole stroke or by point/segment.
+- eye sticker placement and movement.
+- selection by stroke, point, smooth circle, or spread circle.
+- pan and zoom.
+- guide editing when guideEditMode is enabled.
+- optional reference glyph overlay.
+- Pixi overlay for heavy ink effects.
 
-The editor supports:
-- editing the base glyph.
-- starting a new empty variation.
-- loading an existing variation.
-- saving current draft as base or variation.
+Glyph stroke data
+-----------------
+Strokes use normalized coordinates. Pointer pressure is captured when available. Stroke size is normalized against the rendered canvas basis. The active stroke stores:
+- color.
+- highlightColor for bubbleHighlight.
+- inkEffect.
+- size.
+- strokeTool.
+- points.
 
-Drawing mode
-------------
-GlyphCanvas handles raw pointer input on a canvas.
-
-Drawing tools:
-- pen: normal variable-width stroke.
-- quill: angled nib stroke.
-- line: straight stroke from pointer down to pointer up.
-- eraser: removes full strokes or stroke segments.
-- eyes: places glyph-level eye decoration.
-- select: selects and edits strokes/decorations.
-- pan: moves the canvas view.
-
-Smoothing modes:
-- raw: follows pointer closely.
-- gentle: moderate smoothing.
-- strong: stronger smoothing, default in most workflows.
-
-Ink effects:
+Ink effects
+-----------
+Draw mode currently supports:
 - none.
 - subtleSpread.
 - dramaticPooling.
 - bubbleHighlight.
 
-Selection modes:
-- moveStroke: drag a whole stroke.
-- editPoint: move individual points.
-- smoothCircle: brush over points to smooth them.
-- spreadCircle: brush over points to increase ink spread.
+subtleSpread can be generated by slow pointer movement or the spread-circle select tool. dramaticPooling adds stronger edge pooling. bubbleHighlight adds a highlight pass.
 
-Glyph-level decoration
-----------------------
-GlyphDecoration currently supports googly-eyes style decorations with expressions. These are stored in the glyph itself, so they appear whenever that glyph is rendered.
-
-This is different from preview decor in TextPreview, which is preview-document artwork and not part of the saved glyph.
-
-Construction mode
------------------
-GlyphConstructionCanvas is the build-mode editor. It edits GlyphConstruction data:
-- paths.
-- anchor points.
-- line/curve segments.
-- handles.
-- closed/open paths.
-- fill/stroke.
-- sharp/rounded/chamfered corners.
-- snapping and guide options.
-
-constructionRenderer draws these paths into the same glyph rendering pipeline used by preview/export.
-
-Metrics and spacing
+Sticker decorations
 -------------------
-SpacingControls edits one glyph's:
-- width.
-- height.
-- xAdvance.
-- baselineOffset.
-- leftBearing.
-- rightBearing.
+Glyph-level stickers currently use GlyphDecoration kind "googly-eyes". Expression options include googly, happy, angry, sad, tired, and stoned. Decorations are part of a glyph and are saved with the glyph or variant.
 
-FontMetricsPanel handles broader font metric workflows.
+Build mode
+----------
+GlyphConstructionCanvas edits GlyphConstruction paths. It supports:
+- adding anchors.
+- selecting and moving points, handles, or whole paths.
+- deleting points/paths.
+- snapping to grid, guides, centerline, and anchors.
+- open/closed paths.
+- line or curve segments.
+- sharp, rounded, and chamfered corners.
+- filled and stroked paths.
 
-Guides
-------
-fontGuideRows define:
+Construction renderer
+---------------------
+Build-mode paths are rendered in src\render\constructionRenderer.ts. Construction shapes are drawn inside drawGlyph before freehand strokes and decorations, so build-mode letters and drawn strokes can coexist.
+
+Guide editing
+-------------
+Guide settings are shared by FontLibrary, GlyphEditor, GlyphCanvas, and TextPreview. The guide keys are:
 - ascender.
 - xHeight.
 - baseline.
@@ -121,17 +106,41 @@ fontGuideRows define:
 - leftBound.
 - rightBound.
 
-clampFontGuideSettings keeps guide values in a valid order so baseline cannot cross x-height/descender and horizontal bounds cannot invert.
+fontGuides.ts clamps guide values so vertical zones stay ordered and left/right bounds keep a minimum distance.
 
-GlyphGrid
----------
-GlyphGrid displays the visible character list and mini previews. It depends on getVisibleCharacters from characterSets and hasDrawnGlyph/drawGlyph from the renderer.
+Metrics and spacing
+-------------------
+SpacingControls edits glyph metrics:
+- width.
+- leftBearing.
+- rightBearing.
+- xAdvance.
+- baselineOffset.
+
+GlyphEditor also has nudge and center controls that translate strokes, decorations, and construction points together.
+
+Variants
+--------
+A glyph can have variants. GlyphEditor can:
+- edit the base glyph.
+- start a new empty variation from the existing glyph.
+- edit an existing variation.
+- save the current draft as a new variation.
+- update an existing variation.
+
+Rendering picks variants through selectPreviewGlyph using a deterministic seed so repeated letters can vary.
+
+Save flows
+----------
+- Save base calls onSaveGlyph.
+- Save variation calls onSaveGlyphVariant.
+- Save and next calls onSaveGlyphAndNext, then App advances to the next missing visible glyph when possible.
+- App merges saved base glyphs with existing variants so variant arrays are not lost.
 
 Planning notes
 --------------
-If the feature changes a saved letter shape, it belongs in GlyphEditor, GlyphCanvas, GlyphConstructionCanvas, or the renderer.
-
-If the feature only changes how the whole preview image looks, it belongs in TextPreview.
-
-Keep glyph-level decorations separate from preview stickers. Glyph-level decorations travel with the font. Preview stickers travel with a preview document/export.
-
+- GlyphEditor is large. Keep changes scoped to the relevant mode or drawer.
+- A glyph edit should update draft state first, then save through App callbacks.
+- Any new glyph data must be cloned, normalized, exported, imported, and rendered.
+- If adding tools that affect preview/export, update glyphRenderer.ts and TextPreview canvas paths too.
+- Fullscreen draw/build CSS has specialized no-scroll workbench rules; see 10-CSS-Layout-And-Responsive-UI.txt.

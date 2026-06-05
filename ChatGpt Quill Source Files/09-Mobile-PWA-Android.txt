@@ -1,115 +1,122 @@
-Mobile, PWA, Android, Native Files
-==================================
+Mobile, PWA, and Android
+========================
 
-Main files and folders
-----------------------
+Main files
+----------
 - package.json
-- vite.config.ts
 - capacitor.config.ts
 - src\pwa.ts
 - src\utils\nativeFiles.ts
 - public\manifest.webmanifest
 - public\sw.js
-- android
-- scripts\build-android-debug.mjs
-- scripts\serve-dist.mjs
-- scripts\ensure-d-drive-workspace.mjs
+- docs\manifest.webmanifest
+- docs\sw.js
 - MOBILE_DEPLOY.md
 - docs\android-app.md
+- android
+- scripts\ensure-d-drive-workspace.mjs
+- scripts\build-android-debug.mjs
+- scripts\publish-browser-docs.mjs
+- scripts\serve-dist.mjs
 
-What this category does
------------------------
-This category covers how Quill runs locally, builds as a web app, registers as a PWA, and integrates with Capacitor for Android/native file sharing.
+What this category covers
+-------------------------
+This category covers the static web app, PWA install behavior, GitHub Pages publishing, Capacitor Android build/sync, native file save/share, and mobile layout constraints.
 
-Project stack
+Current stack
 -------------
-Runtime:
-- React 19.
-- TypeScript.
-- Vite.
-- Capacitor 8.
-- Pixi.js for editor ink overlay effects.
-- lucide-react for UI icons.
+- React 19.2.0.
+- TypeScript 5.9.3.
+- Vite 7.2.4.
+- Capacitor 8.3.4.
+- Pixi.js 7.4.3.
+- lucide-react 1.17.0.
 
-Important npm scripts
----------------------
-- npm run dev:
-  Runs Vite dev server on 127.0.0.1.
-
-- npm run build:
-  Runs TypeScript and Vite build.
-
-- npm run preview:
-  Runs Vite preview on 127.0.0.1.
-
-- npm run android:sync:
-  Builds web app and syncs Capacitor Android.
-
-- npm run android:build:debug:
-  Builds and syncs, then runs the debug APK build script.
-
-- npm run serve:dist:
-  Serves the built dist with scripts\serve-dist.mjs.
-
-- npm run verify:renderer:
-  Runs scripts\verify-renderer.mjs.
+Important scripts
+-----------------
+package.json scripts:
+- check:workspace: runs scripts\ensure-d-drive-workspace.mjs.
+- dev: Vite dev server on 127.0.0.1.
+- build: tsc and vite build.
+- android:sync: build then npx cap sync android.
+- android:build:debug: android sync then scripts\build-android-debug.mjs.
+- preview: vite preview on 127.0.0.1.
+- publish:browser: build then copy dist to docs.
+- serve:dist: local static dist server.
+- verify:renderer: node scripts\verify-renderer.mjs.
 
 Workspace guard
 ---------------
-Most scripts run a pre-step:
-- npm run check:workspace
+Most scripts run check:workspace first. The intended workspace is D:\Local Font Studio. Do not assume an older C-drive copy is correct.
 
-That runs:
-- scripts\ensure-d-drive-workspace.mjs
+Capacitor config
+----------------
+capacitor.config.ts:
+- appId: com.thecameronboyer.localfontstudio.
+- appName: Local Font Studio.
+- webDir: dist.
 
-The app expects to be in the D drive workspace.
-
-PWA
----
-src\pwa.ts registers the service worker.
-
-public\manifest.webmanifest defines installable app metadata.
-
-public\sw.js is the service worker.
-
-Capacitor/native file integration
----------------------------------
-src\utils\nativeFiles.ts provides:
+Native file helpers
+-------------------
+src\utils\nativeFiles.ts exports:
 - isNativeFilePlatform.
 - saveNativeFileToDocuments.
 - shareNativeFile.
 
-saveNativeFileToDocuments writes to:
-- Documents/Local Font Studio/{fileName}
+On native platforms:
+- saveNativeFileToDocuments writes into Documents / Local Font Studio.
+- shareNativeFile writes a cache file under share/ and opens Capacitor Share.
+- Text data uses UTF8 encoding.
+- PNG base64 data is written without text encoding.
 
-shareNativeFile writes a temporary file into Capacitor Cache and calls Share.share.
+Export/share consumers
+----------------------
+- FontLibrary exports font JSON through native save/share or browser Blob download.
+- TextPreview exports preview PNGs through native save/share or browser download.
+- SavedImagesPanel shares and saves saved PNG data URLs.
 
-This is used by preview/export workflows when running on Android/native platforms.
+PWA
+---
+src\pwa.ts registers sw.js only in production and only when serviceWorker is available.
 
-Android folder
---------------
-The android folder is a Capacitor Android project. It contains:
-- Gradle config.
-- AndroidManifest.
-- app resources.
-- launcher icons.
-- splash assets.
-- MainActivity.
-- debug keystore.
+public\manifest.webmanifest:
+- name: Quill.
+- short_name: Quill.
+- standalone display.
+- portrait orientation.
+- icons: icon-192.png, icon-512.png, icon.svg.
 
-Build outputs
+public\sw.js:
+- CACHE_NAME local-font-studio-v42.
+- caches app base, manifest, and icons at install.
+- removes old caches at activate.
+- fetch handler uses network-first with cache fallback for same-origin GET requests.
+
+GitHub Pages
+------------
+MOBILE_DEPLOY.md says the public browser version is:
+https://thecameronboyer-beep.github.io/local-font-studio/
+
+npm run publish:browser builds dist and copies app files into docs for GitHub Pages.
+
+Android
+-------
+The android folder is a Capacitor Android project. Build notes point to docs\android-app.md. APK artifacts are present in docs\downloads for prior versions.
+
+Mobile layout
 -------------
-Existing APK downloads are present under:
-- public-downloads
-- docs\downloads
-
-These are packaged artifacts, not source files.
+styles.css includes many mobile-specific sections:
+- safe-area padding with env(safe-area-inset-*).
+- body.editor-fullscreen-open to prevent background scroll.
+- phone-image-fullscreen bottom panel sizing.
+- fullscreen draw/build canvas height calculations.
+- tablet portrait coarse-pointer media rules.
+- Codex/mobile preview mode comments around always showing the phone layout.
 
 Planning notes
 --------------
-For preview/export sharing changes, look at TextPreview and nativeFiles.ts together.
-
-For PWA install/offline changes, look at manifest.webmanifest, sw.js, and pwa.ts.
-
-For Android build changes, use npm scripts rather than manually editing generated Gradle files unless the feature specifically needs native configuration.
-
+- Source-pack refreshes do not need npm run build.
+- App source changes that affect mobile/export should usually run npm run build, and sometimes android:sync or android:build:debug if native behavior changes.
+- For local browser verification, prefer the Vite dev server or serve:dist depending on what changed.
+- Native file changes need browser fallback and Capacitor fallback checks.
+- PWA cache version should change when public cached assets need a forced refresh.

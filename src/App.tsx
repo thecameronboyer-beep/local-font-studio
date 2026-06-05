@@ -4,6 +4,7 @@ import FontMetricsPanel from "./components/FontMetricsPanel";
 import GlyphEditor from "./components/GlyphEditor";
 import GlyphGrid from "./components/GlyphGrid";
 import SavedImagesPanel from "./components/SavedImagesPanel";
+import SealMaker from "./components/SealMaker";
 import TextPreview from "./components/TextPreview";
 import {
   APP_THEME_STORAGE_KEY,
@@ -48,7 +49,7 @@ import type {
   SavedImageDraft,
 } from "./types/fontTypes";
 
-type HomeMode = "design" | "compose";
+type HomeMode = "design" | "compose" | "seal";
 
 export default function App() {
   const [initialLoad] = useState(() => {
@@ -775,6 +776,13 @@ export default function App() {
               previewText={previewText}
               selectedCharacter={selectedCharacter}
               onSelectCharacter={handleSelectCharacter}
+            />
+          )}
+          {homeMode === "seal" && (
+            <SealMaker
+              font={activeFont}
+              onRecordExport={handleRecordPreviewExport}
+              onSaveImage={handleSaveImage}
             />
           )}
         </div>

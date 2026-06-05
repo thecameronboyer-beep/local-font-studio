@@ -7,102 +7,141 @@ Main files
 - src\data\fontPresets.ts
 - src\data\palettes.ts
 - src\storage\fontStorage.ts
-- public\assets\fonts\presets
+- src\App.tsx
+- src\styles.css
 
-What this category does
------------------------
-This category covers font creation, font switching, font rows, preset fonts, font import/export, renaming, duplication, deletion, writing style settings, guide settings, palette/theme selection, and the font profile panel.
+What this category covers
+-------------------------
+This category covers the current font profile UI, font creation, preset fonts, font switching, rename, duplicate, delete, JSON export, palette selection, character settings, home-screen settings, writing-style settings, and guide setup.
 
-FontLibrary responsibilities
-----------------------------
-FontLibrary is the main UI for managing fonts. App.tsx owns final project data changes, but FontLibrary presents the controls.
+FontLibrary shape
+-----------------
+FontLibrary receives all font mutations as callbacks from App. It does not own the durable project. It renders:
+- the active font preview button on the home screen.
+- the fullscreen font profile/settings surface.
+- the font switcher list.
+- create new font form.
+- preset picker.
+- palette selector.
+- writing-style toggles.
+- home-screen section toggles.
+- character options and design-line editor.
+- duplicate, export JSON, delete actions.
+- home mode toggle for Design and Compose.
 
-Important FontLibrary state:
-- createFormOpen: opens the create-new-font form.
-- newFontCharacterSettings: optional character groups for a new font.
-- guideEditorOpen and activeGuideEditorOpen: guide editing UIs.
-- newFontGuideSettings: ascender/x-height/baseline/descender/bounds for new font.
-- newFontName: typed font name.
-- newFontProfile: plain or quillParchment render profile.
-- editingFontId and fontRenameValue: rename workflow.
-- presetPickerOpen: preset font picker.
-- settingsOpen: font settings/profile panel.
+Active profile row
+------------------
+The visible home surface is intentionally compact. It shows only the active font preview row, then the Design/Compose toggle and any mode-specific controls.
 
-Font row theme behavior
------------------------
-Font list rows use the actual theme of each font:
-- row background comes from font.theme.backgroundColor.
-- text color comes from font.theme.inkColor.
-- active border/accent uses font.theme.accentColor.
-
-The compact name preview uses FontNamePreview, which draws the font name with the font's glyphs or preset font source, on the actual background color for that font.
-
-Font presets
-------------
-src\data\fontPresets.ts defines local TTF preset fonts.
-
-Preset fields:
-- id.
-- label.
-- family.
-- sourcePath.
-- license.
-- weight.
-
-The app has many bundled preset fonts in:
-public\assets\fonts\presets
-
-Preset helper functions:
-- getFontPresetOptionId(id): creates a "preset:id" option string.
-- getFontPresetById(id): finds a preset record.
-- getFontPresetFromOptionId(optionId): parses a preset option.
-- getFontPresetCanvasFont(preset, size): returns a canvas font string.
-
-How presets work with custom fonts
-----------------------------------
-A FontSet can have presetFontId. When a preview or list row uses that font, the renderer can use the preset TTF source for missing glyph rendering or preset-based text layers.
-
-Important planning note: custom drawn glyphs and preset font rendering are separate sources. Features that tune metrics or effects in preview should decide whether they affect only custom glyphs, only preset font fallback, or both.
+FontNamePreview
+---------------
+FontNamePreview draws the font name to a canvas. It handles:
+- compact and full variants.
+- themed row backgrounds.
+- preset font names through getFontPresetCanvasFont.
+- custom font names through drawGlyph and selectPreviewGlyph.
+- ResizeObserver redraw.
+- document.fonts load wait for preset fonts.
 
 Font creation
 -------------
-New fonts are created by createFontSet in src\storage\fontStorage.ts.
+Creating a font uses:
+- name input.
+- profile selector: Pen or Quill.
+- optional Header Letters.
+- optional Space Bar.
+- design-line setup before creation.
 
-Creation inputs:
-- name.
-- renderProfile.
-- characterSettings.
-- guideSettings.
-- shapeSettings.
+App.handleCreateFont calls createFontSet(name, renderProfile, characterSettings, guideSettings, shapeSettings). Quill profile defaults to the quillParchment theme. Plain fonts default to getDefaultFontPaletteTheme.
 
-createFontSet initializes every supported character with an empty Glyph. For normal characters, baselineOffset is initialized from the selected guide baseline.
+Font presets
+------------
+src\data\fontPresets.ts defines 23 bundled presets:
+- Fredoka
+- Baloo 2
+- DynaPuff
+- Bubblegum Sans
+- Sniglet
+- Patrick Hand
+- Short Stack
+- Schoolbell
+- Comic Neue
+- Cute Font
+- Single Day
+- Gaegu
+- Cedarville Cursive
+- IM Fell English
+- IM Fell DW Pica
+- MedievalSharp
+- Uncial Antiqua
+- Germania One
+- Pirata One
+- Grenze Gotisch
+- Old Standard TT
+- Cinzel Decorative
+- Almendra SC
 
-Render profiles
----------------
-FontRenderProfile:
-- plain.
-- quillParchment.
+Each preset has id, label, family, sourcePath, weight, and license. Font files live under public\assets\fonts\presets and docs\assets\fonts\presets.
 
-quillParchment uses:
-- quill-like default stroke rendering.
-- parchment-oriented default theme from quillParchmentTheme in fontStorage.ts.
+Preset-backed FontSet behavior
+------------------------------
+App.handleCreatePresetFont creates a normal FontSet plus presetFontId. It reuses an existing preset font if one already exists for that preset id. Preset FontSets hide drawActions and glyphQueue by default in homeSettings, but still keep glyph metrics so preview tuning can affect preset rendering.
 
-Font settings controlled here
------------------------------
-- Character visibility: header letters, spacebar, forgotten group.
-- Writing styles: draw and build.
-- Font guides: ascender, x-height, baseline, descender, left/right bounds.
-- Font palette/theme: background, ink, accent, texture.
-- Font import/export.
-- Font duplication.
-- Font deletion.
-- Font renaming.
+Important current behavior: TextPreview applies width, height, baseline, bearings, xAdvance, spacebar, and shape settings to preset-font measurement/rendering through getPresetCharacterMetrics and drawPresetTextToCanvas. Preset tuning is not only visual fallback text.
+
+Palette selector
+----------------
+FontLibrary uses fontPalettes from src\data\palettes.ts. Current palette ids:
+- strawberryMarket
+- midnightCorrespondence
+
+Changing a palette writes font.theme through onUpdateFontSettings. getDefaultFontPaletteTheme picks the palette's default background and default texture.
+
+Writing style settings
+----------------------
+FontLibrary renders draw/build checkboxes from fontWritingStyleOptions:
+- draw: label Design.
+- build: label Build.
+
+updateActiveWritingStyle refuses to turn off both styles. GlyphEditor also reconciles unavailable editor modes.
+
+Home screen settings
+--------------------
+fontHomeSectionOptions:
+- drawActions: Design actions.
+- exportControls: Export controls.
+- previewText: Preview text.
+- glyphQueue: Glyph queue.
+
+These flags decide which home sections appear. App passes activeFont.homeSettings.visibleSections into TextPreview and checks glyphQueue before showing FontMetricsPanel in design mode.
+
+Character settings
+------------------
+FontLibrary exposes:
+- Header Letters.
+- Space Bar.
+
+showForgotten exists in the data model but is not currently exposed in this UI, and forgotten is currently empty in characterSets.ts.
+
+Design-line editor
+------------------
+FontGuideEditor is embedded in FontLibrary for new fonts and active fonts. It draws a 720px canvas with:
+- ascender.
+- x-height.
+- baseline.
+- descender.
+- left bound.
+- right bound.
+
+It uses fontGuideRows and clampFontGuideSettings from src\utils\fontGuides.ts to keep vertical lines ordered and horizontal bounds valid.
+
+Export JSON
+-----------
+downloadFontJson uses exportFontSet. In Capacitor it saves and shares through nativeFiles.ts. In the browser it creates a Blob and clicks a download link.
 
 Planning notes
 --------------
-FontLibrary is about managing whole fonts, not editing individual glyph strokes. For glyph shapes, use GlyphEditor. For preview-only image output, use TextPreview.
-
-If adding more font categories, keep the active font row readable in mobile widths. The list rows are now visually tied to the font's own background, which is important for theme planning.
-
-If adding more preset metadata, update src\data\fontPresets.ts and ensure the preset asset exists under public\assets\fonts\presets.
-
+- FontLibrary should stay a UI/control surface. Durable mutations should stay in App callbacks.
+- Preset fonts are real FontSets with metrics, home settings, theme, and a presetFontId. Do not treat them as only static CSS fonts.
+- When adding a font-level setting, update fontTypes.ts, fontStorage.ts defaults/normalization, FontLibrary UI, and the render path that consumes it.
+- If changing profile/fullscreen layout, check 10-CSS-Layout-And-Responsive-UI.txt for source-order and safe-area rules.

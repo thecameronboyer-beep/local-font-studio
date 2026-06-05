@@ -8,84 +8,95 @@ Main files
 - src\pwa.ts
 - src\styles.css
 
-What this category does
------------------------
-This category covers the main React app shell: loading data, choosing the active font, selecting glyphs, opening fullscreen views, applying app themes, saving changes, and wiring the major child components together.
+What this category covers
+-------------------------
+This category covers the React app shell: startup, project loading, active font selection, glyph selection, fullscreen panels, saved images, app themes, and the controlled callbacks that let child components mutate the project.
 
-The app is mounted by src\main.tsx. That file imports React, ReactDOM, App, styles.css, and registerServiceWorker.
+Mounting
+--------
+src\main.tsx imports React, ReactDOM, App, styles.css, and registerServiceWorker. The service worker only registers in production.
 
-src\App.tsx is the main controller component. It owns project-level state and passes callbacks into all major feature panels.
-
-Important App.tsx state
------------------------
-- studioData: the whole saved font project loaded from localStorage.
-- selectedCharacter: the current glyph/letter being edited.
-- editorFullScreen: whether the glyph editor is fullscreen.
-- gridFullScreen: whether the glyph grid is fullscreen.
-- savedImagesOpen: whether the saved image gallery is open.
-- savedImages: exported/saved preview images.
-- sidebarOpen: mobile sidebar state.
+App.tsx state
+-------------
+- studioData: the full FontStudioData project loaded from localStorage.
+- selectedCharacter: active glyph key, default "A".
+- editorFullScreen: shows the glyph editor overlay.
+- gridFullScreen: shows the alphabet overlay.
+- savedImagesOpen: shows the saved PNG gallery.
+- savedImages: image data records from savedImageStorage.ts.
+- sidebarOpen: slide-out menu state.
 - themesMenuOpen: app theme menu state.
-- activeAppThemeId: current app UI theme.
-- activeAppThemeBackgroundId: selected app background variant.
-- headerPreviewText: optional large header text in preview/export.
-- previewText: body text used in preview/export.
+- activeAppThemeId: root UI theme id from appThemes.ts.
+- activeAppThemeBackgroundId: selected theme background variant.
+- headerPreviewText: optional large header for preview/export.
+- previewText: body text for preview/export.
+- homeMode: "compose" or "design".
 
-Main derived data
------------------
-- activeFont: selected from studioData.fonts by studioData.activeFontId.
-- selectedGlyph: activeFont.glyphs[selectedCharacter], with an empty fallback.
-- spacebarGlyph: activeFont.glyphs[" "], with an empty fallback.
-- activeCharacters: visible glyph list based on the font's character settings.
-- activeAppTheme and activeAppThemeBackground: theme definitions from src\data\appThemes.ts.
+Derived data
+------------
+- activeFont: selected from studioData.fonts by activeFontId.
+- selectedGlyph: activeFont.glyphs[selectedCharacter], with createEmptyGlyph fallback.
+- spacebarGlyph: activeFont.glyphs[" "], with createEmptyGlyph fallback.
+- activeCharacters: getVisibleCharacters(activeFont).
+- activeAppTheme and activeAppThemeBackground: definitions from src\data\appThemes.ts.
 
 Main responsibilities
 ---------------------
 1. Load project data:
-   - Calls loadFontStudioDataWithHealth from src\storage\fontStorage.ts.
-   - Immediately persists migrated/recovered data when needed.
+   - Calls loadFontStudioDataWithHealth.
+   - Immediately saves migrated data or recovered data through saveFontStudioData.
 
 2. Persist project changes:
-   - saveProjectData wraps saveFontStudioData.
-   - persist records activity entries and saves.
-   - deferProjectSave allows non-blocking delayed saves.
+   - persist records optional ProjectActivity entries, updates React state, and saves to localStorage.
+   - deferProjectSave is used for save-and-next so the UI can advance without waiting on storage.
 
 3. Apply app theme:
-   - Writes theme CSS variables onto document.documentElement.
-   - Stores theme choices in localStorage.
-   - Sets root data attributes for CSS hooks.
+   - Writes CSS custom properties onto document.documentElement.
+   - Sets root data attributes data-app-theme and data-app-theme-background.
+   - Saves app theme ids in localStorage.
 
-4. Route glyph editing:
-   - handleSelectCharacter opens the fullscreen glyph editor.
-   - handlePreviewSelectCharacter changes selected glyph from preview hit testing.
-   - save callbacks update the active font's glyphs.
+4. Route font lifecycle:
+   - handleCreateFont uses createFontSet.
+   - handleCreatePresetFont creates or selects a FontSet backed by a presetFontId.
+   - handleRenameFont, handleDuplicateFont, handleDeleteFont mutate studioData.fonts.
 
-5. Route preview metric application:
-   - handleApplyPreviewFontSpacing takes a FontSpacingApplyDraft from TextPreview and applies font-wide or glyph-specific metric changes into saved glyphs.
-   - This is how preview letter/font tuning can become permanent when the user taps Apply.
+5. Route glyph editing:
+   - handleSelectCharacter opens GlyphEditor fullscreen.
+   - handleSaveGlyph saves the base glyph while preserving variants.
+   - handleSaveGlyphAndNext saves and advances to the next missing glyph when possible.
+   - handleSaveGlyphVariant writes or replaces an entry in glyph.variants.
 
-6. Manage fonts:
-   - Create, duplicate, rename, delete, import/export, update active font.
-   - Font management UI is mostly in FontLibrary, but App owns the final project mutation.
+6. Route preview tuning:
+   - handleApplyPreviewFontSpacing receives FontSpacingApplyDraft from TextPreview.
+   - It applies font-wide metric overrides to non-spacebar glyphs, glyph-specific overrides to specific glyphs, optional guideSettings, and shapeSettings.
+   - It records a metrics_batch activity entry.
 
-7. Manage saved images:
-   - Preview exports can be saved into savedImages.
-   - SavedImagesPanel can show and delete them.
+7. Route saved images:
+   - handleSaveImage creates SavedImage records.
+   - SavedImagesPanel can share, save, or delete those records.
 
-Major child components
-----------------------
-- FontLibrary: font creation, selection, rename, duplicate, delete, import/export, themes, guides, character settings.
-- TextPreview: fullscreen preview, export, preview settings, effects, decor, text layers.
-- GlyphGrid: grid/list of visible glyphs.
-- GlyphEditor: per-glyph draw/build editor.
-- FontMetricsPanel: bulk metric tuning.
-- SavedImagesPanel: image gallery.
+Child components
+----------------
+- FontLibrary: current font profile button, profile fullscreen, font creation, preset picker, palette/home/character/writing-style settings, duplicate/export/delete.
+- TextPreview: compose home surface and fullscreen image editor/exporter.
+- FontMetricsPanel: design-mode glyph queue and missing pair summary.
+- GlyphGrid: fullscreen alphabet grid.
+- GlyphEditor: fullscreen glyph draw/build editor.
+- SavedImagesPanel: fullscreen saved image gallery.
+
+Home modes
+----------
+homeMode is controlled by FontLibrary:
+- compose shows TextPreview.
+- design shows the Start designing action and, if enabled in homeSettings, FontMetricsPanel.
+
+Sidebar menu
+------------
+The menu exposes Alphabet, Saved Images, Design Letters, and Themes. TextPreview renders its preview document/text menu into the sidebar via a portal target with id preview-text-menu-slot.
 
 Planning notes
 --------------
-App.tsx is the safest place for changes that affect project-wide state or persistence. Avoid burying durable project mutations inside deep components unless App passes an explicit callback for that purpose.
-
-The preview currently owns lots of temporary preview-only state. That is intentional: preview effects, doodles, stickers, text layers, and draft metric overrides should not automatically mutate saved glyphs.
-
-If a future feature needs to be saved as part of the font project, add the data type in src\types\fontTypes.ts, normalize it in src\storage\fontStorage.ts, then pass controlled state through App.tsx.
-
+- App.tsx is the right place for durable project mutations. Deep feature components should use callbacks passed from App.
+- Preview-only state should stay in TextPreview unless the user explicitly applies it to the font.
+- Any new persisted field needs fontTypes.ts, fontStorage.ts normalization/defaults, and App mutation plumbing.
+- If a feature changes visible characters, selectedCharacter reconciliation in App needs to stay in sync with characterSets.ts.

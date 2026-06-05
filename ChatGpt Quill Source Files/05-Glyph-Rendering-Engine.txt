@@ -6,110 +6,139 @@ Main files
 - src\render\glyphRenderer.ts
 - src\render\constructionRenderer.ts
 - src\render\pixiInkRenderer.ts
-- src\components\GlyphCanvas.tsx
 - src\components\TextPreview.tsx
+- src\components\GlyphCanvas.tsx
+- src\components\GlyphGrid.tsx
+- src\components\FontLibrary.tsx
+- src\components\FontMetricsPanel.tsx
 
-What this category does
------------------------
-This category explains how saved glyph data turns into pixels in the editor, preview, export, mini previews, and preset fallback workflows.
+What this category covers
+-------------------------
+This category covers how glyphs are selected, measured, drawn, hit-tested, and shared across editor, preview, font list, alphabet grid, and export.
 
-glyphRenderer.ts
-----------------
-This is the main 2D canvas glyph renderer. It knows how to draw:
-- freehand strokes.
-- quill strokes.
-- construction paths.
-- glyph decorations.
-- ink effects.
-- variant-aware glyph previews.
+Core renderer responsibilities
+------------------------------
+src\render\glyphRenderer.ts exports:
+- hasDrawnGlyph.
+- getDrawableGlyphVariants.
+- findPreviewGlyph.
+- selectPreviewGlyph.
+- getFontHeightScale.
+- getFontWidthScale.
+- getGlyphRenderScales.
+- getGlyphLeftBearingOffset.
+- getGlyphTopForBaseline.
+- getGlyphAdvance.
+- getSpacebarAdvance.
+- drawStrokePath.
+- drawGlyphDecoration.
+- drawGlyph.
 
-Important exported functions:
-- hasDrawnGlyph(glyph): true if a glyph or any variant has marks.
-- getDrawableGlyphVariants(glyph): returns base/variants with visible marks.
-- findPreviewGlyph(glyphs, character): finds exact glyph or case fallback.
-- selectPreviewGlyph(glyphs, character, seed): deterministic variant picker.
-- getFontHeightScale(font): whole-font height scale.
-- getFontWidthScale(font): whole-font width scale.
-- getGlyphRenderScales(font, glyph): combines glyph and font scaling.
-- getGlyphLeftBearingOffset(font, glyph, fontSize): left bearing in pixels.
-- getGlyphTopForBaseline(glyph, fontSize, baselineY, heightScale): y coordinate.
-- getGlyphAdvance(glyph, fontSize, widthScale): text advance width.
-- getSpacebarAdvance(glyph, fontSize): spacebar advance.
-- drawStrokePath(ctx, stroke, options): draws one stroke.
-- drawGlyphDecoration(ctx, decoration, options): draws a decoration.
-- drawGlyph(ctx, glyph, options): draws the full glyph.
+Glyph selection
+---------------
+findPreviewGlyph:
+- returns the first drawable exact glyph or variant.
+- falls back between lowercase and uppercase when needed.
 
-Variant rendering
------------------
-selectPreviewGlyph uses a string seed so the same text can pick variants predictably. This allows repeated letters to vary while staying stable across redraws.
+selectPreviewGlyph:
+- returns a deterministic variant based on a seed.
+- falls back between case variants.
+- is used in preview, font name previews, and repeated text rendering so the same character can vary across occurrences.
 
-Case fallback
--------------
-If a glyph is missing for a lowercase character, the renderer can fall back to uppercase, and vice versa. This is useful while the user has only drawn part of the font.
+Drawn state
+-----------
+hasDrawnGlyph returns true if:
+- the base glyph has construction marks, decorations, or strokes.
+- any variant has construction marks, decorations, or strokes.
+
+FontMetricsPanel uses this for missing groups. GlyphGrid uses it to show completion and variants.
 
 Metrics
 -------
-Rendering uses:
-- glyph.width and glyph.height.
-- font.shapeSettings.widthScale and heightScale.
-- glyph.baselineOffset.
-- glyph.leftBearing and rightBearing.
-- glyph.xAdvance.
+Glyph metrics are central to every renderer:
+- width and height scale the glyph visual bounds.
+- xAdvance controls cursor advance.
+- baselineOffset controls vertical placement relative to baseline.
+- leftBearing and rightBearing affect offset and advance.
+- shapeSettings.widthScale and shapeSettings.heightScale apply font-wide scaling.
+- shapeSettings.letterSpacing applies extra tracked advance in TextPreview.
 
-Text layout in preview depends on these metrics for line wrapping, hit testing, alignment, and export fidelity.
+getGlyphAdvance uses the larger of xAdvance and leftBearing + width + rightBearing, multiplied by font width scale. It clamps to a minimum based on font size.
 
-Quill strokes
+Baseline math
 -------------
-Quill stroke rendering uses an angled nib model. The segment width varies by:
-- stroke direction.
-- point pressure.
-- taper position.
-- deterministic grain/noise.
-- renderProfile.
-- backgroundTexture.
+getGlyphTopForBaseline computes glyph y from baselineY, baselineOffset, fontSize, and height scale. TextPreview uses this in both custom glyph drawing and preset fallback drawing.
 
-Ink effects
------------
-Supported saved glyph ink effects:
-- subtleSpread: gentle bleed/spread marks.
-- dramaticPooling: heavier pooling around points and edges.
-- bubbleHighlight: highlight/shine overlay using highlightColor.
+Custom glyph drawing
+--------------------
+drawGlyph:
+1. draws build-mode construction paths.
+2. draws all strokes through drawStrokePath.
+3. draws glyph decorations.
 
-Background texture affects spread intensity:
-- clean reduces spread.
-- fiber, canvas, woven can increase spread.
+It accepts renderProfile and backgroundTexture so quill strokes and ink spread can adapt to the font/background style.
 
-constructionRenderer.ts
------------------------
-Construction rendering draws GlyphConstruction paths:
-- line and curve segments.
+Stroke drawing
+--------------
+drawStrokePath supports:
+- pen-like pressure-width strokes.
+- quill strokes with nib angle and texture.
+- subtle spread marks.
+- dramatic pooling.
+- bubble highlight.
+- fallback color.
+- rectangular scaling for width/height glyph metrics.
+
+Quill stroke rendering uses a 38 degree nib angle and seeded texture so marks are stable between renders.
+
+Construction drawing
+--------------------
+src\render\constructionRenderer.ts supports:
+- line and Bezier curve segments.
+- rounded and chamfered corners.
 - open and closed paths.
-- fills.
-- strokes.
-- rounded/chamfered corners.
+- filled paths.
+- per-path stroke width and color fallback.
 
-It converts normalized construction points into canvas positions using size, widthScale, and heightScale.
+Construction paths are scaled by glyph width/height in drawGlyph.
 
-pixiInkRenderer.ts
-------------------
-This renderer creates an overlay layer with Pixi.js for ink spread effects inside GlyphCanvas. It only handles strokes with visible Pixi ink effects:
-- subtleSpread.
-- dramaticPooling.
-- point spread values.
-
-GlyphCanvas uses both:
-- normal HTML canvas for base drawing and interaction.
-- Pixi overlay for richer ink spread display in the editor.
-
-Preview rendering
+Pixi ink renderer
 -----------------
-TextPreview uses glyphRenderer to draw text into preview/export canvases. It also has a separate text-effect compositing layer for preview-only effects such as texture, shadow, outline, smooth, and thicken.
+src\render\pixiInkRenderer.ts mirrors heavier ink effects in Pixi for the live GlyphCanvas overlay. It exports:
+- hasPixiInkEffect.
+- renderPixiInkLayer.
+
+GlyphCanvas uses the Pixi layer for strokes with heavy effects, then skips drawing those same effects in the main canvas when appropriate. This keeps interactive drawing responsive.
+
+Preset font rendering path
+--------------------------
+Preset fonts do not use drawGlyph for letter shapes. TextPreview has a parallel preset path:
+- setPresetCanvasFont.
+- getPresetAdvanceScale.
+- getPresetCharacterMetrics.
+- measurePresetTextRun.
+- buildPresetWordWrappedLines.
+- buildPresetCharacterWrappedLines.
+- drawPresetTextToCanvas.
+
+Current important behavior: preset text honors font metrics from the backing FontSet. The preset path applies widthScale, heightScale, baselineOffset, left/right bearings, xAdvance, spacebar advance, and font-wide shape settings before drawing canvas text.
+
+Preview hit targets
+-------------------
+TextPreview creates hit targets for letters so clicking a preview letter can select or tune it. Custom glyphs and preset-font characters both need hit targets to stay aligned with the actual drawn text.
+
+Renderer consumers
+------------------
+- TextPreview: full preview/export image, hit targets, metric tuning, text layers.
+- GlyphCanvas: editor live canvas.
+- GlyphGrid: alphabet mini previews.
+- FontLibrary: active font and switcher previews.
+- FontMetricsPanel: missing glyph and missing pair detection.
+- SavedImagesPanel: displays already-rendered PNGs, not live glyphs.
 
 Planning notes
 --------------
-When changing how saved glyphs look everywhere, edit glyphRenderer and possibly pixiInkRenderer.
-
-When changing only fullscreen preview/export text effects, edit TextPreview's offscreen text layer compositing rather than glyphRenderer.
-
-When changing construction shape behavior, edit constructionRenderer and GlyphConstructionCanvas together.
-
+- Any metric change must be checked in both custom glyph and preset font paths.
+- If drawGlyph changes, verify TextPreview export, GlyphCanvas editor, GlyphGrid cells, and FontLibrary previews.
+- If adding a new ink effect, update fontTypes.ts, fontStorage.ts normalization, GlyphEditor controls, glyphRenderer.ts, and pixiInkRenderer.ts if the editor needs the effect during live drawing.
+- If adding a new construction feature, update constructionRenderer.ts, GlyphConstructionCanvas, fontStorage.ts normalization, and cloning helpers in GlyphEditor.

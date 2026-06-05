@@ -1,136 +1,205 @@
-CSS, Layout, and Responsive UI
-==============================
+CSS Layout and Responsive UI
+============================
 
-Main file
----------
+Main files
+----------
 - src\styles.css
-
-Related source files
---------------------
 - src\App.tsx
+- src\components\FontLibrary.tsx
 - src\components\TextPreview.tsx
 - src\components\GlyphEditor.tsx
-- src\components\FontLibrary.tsx
-- src\data\appThemes.ts
+- src\components\GlyphCanvas.tsx
+- src\components\GlyphConstructionCanvas.tsx
+- src\components\GlyphGrid.tsx
+- src\components\SavedImagesPanel.tsx
 
-What this category does
------------------------
-This category covers the app's visual layout, theme variables, fullscreen overlays, mobile preview panel behavior, glyph editor controls, drawers, buttons, grids, and responsive sizing.
-
-CSS variable theme system
+What this category covers
 -------------------------
-App themes write CSS variables onto the root element:
+This category covers the global app layout, responsive rules, fullscreen overlays, phone preview editor, glyph editor workbench, construction workbench, theme CSS variables, and layout hazards.
+
+Global structure
+----------------
+App.tsx renders:
+- main.app-shell.
+- menu-toggle.
+- sidebar-backdrop.
+- aside.sidebar-menu.
+- header.app-header.
+- div.workspace.
+- div.left-stack.
+- fullscreen overlays for grid, saved images, and glyph editor.
+
+styles.css is large and source-order sensitive. Later rules refine or override earlier component sections. Check the bottom of the file before assuming an earlier rule is final.
+
+Theme variables
+---------------
+App themes from appThemes.ts write CSS variables such as:
 - --app-bg.
 - --app-bg-gradient.
 - --app-surface.
 - --app-surface-raised.
-- --app-surface-muted.
-- --app-surface-deep.
-- --app-input.
+- --app-surface-solid.
 - --app-text.
-- --app-text-strong.
-- --app-muted.
 - --app-heading.
+- --app-muted.
 - --app-primary.
-- --app-primary-strong.
-- --app-primary-text.
 - --app-accent.
-- --app-accent-strong.
-- --app-gold.
-- --app-danger.
 - --app-border.
-- --app-border-strong.
 - --app-shadow.
-- --app-shadow-strong.
-- --app-grid.
 
-styles.css reads those variables throughout the app.
+Many later component rules use these variables. If a palette or theme looks wrong, check root CSS variables first.
 
-Root data attributes
+Fullscreen body lock
 --------------------
-App.tsx sets:
-- data-app-theme.
-- data-app-theme-background.
+App toggles body.editor-fullscreen-open when editor, alphabet grid, saved images, or preview image fullscreen is open. CSS hides menu/sidebar elements and prevents unwanted body scroll in fullscreen contexts.
 
-These allow CSS to target whole themes or background variants if needed.
-
-Major UI areas
+Main workspace
 --------------
-The stylesheet covers:
-- app layout and sidebar.
-- font library/profile panels.
-- glyph grid.
-- glyph editor.
-- glyph canvas.
-- construction canvas.
-- fullscreen draw/editor views.
-- preview panel.
-- fullscreen preview.
-- bottom category/action rows.
-- drawers/popovers.
-- saved images.
-- buttons, inputs, sliders, toggles, swatches.
+The current home screen is compact:
+- FontLibrary active profile panel.
+- Design/Compose home mode.
+- TextPreview in compose mode.
+- optional FontMetricsPanel in design mode when glyphQueue is enabled.
 
-Fullscreen preview layout
--------------------------
-Current design goal:
-- phone view matters most.
-- bottom row of category buttons should stay locked in place.
-- action row/drawers should not move the actual preview image.
-- clicking a category should not cause the preview canvas to jump.
-- the selected bottom category can hide/show the top row.
-- format is a secondary drawer inside Canvas and opens vertically.
+Font profile CSS
+----------------
+Important classes:
+- font-profile-panel.
+- active-font-preview-button.
+- font-profile-fullscreen.
+- font-profile-fullscreen-heading.
+- font-profile-fullscreen-menu.
+- settings-font-list.
+- settings-font-option.
+- font-palette-selector.
+- home-section-toggle-list.
 
-When debugging preview movement, inspect:
-- fullscreen preview wrapper dimensions.
-- fixed/sticky bottom panel rules.
-- safe-area padding.
-- action row positioning.
-- canvas stage height.
-- any margin/padding added conditionally by open drawers.
+This area is sensitive to exact UI order because FontLibrary renders the profile/settings menu in a structured sequence.
 
-Two-row preview panel
----------------------
-Classes to look for include names around:
-- phone image controls.
-- fullscreen category tabs.
-- fullscreen category controls.
-- canvas format drawer.
-- font effects menu.
-- draw/control drawers.
-- style drawers.
+Preview panel CSS
+-----------------
+Important classes:
+- preview-panel.
+- phone-generator-panel.
+- minimal-preview-panel.
+- phone-image-preview.
+- phone-image-canvas.
+- transparent-preview.
+- long-skinny-preview.
+- export-preset-grid.
+- preview-input.
+- header-letter-input-group.
+- preview-body-input-group.
 
-The exact class names evolve, but TextPreview renders most of the controls and styles.css owns their position.
+The live preview canvas has fixed aspect handling so it does not stretch authored artwork.
 
-Responsive priority
--------------------
-The user cares most about mobile phone view. Tablet/side-pane view is less important.
+Fullscreen preview CSS
+----------------------
+Important classes:
+- phone-image-fullscreen.
+- phone-image-fullscreen-heading.
+- phone-image-active-settings.
+- phone-image-fullscreen-surface.
+- phone-image-fullscreen-canvas.
+- phone-image-fullscreen-bottom-bar.
+- phone-image-edit-panel.
+- phone-image-action-panel.
+- phone-image-category-row.
+- phone-image-add-popover.
+- phone-image-select-popover.
+- phone-image-grab-popover.
+- phone-image-canvas-format-drawer.
+- font-slider-drawer, image-slider-drawer, letter-slider-drawer.
 
-Design rules already guiding the app:
-- avoid crowded nested panels.
-- use buttons and icon buttons consistently.
-- action rows can scroll horizontally only when absolutely needed, but recent direction is to avoid scroll by using secondary drawers.
-- stable dimensions for bottom buttons are important.
-- controls should not obscure the preview awkwardly.
-- preview canvas should remain visually stable when drawers open.
+The fullscreen preview uses CSS variables:
+- --phone-image-action-row-height.
+- --phone-image-category-row-height.
+- --phone-image-panel-gap.
+- --phone-image-category-gap.
+- --phone-image-format-control-width.
+- --phone-image-edit-panel-height.
 
-Font list row styling
----------------------
-FontLibrary sets CSS variables per row:
-- --font-row-bg.
-- --font-row-ink.
-- --font-row-accent.
+Changing these can move the preview canvas or make controls overlap. Verify both desktop/narrow and mobile/tablet portrait sizes.
 
-styles.css uses those so font rows show the actual background/color identity of the font.
+Style/decor CSS
+---------------
+Important classes:
+- phone-style-fullscreen.
+- phone-style-preview.
+- phone-style-dock.
+- phone-style-toolbar.
+- style-dock-button.
+- style-select-popover.
+- style-selection-action-row.
+- style-control-drawer.
+- style-color-card-grid.
+- style-background-presets.
+- style-sticker-grid.
+- style-sticker-drag-preview.
+- style-text-layer-list.
+- preview-text-font-picker.
+- style-text-layer-input.
+
+These drawers overlap the preview editor and rely on safe-area and bottom-panel offsets.
+
+Glyph editor CSS
+----------------
+Important classes:
+- editor-panel.
+- fullscreen-editor.
+- fullscreen-draw-only.
+- fullscreen-construction-only.
+- glyph-canvas-frame.
+- glyph-canvas.
+- editor-controls.
+- editor-live-preview.
+- quick-save-row.
+- draw-fullscreen-controls.
+- draw-only-toolbar.
+- draw-control-drawer.
+
+The fullscreen editor workbench aims to avoid scrolling while keeping controls beside or around the live preview. Canvas height uses viewport and safe-area calculations.
+
+Construction CSS
+----------------
+Important classes:
+- construction-mode-editor.
+- construction-editor-layout.
+- construction-side-panel.
+- construction-center-panel.
+- construction-canvas-shell.
+- construction-canvas.
+- construction-controls-panel.
+- construction-viewer-panel.
+- construction-path-strip.
+- construction-path-tab.
+- construction-only-toolbar.
+- construction-fullscreen-canvas.
+
+Construction fullscreen has separate layout rules from draw fullscreen. Do not assume a draw-mode CSS change applies cleanly to build mode.
+
+Responsive rules
+----------------
+styles.css includes:
+- @media (max-width: 980px).
+- @media (max-width: 640px).
+- @media (max-width: 560px).
+- @media (min-width: 700px) and (max-width: 1024px) and (orientation: portrait) and (hover: none) and (pointer: coarse).
+
+There are also Codex/mobile preview mode comments and rules that force phone-like layout in wide browser panes.
+
+Layout hazards
+--------------
+- Many buttons and controls are fixed-height to protect the preview surface.
+- Safe-area padding is used in fullscreen top and bottom bars.
+- Long-skinny preview has special CSS even though it is no longer a normal export preset button.
+- transparent-preview changes background visuals for live inspection.
+- CSS :has() is used in some fullscreen settings areas.
+- Source order matters. Later theme/layout blocks can override earlier component declarations.
 
 Planning notes
 --------------
-For layout changes, plan CSS and component markup together. TextPreview and GlyphEditor render many drawers/buttons, but styles.css determines whether they feel stable on mobile.
-
-When adding new mobile controls, prefer:
-- bottom category tab if it changes mode.
-- top action row if it directly changes the preview.
-- vertical drawer if it is a subcategory with many options.
-
-Avoid making the preview canvas depend on the open/closed height of controls.
-
+- For preview layout changes, inspect TextPreview markup and the phone-image CSS together.
+- For glyph editor changes, check draw fullscreen, construction fullscreen, and regular editor-panel states.
+- For font profile changes, check both home compact profile and fullscreen profile menu.
+- After source changes, use browser screenshots in at least a narrow mobile-ish viewport and a desktop viewport if the UI is visible.

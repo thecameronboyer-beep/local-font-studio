@@ -6,141 +6,81 @@ Main files
 - src\data\appThemes.ts
 - src\data\palettes.ts
 - src\components\FontLibrary.tsx
-- src\components\GlyphEditor.tsx
 - src\components\TextPreview.tsx
+- src\components\GlyphEditor.tsx
+- src\components\GlyphCanvas.tsx
+- src\components\GlyphConstructionCanvas.tsx
 - src\App.tsx
 - src\styles.css
 
-What this category does
------------------------
-This category covers visual identity at two levels:
-1. App themes, which change the Quill interface.
-2. Font palettes, which change preview/export background, ink, accent, and texture for a font.
+What this category covers
+-------------------------
+This category covers app UI themes, font palettes, font themes, preview backgrounds, editor backgrounds, textures, manuscript page rendering, and CSS variables.
 
 App themes
 ----------
-App themes live in src\data\appThemes.ts.
-
-Current AppThemeId values:
+src\data\appThemes.ts defines AppThemeId:
 - classic.
 - midnightCorrespondence.
 - strawberryMarket.
 
-Default app theme:
-- classic.
+App themes are UI-level themes. App.tsx stores them in localStorage:
+- local-font-studio:app-theme:v3.
+- local-font-studio:app-theme-background:v1.
 
-App themes contain:
-- id.
-- label.
-- description.
-- paletteId.
-- swatches.
-- cssVariables.
-- optional backgrounds.
-- optional defaultBackgroundId.
+App.tsx writes the chosen theme's cssVariables onto document.documentElement and sets:
+- data-app-theme.
+- data-app-theme-background.
 
-Classic theme
--------------
-Classic is the original dark studio look. It uses the original dark app background, gold primary accents, teal accent states, and warm light text.
+classic
+-------
+The original dark studio look. It has no background variants.
 
-Strawberry Market app theme
----------------------------
-Strawberry Market uses:
-- cream app background.
-- berry primary buttons.
-- cocoa ink.
-- leaf green active states.
-- seed gold decorative highlights.
-
-Midnight Correspondence app theme
----------------------------------
-Midnight Correspondence is based on:
-- Parchment Ivory: #F5F1E8
-- Moonlit Blue: #D7E3F4
-- Dusty Slate: #A8B0BF
-- Seal Garnet: #7A2E3A
-- Antique Gold: #C9A45A
-- Midnight Ink: #2B2F3A
-
-It is meant to feel like private letters written at night, fountain pen and stationery, literary, thoughtful, calm, and confident.
-
-Midnight app background variants:
+midnightCorrespondence
+----------------------
+Light literary stationery theme with three background variants:
 - parchmentIvory.
 - moonlitBlue.
 - dustySlate.
 
-App theme application
----------------------
-App.tsx applies theme variables to document.documentElement:
-- root.dataset.appTheme.
-- root.dataset.appThemeBackground.
-- root.style.setProperty for theme CSS variables.
-- root.style.setProperty for selected background variant variables.
-
-Theme choices persist in localStorage:
-- local-font-studio:app-theme:v3
-- local-font-studio:app-theme-background:v1
+strawberryMarket
+----------------
+Cream paper, berry controls, cocoa ink, and leaf-green active states. It uses the strawberryMarket font palette values.
 
 Font palettes
 -------------
-Font palettes live in src\data\palettes.ts.
-
-Current FontPaletteId values:
+src\data\palettes.ts defines FontPaletteId:
 - strawberryMarket.
 - midnightCorrespondence.
 
-Default font palette:
-- strawberryMarket.
-
-Font palettes contain:
+Font palettes are font/export-level palettes. They provide:
 - main swatches.
 - accent swatches.
 - ink swatch.
 - background presets.
-- defaultBackgroundId.
-- defaultTexture.
+- default background id.
+- default texture.
 
-Strawberry Market font palette
-------------------------------
-Main:
-- Strawberry Red: #E96A7A
-- Berry Pink: #F48FB1
-- Cream: #FFF4EE
+getDefaultFontPaletteTheme returns a FontTheme:
+- accentColor.
+- backgroundColor.
+- backgroundStyle.
+- backgroundTexture.
+- inkColor.
+- paletteId.
 
-Accents:
-- Leaf Green: #8BCF8A
-- Seed Gold: #F2C66D
+FontTheme model
+---------------
+FontTheme is stored on FontSet and used by:
+- FontLibrary previews/profile rows.
+- GlyphEditor canvas/background controls.
+- GlyphCanvas and GlyphConstructionCanvas backgrounds.
+- TextPreview default image settings.
+- TextPreview export backgrounds and ink color.
 
-Ink:
-- Cocoa Brown: #5A4035
-
-Backgrounds:
-- strawberryRed.
-- berryPink.
-- strawberryCream.
-
-Midnight Correspondence font palette
-------------------------------------
-Main:
-- Parchment Ivory: #F5F1E8
-- Moonlit Blue: #D7E3F4
-- Dusty Slate: #A8B0BF
-
-Accents:
-- Seal Garnet: #7A2E3A
-- Antique Gold: #C9A45A
-
-Ink:
-- Midnight Ink: #2B2F3A
-
-Preview backgrounds:
-- midnightParchment.
-- midnightMoonlit.
-- midnightSlate.
-
-Background styles
------------------
-BackgroundStyle currently includes:
+BackgroundStyle values
+----------------------
+Current type values:
 - solid.
 - paper.
 - parchment.
@@ -160,33 +100,72 @@ BackgroundStyle currently includes:
 - lined.
 - grid.
 
-BackgroundTexture:
+BackgroundTexture values
+------------------------
 - clean.
 - grain.
 - fiber.
 - canvas.
 - woven.
 
-Where backgrounds appear
+fontStorage.ts maps old "stained" texture to "canvas" during normalization.
+
+FontLibrary palette selector
+----------------------------
+The profile fullscreen shows a Palette section. Selecting a palette calls getDefaultFontPaletteTheme(palette.id) and writes font.theme through App.onUpdateFontSettings.
+
+Glyph editor backgrounds
 ------------------------
-- TextPreview background presets in Canvas/Style controls.
-- GlyphEditor editor background choices.
-- FontLibrary font rows and name preview.
-- Export/render canvas.
+GlyphEditor has editor background presets and texture presets. It can update the active font theme through onUpdateFontTheme. GlyphCanvas draws:
+- solid/paper-like fills.
+- themed backgrounds.
+- grain, fiber, canvas, and woven textures.
+- guide lines and board edges over the background.
+
+GlyphConstructionCanvas backgrounds
+-----------------------------------
+Build mode has its own getThemeBackground helper and draws construction paths against the active theme colors. It shares guide settings with the rest of the editor.
+
+TextPreview backgrounds
+-----------------------
+TextPreview has backgroundPresets that include palette backgrounds plus:
+- paper.
+- parchment.
+- manuscript.
+- midnight.
+- rage.
+- blush.
+- sage.
+- sky.
+- lavender.
+- lined.
+- grid.
+
+TextPreview can also toggle transparency. Transparent export skips normal page background and uses transparent-preview CSS checker styling for the live preview.
+
+Manuscript background
+---------------------
+The manuscript background uses:
+- public\assets\parchment-clean-vellum.png.
+- MANUSCRIPT_PARCHMENT_SRC in TextPreview.
+- manuscriptAge, manuscriptEdges, manuscriptFibers, manuscriptInkSoak, manuscriptRuling, manuscriptStains sliders.
+
+drawManuscriptPage draws the parchment layer, fibers, stains, edges, ruling, and content ink integration.
+
+CSS variables
+-------------
+styles.css relies heavily on CSS variables:
+- --app-bg, --app-bg-gradient.
+- --app-surface, --app-surface-raised, --app-surface-solid.
+- --app-text, --app-heading, --app-muted.
+- --app-primary, --app-accent, --app-gold.
+- --app-border, --app-shadow.
+
+Later style blocks override or normalize many surfaces to these variables. Check source order before changing colors.
 
 Planning notes
 --------------
-App themes and font palettes are separate on purpose:
-- App theme changes the UI chrome.
-- Font palette changes the output page and font identity.
-
-When adding a new visual identity, usually create both:
-1. an app theme in appThemes.ts.
-2. a font palette in palettes.ts.
-
-When adding a new preview background, update:
-- BackgroundStyle type in fontTypes.ts.
-- palette background definitions or TextPreview backgroundPresets.
-- storage normalization in fontStorage.ts if needed.
-- renderer/background CSS/canvas logic in TextPreview and GlyphEditor if it needs special drawing.
-
+- App themes and font themes are separate. App themes affect UI chrome; FontTheme affects glyph editor and exported preview look.
+- If adding a new font palette, update palettes.ts, any preview background options, FontLibrary selector behavior, and storage normalization for paletteId.
+- If adding a new BackgroundStyle or BackgroundTexture, update fontTypes.ts, fontStorage.ts normalization, TextPreview background rendering, GlyphCanvas, GlyphConstructionCanvas if needed, and CSS preview classes if needed.
+- Manuscript changes should be tested in live preview and exported PNG because the offscreen ink compositing path can differ from normal backgrounds.
