@@ -357,11 +357,13 @@ const PREVIEW_DOCUMENTS_KEY = "local-font-studio:preview-documents:v1";
 function PreviewTextFontNamePreview({
   accentColor,
   backgroundColor,
+  compact = false,
   inkColor,
   option,
 }: {
   accentColor: string;
   backgroundColor: string;
+  compact?: boolean;
   inkColor: string;
   option: PreviewTextFontOption;
 }) {
@@ -374,11 +376,11 @@ function PreviewTextFontNamePreview({
       return;
     }
 
-    const height = 34;
-    const fontSize = 22;
-    const paddingX = 8;
-    const textTop = 5;
-    const glyphTop = 5;
+    const height = compact ? 20 : 34;
+    const fontSize = compact ? 15 : 22;
+    const paddingX = compact ? 5 : 8;
+    const textTop = compact ? 2 : 5;
+    const glyphTop = compact ? 2 : 5;
 
     function drawPreview() {
       const ctx = canvas?.getContext("2d");
@@ -469,9 +471,15 @@ function PreviewTextFontNamePreview({
       cancelled = true;
       resizeObserver?.disconnect();
     };
-  }, [accentColor, backgroundColor, inkColor, option]);
+  }, [accentColor, backgroundColor, compact, inkColor, option]);
 
-  return <canvas ref={canvasRef} className="preview-text-font-name-preview" aria-hidden="true" />;
+  return (
+    <canvas
+      ref={canvasRef}
+      className={`preview-text-font-name-preview ${compact ? "compact" : ""}`}
+      aria-hidden="true"
+    />
+  );
 }
 
 const MIN_IMAGE_CANVAS_WIDTH = 640;
@@ -5186,6 +5194,7 @@ export default function TextPreview({
         >
           <PreviewTextFontNamePreview
             option={option}
+            compact
             inkColor={imageSettings.inkColor}
             backgroundColor={imageSettings.backgroundColor}
             accentColor={imageSettings.accentColor}

@@ -4462,6 +4462,11 @@ h1 {
   border-radius: 6px;
 }
 
+.preview-text-font-name-preview.compact {
+  height: 20px;
+  border-radius: 5px;
+}
+
 .preview-text-font-picker-empty {
   overflow: hidden;
   font-size: 0.78rem;
@@ -4472,18 +4477,20 @@ h1 {
 
 .preview-text-font-picker-menu {
   display: grid;
-  gap: 6px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
   width: 100%;
   max-height: min(26dvh, 230px);
   overflow: auto;
   border: 1px solid rgba(248, 230, 194, 0.16);
   border-radius: 8px;
   background: #151314;
-  padding: 8px;
+  padding: 6px;
   scrollbar-width: thin;
 }
 
 .preview-text-font-picker-group-label {
+  grid-column: 1 / -1;
   color: #f3dfb6;
   padding: 2px 2px 0;
   font-size: 0.62rem;
@@ -4494,11 +4501,11 @@ h1 {
 
 .preview-text-font-picker-option {
   width: 100%;
-  min-height: 42px;
+  min-height: 28px;
   border: 1px solid color-mix(in srgb, var(--preview-text-font-accent, var(--app-accent)) 20%, rgba(248, 230, 194, 0.16));
   border-radius: 8px;
   background: color-mix(in srgb, var(--preview-text-font-bg, #141315) 88%, #ffffff 12%);
-  padding: 4px 7px;
+  padding: 3px 5px;
   text-align: left;
 }
 
