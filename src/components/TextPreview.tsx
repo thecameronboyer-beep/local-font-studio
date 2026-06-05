@@ -150,6 +150,7 @@ type StyleDrawer = "doodle" | "ornaments" | "select" | "stickers" | "text" | nul
 type StyleDoodleSmoothing = "gentle" | "raw" | "strong";
 type StyleDoodleTool = "line" | "pen" | "quill";
 type StyleSelectTarget = "doodles" | "letter" | "ornaments" | "stickers" | "text";
+type SelectedTextMetricGroup = "size" | "spacing";
 type TextAlignment = "left" | "center" | "right";
 type EyeExpression = NonNullable<GlyphDecoration["expression"]>;
 type PreviewStickerKind = "eyes" | "strawberry-vine-divider" | "lace-ribbon-divider" | "botanical-branch-divider";
@@ -876,6 +877,7 @@ export default function TextPreview({
   const [selectedPreviewStickerId, setSelectedPreviewStickerId] = useState<string | null>(null);
   const [selectedPreviewTextLayerId, setSelectedPreviewTextLayerId] = useState<string | null>(null);
   const [selectedTextMetricsOpen, setSelectedTextMetricsOpen] = useState(false);
+  const [selectedTextMetricGroup, setSelectedTextMetricGroup] = useState<SelectedTextMetricGroup | null>(null);
   const [shareStatus, setShareStatus] = useState("");
   const [previewFontMetricOverrides, setPreviewFontMetricOverrides] = useState<Partial<Pick<Glyph, FontGlyphMetricKey>>>({});
   const [previewGlyphMetricOverrides, setPreviewGlyphMetricOverrides] = useState<Record<string, LetterMetricOverrides>>({});
@@ -4847,6 +4849,8 @@ export default function TextPreview({
     setStyleStickerFacePanelOpen(false);
     setStyleStickerRednessPanelOpen(false);
     setStyleStickerSleepPanelOpen(false);
+    setSelectedTextMetricsOpen(false);
+    setSelectedTextMetricGroup(null);
     styleActiveDoodleRef.current = null;
     styleActiveStrokeRef.current = null;
     styleMovingStickerRef.current = null;
@@ -4979,6 +4983,10 @@ export default function TextPreview({
     setStyleStickerFacePanelOpen(false);
     setStyleStickerRednessPanelOpen(false);
     setStyleStickerSleepPanelOpen(false);
+    setSelectedTextMetricsOpen(false);
+    setSelectedTextMetricGroup(null);
+    setActiveFontSettingsSliderId(null);
+    setFontEffectsMenuOpen(false);
 
     if (target !== "stickers" && target !== "ornaments") {
       setSelectedPreviewStickerId(null);
@@ -5119,21 +5127,70 @@ export default function TextPreview({
     setActiveFontSettingsSliderId(null);
     setFontEffectsMenuOpen(false);
     setSelectedTextMetricsOpen(nextOpen);
-    setShareStatus(nextOpen ? "Text metrics open." : "Text options shown.");
+    setShareStatus(nextOpen ? "Choose size or spacing metrics." : "Text metrics closed.");
+  }
+
+  function selectTextMetricGroup(group: SelectedTextMetricGroup) {
+    setSelectedTextMetricGroup(group);
+    setSelectedTextMetricsOpen(false);
+    setActiveFontSettingsSliderId(null);
+    setFontEffectsMenuOpen(false);
+    setShareStatus(group === "size" ? "Size metrics shown." : "Spacing metrics shown.");
+  }
+
+  function getSelectedTextMetricConfigs() {
+    const metricIds: FontSettingsSliderId[] = selectedTextMetricGroup === "spacing"
+      ? ["letterSpacing", "rowSpacing", "spacebar"]
+      : selectedTextMetricGroup === "size"
+        ? ["size", "height", "width"]
+        : [];
+
+    return metricIds.map((id) => getFontSettingsSliderConfig(id));
+  }
+
+  function renderSelectedTextMetricsPopover() {
+    return (
+      <div className="selected-text-metrics-popover" aria-label="Text metric groups">
+        <button
+          className={`draw-glass-button selected-text-metric-option ${
+            selectedTextMetricGroup === "size" ? "active-tool" : ""
+          }`}
+          type="button"
+          aria-pressed={selectedTextMetricGroup === "size"}
+          onClick={() => selectTextMetricGroup("size")}
+        >
+          <Scaling aria-hidden="true" />
+          <span>Size</span>
+        </button>
+        <button
+          className={`draw-glass-button selected-text-metric-option ${
+            selectedTextMetricGroup === "spacing" ? "active-tool" : ""
+          }`}
+          type="button"
+          aria-pressed={selectedTextMetricGroup === "spacing"}
+          onClick={() => selectTextMetricGroup("spacing")}
+        >
+          <Space aria-hidden="true" />
+          <span>Spacing</span>
+        </button>
+      </div>
+    );
   }
 
   function renderSelectedTextOptionsRow() {
-    if (!selectedPreviewTextLayer) {
-      return null;
-    }
+    const metricConfigs = getSelectedTextMetricConfigs();
+    const activeSliderConfig = activeFontSettingsSliderId
+      ? metricConfigs.find((config) => config.id === activeFontSettingsSliderId) ?? null
+      : null;
 
     return (
       <div
         className={`phone-image-action-row selected-text-option-row ${
-          selectedTextMetricsOpen ? "metrics-open" : ""
+          selectedTextMetricsOpen || selectedTextMetricGroup ? "metrics-open" : ""
         }`}
         aria-label="Selected text options"
       >
+        {activeSliderConfig ? renderFontSettingsSliderDrawer(activeSliderConfig) : null}
         <button
           className={`draw-icon-button draw-glass-button selected-text-option-button ${
             selectedTextMetricsOpen ? "active-tool" : ""
@@ -5146,46 +5203,31 @@ export default function TextPreview({
           <span>Metrics</span>
         </button>
 
-        {selectedTextMetricsOpen ? (
-          renderFontSettingsControls(
-            "phone-image-fullscreen-tools preview-layout-tools font-settings-tools selected-text-metrics-tools",
-          )
-        ) : (
-          <>
+        {selectedTextMetricsOpen ? renderSelectedTextMetricsPopover() : null}
+        {metricConfigs.map((config) => {
+          const selected = activeFontSettingsSliderId === config.id;
+
+          return (
             <button
-              className="draw-icon-button draw-glass-button selected-text-option-button"
+              key={config.id}
+              className={`draw-icon-button draw-glass-button selected-text-inline-metric-button ${
+                selected ? "active-tool" : ""
+              }`}
               type="button"
-              onClick={openSelectedTextLayerEditor}
+              aria-expanded={selected}
+              aria-label={`${config.label}: ${formatMetricValue(config.value, config.precision)}`}
+              onClick={() => {
+                setSelectedTextMetricsOpen(false);
+                setFontEffectsMenuOpen(false);
+                setActiveFontSettingsSliderId((current) => (current === config.id ? null : config.id));
+              }}
             >
-              <TypeIcon aria-hidden="true" />
-              <span>Edit</span>
+              {getFontSettingsSliderIcon(config.id)}
+              <span>{config.label}</span>
+              <strong>{formatMetricValue(config.value, config.precision)}</strong>
             </button>
-            <button
-              className="draw-icon-button draw-glass-button selected-text-option-button"
-              type="button"
-              onClick={() => resizeSelectedPreviewTextLayer(0.05)}
-            >
-              <Plus aria-hidden="true" />
-              <span>Bigger</span>
-            </button>
-            <button
-              className="draw-icon-button draw-glass-button selected-text-option-button"
-              type="button"
-              onClick={() => resizeSelectedPreviewTextLayer(-0.05)}
-            >
-              <Minus aria-hidden="true" />
-              <span>Smaller</span>
-            </button>
-            <button
-              className="draw-icon-button draw-glass-button selected-text-option-button danger-action"
-              type="button"
-              onClick={() => removePreviewTextLayer(selectedPreviewTextLayer.id)}
-            >
-              <Trash2 aria-hidden="true" />
-              <span>Delete</span>
-            </button>
-          </>
-        )}
+          );
+        })}
       </div>
     );
   }
@@ -5356,7 +5398,7 @@ export default function TextPreview({
       );
     }
 
-    if (styleSelectTarget === "text" && selectedPreviewTextLayer) {
+    if (styleSelectTarget === "text") {
       return renderSelectedTextOptionsRow();
     }
 
@@ -5419,6 +5461,10 @@ export default function TextPreview({
             setStyleStickerRednessPanelOpen(false);
             setStyleStickerSleepPanelOpen(false);
             setSelectedPreviewTextLayerId(null);
+            setSelectedTextMetricsOpen(false);
+            setSelectedTextMetricGroup(null);
+            setActiveFontSettingsSliderId(null);
+            setFontEffectsMenuOpen(false);
             setActiveStyleDrawer(null);
             setStyleSelectModeActive(true);
             setStyleSelectMenuOpen((current) => !current);
@@ -7166,6 +7212,10 @@ export default function TextPreview({
     setStyleStickerFacePanelOpen(false);
     setStyleStickerRednessPanelOpen(false);
     setStyleStickerSleepPanelOpen(false);
+    setSelectedTextMetricsOpen(false);
+    setSelectedTextMetricGroup(null);
+    setActiveFontSettingsSliderId(null);
+    setFontEffectsMenuOpen(false);
     styleActiveDoodleRef.current = null;
     styleActiveStrokeRef.current = null;
     styleMovingStickerRef.current = null;
@@ -7192,6 +7242,10 @@ export default function TextPreview({
     setStyleStickerFacePanelOpen(false);
     setStyleStickerRednessPanelOpen(false);
     setStyleStickerSleepPanelOpen(false);
+    setSelectedTextMetricsOpen(false);
+    setSelectedTextMetricGroup(null);
+    setActiveFontSettingsSliderId(null);
+    setFontEffectsMenuOpen(false);
     styleActiveDoodleRef.current = null;
     styleActiveStrokeRef.current = null;
     styleMovingStickerRef.current = null;
@@ -7221,6 +7275,8 @@ export default function TextPreview({
     setStyleStickerFacePanelOpen(false);
     setStyleStickerRednessPanelOpen(false);
     setStyleStickerSleepPanelOpen(false);
+    setSelectedTextMetricsOpen(false);
+    setSelectedTextMetricGroup(null);
 
     if (target === "stickers") {
       setSelectedPreviewStickerId((current) =>
@@ -7270,6 +7326,8 @@ export default function TextPreview({
       setActiveFontSettingsSliderId(null);
       setFontEffectsMenuOpen(false);
       setSelectedPreviewTextLayerId(null);
+      setSelectedTextMetricsOpen(false);
+      setSelectedTextMetricGroup(null);
 
       if (activeStyleDrawer === "text") {
         setActiveStyleDrawer(null);
@@ -7552,17 +7610,16 @@ export default function TextPreview({
 
   function renderFontCategoryControls() {
     const textLayerDrawerOpen = activeStyleDrawer === "text";
-    const selectedTextOptionsVisible =
+    const textSelectControlsVisible =
       styleSelectModeActive &&
       styleSelectTarget === "text" &&
-      Boolean(selectedPreviewTextLayer) &&
       !styleSelectMenuOpen &&
       !fullscreenSelectMenuOpen;
 
     return (
       <div className="phone-image-panel-stack font-panel-controls" aria-label="Text controls">
         {fullscreenSelectMenuOpen ? renderFullscreenSelectPopover() : null}
-        {!selectedTextOptionsVisible ? (
+        {!textSelectControlsVisible ? (
           <div className="phone-image-action-row">
             {renderFontSettingsControls("phone-image-fullscreen-tools preview-layout-tools font-settings-tools")}
             <button
@@ -7646,6 +7703,8 @@ export default function TextPreview({
     setStyleStickerFacePanelOpen(false);
     setStyleStickerRednessPanelOpen(false);
     setStyleStickerSleepPanelOpen(false);
+    setSelectedTextMetricsOpen(false);
+    setSelectedTextMetricGroup(null);
     styleActiveDoodleRef.current = null;
     styleActiveStrokeRef.current = null;
     styleMovingStickerRef.current = null;

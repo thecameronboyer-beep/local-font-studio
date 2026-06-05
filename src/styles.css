@@ -4794,7 +4794,9 @@ h1 {
 }
 
 .selected-text-option-row {
+  position: relative;
   align-items: end;
+  overflow: visible;
 }
 
 .selected-text-option-button {
@@ -4827,8 +4829,77 @@ h1 {
   width: 72px;
 }
 
-.selected-text-metrics-tools {
-  flex: 0 0 auto;
+.selected-text-metrics-popover {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 18;
+  display: grid;
+  gap: 6px;
+  box-sizing: border-box;
+  width: min(170px, calc(100vw - 20px));
+  padding: 8px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-surface-solid);
+  box-shadow: 0 18px 44px var(--app-shadow);
+}
+
+.selected-text-metric-option {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 42px;
+  padding: 0 10px;
+  font-size: 0.72rem;
+  text-align: left;
+}
+
+.selected-text-metric-option svg {
+  width: 16px;
+  height: 16px;
+}
+
+.selected-text-metric-option span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selected-text-inline-metric-button {
+  display: grid;
+  grid-template-rows: 15px 12px 10px;
+  place-items: center;
+  gap: 1px;
+  flex: 0 0 72px;
+  width: 72px;
+  min-height: 42px;
+  padding: 2px 4px;
+  font-size: 0.52rem;
+  line-height: 1;
+}
+
+.selected-text-inline-metric-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.selected-text-inline-metric-button span,
+.selected-text-inline-metric-button strong {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selected-text-inline-metric-button strong {
+  color: var(--app-accent-strong);
+  font-size: 0.68rem;
+  white-space: nowrap;
 }
 
 .phone-image-category-row {
