@@ -320,6 +320,8 @@ type PreviewTextLayerHitTarget = {
 
 type PreviewTextSelectionTone = "active" | "available";
 
+const PREVIEW_TEXT_SELECTION_PADDING = 8;
+
 type PreviewDocument = {
   headerText?: string;
   id: string;
@@ -2146,13 +2148,36 @@ export default function TextPreview({
     const targets = getAllPreviewTextHitTargets(ctx, renderSettings);
     const x = point.x * renderSettings.canvasWidth;
     const y = point.y * renderSettings.canvasHeight;
+    const visiblePadding = PREVIEW_TEXT_SELECTION_PADDING;
+    const hitSlop = Math.max(42, renderSettings.canvasWidth / 24);
+    const targetStack = [...targets].reverse();
 
-    return [...targets].reverse().find((target) =>
-      x >= target.x &&
-      x <= target.x + target.width &&
-      y >= target.y &&
-      y <= target.y + target.height,
-    )?.id ?? null;
+    const directTarget = targetStack.find((target) =>
+      x >= target.x - visiblePadding &&
+      x <= target.x + target.width + visiblePadding &&
+      y >= target.y - visiblePadding &&
+      y <= target.y + target.height + visiblePadding,
+    );
+
+    if (directTarget) {
+      return directTarget.id;
+    }
+
+    let nearestTarget: PreviewTextLayerHitTarget | null = null;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+
+    for (const target of targetStack) {
+      const nearestX = Math.min(Math.max(x, target.x), target.x + target.width);
+      const nearestY = Math.min(Math.max(y, target.y), target.y + target.height);
+      const distance = Math.hypot(x - nearestX, y - nearestY);
+
+      if (distance <= hitSlop && distance < nearestDistance) {
+        nearestTarget = target;
+        nearestDistance = distance;
+      }
+    }
+
+    return nearestTarget?.id ?? null;
   }
 
   function handleStyleSelection(point: PreviewDoodlePoint, canvas: HTMLCanvasElement) {
@@ -4288,7 +4313,7 @@ export default function TextPreview({
     target: PreviewTextLayerHitTarget,
     tone: PreviewTextSelectionTone,
   ) {
-    const padding = 8;
+    const padding = PREVIEW_TEXT_SELECTION_PADDING;
 
     if (tone === "active") {
       ctx.fillStyle = "rgba(58, 126, 114, 0.2)";
