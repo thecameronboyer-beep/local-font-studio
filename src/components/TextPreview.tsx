@@ -5632,7 +5632,10 @@ export default function TextPreview({
 
     if (activeStyleDrawer === "text") {
       return (
-        <div className="draw-control-drawer style-control-drawer" aria-label="Text drawer">
+        <div
+          className={`draw-control-drawer style-control-drawer ${draftPreviewTextLayer ? "style-text-draft-drawer" : ""}`}
+          aria-label="Text drawer"
+        >
           {draftPreviewTextLayer ? (
             <div className="style-text-layer-card">
               <div className="style-text-layer-heading">

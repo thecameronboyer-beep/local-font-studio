@@ -4722,6 +4722,11 @@ h1 {
   overflow: auto;
 }
 
+.add-panel-controls > .style-text-draft-drawer {
+  bottom: calc((var(--phone-image-category-row-height) * 4) + 128px);
+  max-height: min(34dvh, 300px);
+}
+
 .phone-image-action-row {
   display: flex;
   align-items: end;
