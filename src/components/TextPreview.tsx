@@ -7,12 +7,10 @@ import {
   ArrowLeftToLine,
   ArrowRightToLine,
   Baseline,
-  Brush,
   Droplets,
   Feather,
   Hand,
   Home,
-  Image as ImageIcon,
   Minus,
   Moon,
   MousePointer2,
@@ -41,6 +39,7 @@ import {
 } from "../data/characterSets";
 import {
   getDefaultFontPaletteTheme,
+  getFontPalette,
   paletteBackgroundPresets,
   paletteInkSwatches,
 } from "../data/palettes";
@@ -110,7 +109,7 @@ type TextPreviewProps = {
   spacebarGlyph: Glyph;
 };
 
-type ExportPresetId = "landscape" | "longSkinny" | "phone" | "portrait" | "social";
+type ExportPresetId = "custom" | "landscape" | "longSkinny" | "phone" | "portrait" | "social";
 type FontMetricKey = "baselineOffset" | "leftBearing" | "rightBearing" | "width" | "xAdvance";
 type FontGlyphMetricKey = Exclude<FontMetricKey, "width">;
 type LetterMetricKey = "baselineOffset" | "height" | "leftBearing" | "rightBearing" | "width" | "xAdvance";
@@ -150,14 +149,14 @@ type ImageSettingsSliderConfig = {
 type StyleDrawer = "doodle" | "ornaments" | "select" | "stickers" | "text" | null;
 type StyleDoodleSmoothing = "gentle" | "raw" | "strong";
 type StyleDoodleTool = "line" | "pen" | "quill";
-type StyleSelectTarget = "doodles" | "stickers" | "text";
+type StyleSelectTarget = "doodles" | "letter" | "ornaments" | "stickers" | "text";
 type TextAlignment = "left" | "center" | "right";
 type EyeExpression = NonNullable<GlyphDecoration["expression"]>;
 type PreviewStickerKind = "eyes" | "strawberry-vine-divider" | "lace-ribbon-divider" | "botanical-branch-divider";
 
 const settingsPanelLabels: Record<SettingsPanel, string> = {
-  decor: "Decor",
-  font: "Font settings",
+  decor: "Add",
+  font: "Select",
   image: "Canvas",
   letter: "Letter Tuning",
   position: "Position settings",
@@ -165,10 +164,17 @@ const settingsPanelLabels: Record<SettingsPanel, string> = {
 
 const fullscreenPanelOptions: Array<{ id: SettingsPanel; label: string }> = [
   { id: "image", label: "Canvas" },
-  { id: "font", label: "Font" },
+  { id: "font", label: "Select" },
   { id: "letter", label: "Letter" },
   { id: "position", label: "Position" },
-  { id: "decor", label: "Decor" },
+  { id: "decor", label: "Add" },
+];
+const fullscreenSelectOptions: Array<{ id: StyleSelectTarget; label: string }> = [
+  { id: "text", label: "Text" },
+  { id: "letter", label: "Letter" },
+  { id: "stickers", label: "Sticker" },
+  { id: "ornaments", label: "Ornament" },
+  { id: "doodles", label: "Doodle" },
 ];
 
 const fontSettingsSliderOrder: FontSettingsSliderId[] = ["size", "width", "height", "letterSpacing", "rowSpacing", "spacebar"];
@@ -201,6 +207,7 @@ type PreviewImageSettings = PreviewSettings & {
   transparent: boolean;
   textEffects: PreviewTextEffects;
 };
+type ImageMetricDefaults = Pick<PreviewImageSettings, "canvasHeight" | "canvasWidth" | "pagePadding">;
 
 type PreviewTextEffectId = "outline" | "shadow" | "smooth" | "texture" | "thicken";
 
@@ -383,6 +390,13 @@ const exportPresets: Array<{
       transparent: false,
     },
   },
+  {
+    id: "custom",
+    label: "Custom",
+    settings: {
+      exportPreset: "custom",
+    },
+  },
 ];
 
 const defaultPreviewTheme = getDefaultFontPaletteTheme();
@@ -427,6 +441,14 @@ const defaultPhoneImageSettings: PreviewImageSettings = {
   transparent: false,
   textEffects: { ...defaultPreviewTextEffects },
 };
+
+function getImageMetricDefaults(settings: PreviewImageSettings): ImageMetricDefaults {
+  return {
+    canvasHeight: settings.canvasHeight,
+    canvasWidth: settings.canvasWidth,
+    pagePadding: settings.pagePadding,
+  };
+}
 
 const previewPresets = [
   {
@@ -578,6 +600,15 @@ function PreviewEyeStickerPreview({ expression }: { expression: EyeExpression })
   return <canvas ref={canvasRef} className="eye-style-preview" aria-hidden="true" />;
 }
 
+type BackgroundPreset = {
+  accentColor: string;
+  backgroundColor: string;
+  id: BackgroundStyle;
+  inkColor: string;
+  label: string;
+  preview: string;
+};
+
 function isEyePreviewSticker(sticker: PreviewSticker | null | undefined) {
   return !sticker?.kind || sticker.kind === "eyes";
 }
@@ -586,14 +617,7 @@ function getStyleStickerAsset(kind: PreviewStickerKind | undefined) {
   return styleStickerAssets.find((asset) => asset.kind === (kind ?? "eyes")) ?? styleStickerAssets[0];
 }
 
-const backgroundPresets: Array<{
-  accentColor: string;
-  backgroundColor: string;
-  id: BackgroundStyle;
-  inkColor: string;
-  label: string;
-  preview: string;
-}> = [
+const backgroundPresets: BackgroundPreset[] = [
   ...paletteBackgroundPresets,
   {
     id: "paper",
@@ -822,6 +846,7 @@ export default function TextPreview({
   const styleStickerImagesRef = useRef<Partial<Record<PreviewStickerKind, HTMLImageElement>>>({});
   const manuscriptParchmentRef = useRef<HTMLImageElement | null>(null);
   const viewerCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const customImageMetricDefaultsRef = useRef<ImageMetricDefaults>(getImageMetricDefaults(defaultPhoneImageSettings));
   const [activeDocumentId, setActiveDocumentId] = useState<string | null>(null);
   const [activeSettingsPanel, setActiveSettingsPanel] = useState<SettingsPanel>("image");
   const [activeFontSettingsSliderId, setActiveFontSettingsSliderId] = useState<FontSettingsSliderId | null>(null);
@@ -832,6 +857,8 @@ export default function TextPreview({
   const [documentName, setDocumentName] = useState("Untitled preview");
   const [fontEffectsMenuOpen, setFontEffectsMenuOpen] = useState(false);
   const [fullscreenActionPanelOpen, setFullscreenActionPanelOpen] = useState(true);
+  const [fullscreenSelectMenuOpen, setFullscreenSelectMenuOpen] = useState(false);
+  const [otherBackgroundsOpen, setOtherBackgroundsOpen] = useState(false);
   const [imageStyleDrawerOpen, setImageStyleDrawerOpen] = useState(false);
   const [imageViewerOpen, setImageViewerOpen] = useState(false);
   const [fontPresetsReady, setFontPresetsReady] = useState(false);
@@ -1050,6 +1077,8 @@ export default function TextPreview({
     selectedPreviewDoodleId,
     selectedPreviewStickerId,
     selectedPreviewTextLayerId,
+    styleSelectModeActive,
+    styleSelectTarget,
     styleStickerImagesReady,
   ]);
 
@@ -1873,6 +1902,8 @@ export default function TextPreview({
     setFontEffectsMenuOpen(false);
     onSelectCharacter(hitTarget.editableCharacter);
     setActiveSettingsPanel("letter");
+    setFullscreenSelectMenuOpen(false);
+    setStyleSelectModeActive(false);
     setShareStatus(`Selected "${getCharacterLabel(hitTarget.editableCharacter)}".`);
   }
 
@@ -2016,13 +2047,21 @@ export default function TextPreview({
     };
   }
 
-  function findPreviewStickerAtPoint(point: PreviewDoodlePoint, fallbackToEditableSticker = true) {
+  function findPreviewStickerAtPoint(
+    point: PreviewDoodlePoint,
+    fallbackToEditableSticker = true,
+    filterSticker: (sticker: PreviewSticker) => boolean = () => true,
+  ) {
     if (previewStickers.length === 0) {
       return null;
     }
 
     const renderSettings = getScaledPreviewSettings(imageSettings, STYLE_CANVAS_MAX_PIXELS);
     const hitSticker = [...previewStickers].reverse().find((sticker) => {
+      if (!filterSticker(sticker)) {
+        return false;
+      }
+
       const imageBox = getPreviewImageStickerNormalizedBox(sticker, renderSettings);
 
       if (imageBox) {
@@ -2088,8 +2127,7 @@ export default function TextPreview({
     }
 
     const renderSettings = getScaledPreviewSettings(imageSettings, STYLE_CANVAS_MAX_PIXELS);
-    const layout = getPhoneImageLayout(ctx, renderSettings);
-    const targets = getPreviewTextLayerHitTargets(ctx, renderSettings, layout.bodyEndY + renderSettings.fontSize * 0.35);
+    const targets = getAllPreviewTextHitTargets(ctx, renderSettings);
     const x = point.x * renderSettings.canvasWidth;
     const y = point.y * renderSettings.canvasHeight;
 
@@ -2102,12 +2140,21 @@ export default function TextPreview({
   }
 
   function handleStyleSelection(point: PreviewDoodlePoint, canvas: HTMLCanvasElement) {
-    if (styleSelectTarget === "stickers") {
-      const stickerId = findPreviewStickerAtPoint(point, false);
+    if (styleSelectTarget === "stickers" || styleSelectTarget === "ornaments") {
+      const selectingOrnament = styleSelectTarget === "ornaments";
+      const stickerId = findPreviewStickerAtPoint(
+        point,
+        false,
+        (sticker) => selectingOrnament ? !isEyePreviewSticker(sticker) : isEyePreviewSticker(sticker),
+      );
       setSelectedPreviewStickerId(stickerId);
       setSelectedPreviewTextLayerId(null);
       setSelectedPreviewDoodleId(null);
-      setShareStatus(stickerId ? "Selected sticker." : "No sticker selected.");
+      setShareStatus(
+        stickerId
+          ? `Selected ${selectingOrnament ? "ornament" : "sticker"}.`
+          : `No ${selectingOrnament ? "ornament" : "sticker"} selected.`,
+      );
       scheduleStyleCanvasRender();
       return;
     }
@@ -2329,7 +2376,11 @@ export default function TextPreview({
       styleStickerMoveMode ||
       Boolean(styleActiveStrokeRef.current) ||
       Boolean(styleMovingStickerRef.current) ||
-      (activeSettingsPanel === "font" && styleSelectTarget === "text" && styleSelectModeActive)
+      (
+        activeSettingsPanel === "font" &&
+        styleSelectModeActive &&
+        styleSelectTarget !== "letter"
+      )
     );
   }
 
@@ -4166,6 +4217,56 @@ export default function TextPreview({
     return targets;
   }
 
+  function getPreviewTextBaseHitTargets(layout: PhoneImageLayout): PreviewTextLayerHitTarget[] {
+    const maxLineWidth = Math.max(1, layout.settings.canvasWidth - layout.settings.pagePadding * 2);
+    const targets: PreviewTextLayerHitTarget[] = [];
+
+    if (layout.headerLines.length > 0) {
+      const headerLineHeight = activeFontPreset
+        ? getPresetLineHeight(layout.settings, layout.headerFontSize)
+        : layout.headerFontSize * layout.settings.lineSpacing;
+
+      targets.push({
+        height: Math.max(headerLineHeight, layout.headerLines.length * headerLineHeight),
+        id: "preview-header",
+        width: maxLineWidth,
+        x: layout.settings.pagePadding,
+        y: layout.settings.pagePadding,
+      });
+    }
+
+    if (layout.lines.length > 0 && previewText.trim()) {
+      const bodyFontSize = activeFontPreset
+        ? getActivePresetFontSize(layout.settings.fontSize)
+        : layout.settings.fontSize;
+      const bodyLineHeight = activeFontPreset
+        ? getPresetLineHeight(layout.settings, bodyFontSize)
+        : bodyFontSize * layout.settings.lineSpacing;
+      const bodyVisualHeight = shouldUseLongSkinnyFormat(layout.settings)
+        ? bodyLineHeight * Math.max(1, getFontHeightScale(previewFont))
+        : bodyLineHeight;
+
+      targets.push({
+        height: Math.max(bodyVisualHeight, layout.lines.length * bodyVisualHeight),
+        id: "preview-body",
+        width: maxLineWidth,
+        x: layout.settings.pagePadding,
+        y: layout.bodyStartY,
+      });
+    }
+
+    return targets;
+  }
+
+  function getAllPreviewTextHitTargets(ctx: CanvasRenderingContext2D, renderSettings: PreviewImageSettings) {
+    const layout = getPhoneImageLayout(ctx, renderSettings);
+
+    return [
+      ...getPreviewTextBaseHitTargets(layout),
+      ...getPreviewTextLayerHitTargets(ctx, renderSettings, layout.bodyEndY + renderSettings.fontSize * 0.35),
+    ];
+  }
+
   function drawPreviewSelectionOutlines(ctx: CanvasRenderingContext2D, renderSettings: PreviewImageSettings) {
     ctx.save();
     ctx.strokeStyle = "#82d0bc";
@@ -4219,18 +4320,24 @@ export default function TextPreview({
       ctx.stroke();
     }
 
-    if (selectedPreviewTextLayerId) {
-      const textTargets = getPreviewTextLayerHitTargets(
-        ctx,
-        renderSettings,
-        getPhoneImageLayout(ctx, renderSettings).bodyEndY + renderSettings.fontSize * 0.35,
-      );
-      const selectedTextTarget = textTargets.find((target) => target.id === selectedPreviewTextLayerId);
+    const textSelectActive = styleSelectTarget === "text" && styleSelectModeActive;
 
-      if (selectedTextTarget) {
-        ctx.fillRect(selectedTextTarget.x - 8, selectedTextTarget.y - 8, selectedTextTarget.width + 16, selectedTextTarget.height + 16);
-        ctx.strokeRect(selectedTextTarget.x - 8, selectedTextTarget.y - 8, selectedTextTarget.width + 16, selectedTextTarget.height + 16);
-      }
+    if (textSelectActive || selectedPreviewTextLayerId) {
+      const textTargets = textSelectActive
+        ? getAllPreviewTextHitTargets(ctx, renderSettings)
+        : getPreviewTextLayerHitTargets(
+            ctx,
+            renderSettings,
+            getPhoneImageLayout(ctx, renderSettings).bodyEndY + renderSettings.fontSize * 0.35,
+          );
+      const visibleTextTargets = textSelectActive
+        ? textTargets
+        : textTargets.filter((target) => target.id === selectedPreviewTextLayerId);
+
+      visibleTextTargets.forEach((target) => {
+        ctx.fillRect(target.x - 8, target.y - 8, target.width + 16, target.height + 16);
+        ctx.strokeRect(target.x - 8, target.y - 8, target.width + 16, target.height + 16);
+      });
     }
 
     ctx.restore();
@@ -4452,6 +4559,10 @@ export default function TextPreview({
       return;
     }
 
+    if (presetId === "custom") {
+      customImageMetricDefaultsRef.current = getImageMetricDefaults(imageSettings);
+    }
+
     setImageSettings((current) => ({
       ...current,
       ...preset.settings,
@@ -4489,9 +4600,15 @@ export default function TextPreview({
       return;
     }
 
+    const nextSettings = normalizePreviewSettings(document.settings);
+
+    if (nextSettings.exportPreset === "custom") {
+      customImageMetricDefaultsRef.current = getImageMetricDefaults(nextSettings);
+    }
+
     setActiveDocumentId(document.id);
     setDocumentName(document.name);
-    setImageSettings(normalizePreviewSettings(document.settings));
+    setImageSettings(nextSettings);
     onHeaderPreviewTextChange(document.headerText ?? "");
     onPreviewTextChange(document.text);
     setPreviewTextLayers(document.textLayers ?? []);
@@ -4693,6 +4810,16 @@ export default function TextPreview({
     const firstPreset = fontPresets[0] ? getFontPresetOptionId(fontPresets[0].id) : null;
     const alternateFont = availableFonts.find((item) => item.id !== previewFont.id) ?? previewFont;
 
+    styleActiveDoodleRef.current = null;
+    styleMovingStickerRef.current = null;
+    setStyleDrawMode(false);
+    setStyleSelectMenuOpen(false);
+    setStyleSelectModeActive(false);
+    setStyleStickerLookMode(false);
+    setStyleStickerMoveMode(false);
+    setStyleStickerFacePanelOpen(false);
+    setStyleStickerRednessPanelOpen(false);
+    setStyleStickerSleepPanelOpen(false);
     setPreviewTextLayers((current) => [
       ...current,
       {
@@ -4748,7 +4875,15 @@ export default function TextPreview({
 
   function getStyleSelectTargetLabel(target: StyleSelectTarget) {
     if (target === "stickers") {
-      return "Stickers";
+      return "Sticker";
+    }
+
+    if (target === "ornaments") {
+      return "Ornament";
+    }
+
+    if (target === "letter") {
+      return "Letter";
     }
 
     if (target === "text") {
@@ -4761,6 +4896,14 @@ export default function TextPreview({
   function renderStyleSelectTargetIcon(target: StyleSelectTarget) {
     if (target === "stickers") {
       return <Sticker aria-hidden="true" />;
+    }
+
+    if (target === "ornaments") {
+      return <Sparkles aria-hidden="true" />;
+    }
+
+    if (target === "letter") {
+      return <PenLine aria-hidden="true" />;
     }
 
     if (target === "text") {
@@ -4782,7 +4925,7 @@ export default function TextPreview({
     setStyleStickerRednessPanelOpen(false);
     setStyleStickerSleepPanelOpen(false);
 
-    if (target !== "stickers") {
+    if (target !== "stickers" && target !== "ornaments") {
       setSelectedPreviewStickerId(null);
     }
 
@@ -4915,11 +5058,11 @@ export default function TextPreview({
   }
 
   function renderStyleSelectionActions() {
-    if (!styleSelectModeActive || styleSelectMenuOpen) {
+    if (!styleSelectModeActive || styleSelectMenuOpen || fullscreenSelectMenuOpen) {
       return null;
     }
 
-    if (styleSelectTarget === "stickers" && selectedPreviewSticker) {
+    if ((styleSelectTarget === "stickers" || styleSelectTarget === "ornaments") && selectedPreviewSticker) {
       const selectedStickerIsEyes = isEyePreviewSticker(selectedPreviewSticker);
 
       return (
@@ -5208,6 +5351,48 @@ export default function TextPreview({
   }
 
   function renderPageStyleControls(className = "draw-control-drawer style-control-drawer") {
+    const themedBackgroundPresets = getFontPalette(font.theme?.paletteId).backgrounds;
+    const themedBackgroundIds = new Set(themedBackgroundPresets.map((preset) => preset.id));
+    const otherBackgroundPresets = backgroundPresets.filter((preset) => !themedBackgroundIds.has(preset.id));
+    const otherBackgroundSelected = !imageSettings.transparent && otherBackgroundPresets.some((preset) => (
+      preset.id === imageSettings.backgroundStyle
+    ));
+    const renderBackgroundPresetButton = (preset: BackgroundPreset) => (
+      <button
+        key={preset.id}
+        className={`draw-background-preset ${
+          imageSettings.backgroundStyle === preset.id && !imageSettings.transparent ? "selected" : ""
+        }`}
+        type="button"
+        disabled={imageSettings.transparent}
+        onClick={() => {
+          setImageSettings((current) => ({
+            ...current,
+            accentColor: preset.accentColor,
+            backgroundColor: preset.backgroundColor,
+            backgroundStyle: preset.id,
+            backgroundTexture: preset.id === "manuscript" ? "clean" : current.backgroundTexture,
+            inkColor: preset.inkColor,
+            ...(preset.id === "manuscript"
+              ? {
+                  manuscriptAge: 0.18,
+                  manuscriptEdges: 0.38,
+                  manuscriptFibers: 0.34,
+                  manuscriptInkSoak: 0.42,
+                  manuscriptRuling: 0,
+                  manuscriptStains: 0.16,
+                }
+              : {}),
+            transparent: false,
+          }));
+        }}
+        aria-label={`Use ${preset.label} background`}
+        title={preset.label}
+      >
+        <span style={{ background: preset.preview }} />
+      </button>
+    );
+
     return (
       <div className={className} aria-label="Page style drawer">
         <div className="style-color-card-grid">
@@ -5224,54 +5409,35 @@ export default function TextPreview({
             value: imageSettings.accentColor,
           })}
         </div>
-        <label className="check-control style-toggle-control">
-          <input
-            type="checkbox"
-            checked={imageSettings.transparent}
-            onChange={(event) =>
-              setImageSettings((current) => ({ ...current, transparent: event.target.checked }))
-            }
-          />
+        <button
+          className={`secondary-button compact-button style-transparent-toggle ${imageSettings.transparent ? "active-tool" : ""}`}
+          type="button"
+          aria-pressed={imageSettings.transparent}
+          onClick={() =>
+            setImageSettings((current) => ({ ...current, transparent: !current.transparent }))
+          }
+        >
           Transparent background
-        </label>
+        </button>
         <p className="style-label">Backgrounds</p>
         <div className="draw-background-presets style-background-presets" aria-label="Backgrounds">
-          {backgroundPresets.map((preset) => (
-            <button
-              key={preset.id}
-              className={`draw-background-preset ${
-                imageSettings.backgroundStyle === preset.id && !imageSettings.transparent ? "selected" : ""
-              }`}
-              type="button"
-              disabled={imageSettings.transparent}
-              onClick={() =>
-                setImageSettings((current) => ({
-                  ...current,
-                  accentColor: preset.accentColor,
-                  backgroundColor: preset.backgroundColor,
-                  backgroundStyle: preset.id,
-                  backgroundTexture: preset.id === "manuscript" ? "clean" : current.backgroundTexture,
-                  inkColor: preset.inkColor,
-                  ...(preset.id === "manuscript"
-                    ? {
-                        manuscriptAge: 0.18,
-                        manuscriptEdges: 0.38,
-                        manuscriptFibers: 0.34,
-                        manuscriptInkSoak: 0.42,
-                        manuscriptRuling: 0,
-                        manuscriptStains: 0.16,
-                      }
-                    : {}),
-                  transparent: false,
-                }))
-              }
-              aria-label={`Use ${preset.label} background`}
-              title={preset.label}
-            >
-              <span style={{ background: preset.preview }} />
-            </button>
-          ))}
+          {themedBackgroundPresets.map(renderBackgroundPresetButton)}
+          <button
+            className={`secondary-button compact-button style-background-others-button ${
+              otherBackgroundsOpen || otherBackgroundSelected ? "active-tool" : ""
+            }`}
+            type="button"
+            aria-expanded={otherBackgroundsOpen}
+            onClick={() => setOtherBackgroundsOpen((open) => !open)}
+          >
+            Others
+          </button>
         </div>
+        {otherBackgroundsOpen && (
+          <div className="draw-background-presets style-background-presets style-background-others-grid" aria-label="Other backgrounds">
+            {otherBackgroundPresets.map(renderBackgroundPresetButton)}
+          </div>
+        )}
         {imageSettings.backgroundStyle === "manuscript" && !imageSettings.transparent && (
           <div className="manuscript-slider-grid" aria-label="Manuscript page controls">
             {renderManuscriptRange("Age", "manuscriptAge")}
@@ -6187,6 +6353,10 @@ export default function TextPreview({
   }
 
   function getImageSettingsPresetDefaults() {
+    if (imageSettings.exportPreset === "custom") {
+      return customImageMetricDefaultsRef.current;
+    }
+
     const presetSettings = exportPresets.find((item) => item.id === imageSettings.exportPreset)?.settings ?? {};
     const canvasHeight =
       typeof presetSettings.canvasHeight === "number"
@@ -6271,6 +6441,7 @@ export default function TextPreview({
         ...current,
         canvasHeight: Math.round(defaults.canvasHeight * nextValue),
         canvasWidth: Math.round(defaults.canvasWidth * nextValue),
+        exportPreset: "custom",
       }));
       setShareStatus("Image size updated.");
       return;
@@ -6279,6 +6450,7 @@ export default function TextPreview({
     setImageSettings((current) => ({
       ...current,
       [id]: nextValue,
+      exportPreset: "custom",
     }));
     setShareStatus(`${config.label} updated.`);
   }
@@ -6815,6 +6987,7 @@ export default function TextPreview({
     setFontEffectsMenuOpen(false);
     setImageStyleDrawerOpen(false);
     setActiveStyleDrawer(null);
+    setFullscreenSelectMenuOpen(false);
     setStyleDrawMode(false);
     setStyleSelectMenuOpen(false);
     setStyleSelectModeActive(false);
@@ -6826,6 +6999,82 @@ export default function TextPreview({
     styleActiveDoodleRef.current = null;
     styleActiveStrokeRef.current = null;
     styleMovingStickerRef.current = null;
+  }
+
+  function openFullscreenSelectPopover() {
+    const currentlyOpen = activeSettingsPanel === "font" && fullscreenActionPanelOpen && fullscreenSelectMenuOpen;
+
+    setFullscreenActionPanelOpen(true);
+    setActiveSettingsPanel("font");
+    setActiveFontSettingsSliderId(null);
+    setFontEffectsMenuOpen(false);
+    setActiveImageSettingsSliderId(null);
+    setCanvasFormatDrawerOpen(false);
+    setImageStyleDrawerOpen(false);
+    setActiveLetterSettingsSliderId(null);
+    setActiveStyleDrawer(null);
+    setStyleDrawMode(false);
+    setStyleSelectMenuOpen(false);
+    setStyleStickerLookMode(false);
+    setStyleStickerMoveMode(false);
+    setStyleStickerFacePanelOpen(false);
+    setStyleStickerRednessPanelOpen(false);
+    setStyleStickerSleepPanelOpen(false);
+    styleActiveDoodleRef.current = null;
+    styleActiveStrokeRef.current = null;
+    styleMovingStickerRef.current = null;
+    setFullscreenSelectMenuOpen(!currentlyOpen);
+  }
+
+  function chooseFullscreenSelectTarget(target: StyleSelectTarget) {
+    setFullscreenActionPanelOpen(true);
+    setActiveSettingsPanel("font");
+    setFullscreenSelectMenuOpen(true);
+    setActiveFontSettingsSliderId(null);
+    setFontEffectsMenuOpen(false);
+    setActiveImageSettingsSliderId(null);
+    setCanvasFormatDrawerOpen(false);
+    setImageStyleDrawerOpen(false);
+    setActiveLetterSettingsSliderId(null);
+    setActiveStyleDrawer(null);
+    setStyleDrawMode(false);
+    setStyleSelectTarget(target);
+    setStyleSelectMenuOpen(false);
+    setStyleSelectModeActive(true);
+    setStyleStickerLookMode(false);
+    setStyleStickerMoveMode(false);
+    setStyleStickerFacePanelOpen(false);
+    setStyleStickerRednessPanelOpen(false);
+    setStyleStickerSleepPanelOpen(false);
+
+    if (target === "stickers") {
+      setSelectedPreviewStickerId((current) =>
+        current && previewStickers.some((sticker) => sticker.id === current && isEyePreviewSticker(sticker))
+          ? current
+          : null,
+      );
+    } else if (target === "ornaments") {
+      setSelectedPreviewStickerId((current) =>
+        current && previewStickers.some((sticker) => sticker.id === current && !isEyePreviewSticker(sticker))
+          ? current
+          : null,
+      );
+    } else {
+      setSelectedPreviewStickerId(null);
+    }
+
+    if (target !== "text") {
+      setSelectedPreviewTextLayerId(null);
+    }
+
+    if (target !== "doodles") {
+      setSelectedPreviewDoodleId(null);
+    }
+
+    styleActiveDoodleRef.current = null;
+    styleActiveStrokeRef.current = null;
+    styleMovingStickerRef.current = null;
+    setShareStatus(`Tap a ${getStyleSelectTargetLabel(target).toLowerCase()} to select it.`);
   }
 
   function setFullscreenSettings(panel: SettingsPanel) {
@@ -6844,6 +7093,7 @@ export default function TextPreview({
     setActiveSettingsPanel(panel);
 
     if (panel !== "font") {
+      setFullscreenSelectMenuOpen(false);
       setActiveFontSettingsSliderId(null);
       setFontEffectsMenuOpen(false);
 
@@ -6864,8 +7114,7 @@ export default function TextPreview({
       setActiveLetterSettingsSliderId(null);
     }
 
-    if (panel === "decor" && styleSelectTarget === "text") {
-      setStyleSelectTarget("stickers");
+    if (panel === "decor" && styleSelectModeActive) {
       setStyleSelectModeActive(false);
     }
 
@@ -7055,6 +7304,8 @@ export default function TextPreview({
   }
 
   function renderCanvasCategoryControls() {
+    const customFormatActive = imageSettings.exportPreset === "custom";
+
     return (
       <div className="phone-image-panel-stack canvas-panel-controls" aria-label="Canvas controls">
         {canvasFormatDrawerOpen ? renderFormatPresetControls("phone-image-format-preset-row phone-image-canvas-format-drawer") : null}
@@ -7075,7 +7326,6 @@ export default function TextPreview({
           >
             <span>Format</span>
           </button>
-          {renderImageLayoutControls("phone-image-fullscreen-tools preview-layout-tools image-settings-tools")}
           <button
             className={`secondary-button compact-button phone-image-style-button ${imageStyleDrawerOpen ? "active-tool" : ""}`}
             type="button"
@@ -7089,9 +7339,9 @@ export default function TextPreview({
               setImageStyleDrawerOpen((open) => !open);
             }}
           >
-            <ImageIcon aria-hidden="true" />
             <span>Style</span>
           </button>
+          {customFormatActive ? renderImageLayoutControls("phone-image-fullscreen-tools preview-layout-tools image-settings-tools") : null}
         </div>
         {imageStyleDrawerOpen &&
           renderPageStyleControls("draw-control-drawer style-control-drawer phone-image-inline-style-drawer")}
@@ -7099,48 +7349,36 @@ export default function TextPreview({
     );
   }
 
+  function renderFullscreenSelectPopover() {
+    return (
+      <div className="phone-image-select-popover" aria-label="Select options">
+        {fullscreenSelectOptions.map((option) => {
+          const selected = styleSelectModeActive && styleSelectTarget === option.id;
+
+          return (
+            <button
+              key={option.id}
+              className={`secondary-button compact-button phone-image-select-option ${selected ? "active-tool" : ""}`}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => chooseFullscreenSelectTarget(option.id)}
+            >
+              <span>{option.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
   function renderFontCategoryControls() {
     const textLayerDrawerOpen = activeStyleDrawer === "text";
-    const textSelectActive = styleSelectTarget === "text" && styleSelectModeActive;
 
     return (
-      <div className="phone-image-panel-stack font-panel-controls" aria-label="Font controls">
+      <div className="phone-image-panel-stack font-panel-controls" aria-label="Text controls">
+        {fullscreenSelectMenuOpen ? renderFullscreenSelectPopover() : null}
         <div className="phone-image-action-row">
           {renderFontSettingsControls("phone-image-fullscreen-tools preview-layout-tools font-settings-tools")}
-          <button
-            className={`secondary-button compact-button phone-image-tool-button ${textLayerDrawerOpen ? "active-tool" : ""}`}
-            type="button"
-            aria-expanded={textLayerDrawerOpen}
-            onClick={() => {
-              setStyleSelectModeActive(false);
-              setStyleSelectMenuOpen(false);
-              setStyleStickerMoveMode(false);
-              setStyleStickerLookMode(false);
-              setActiveStyleDrawer((current) => (current === "text" ? null : "text"));
-              setShareStatus(textLayerDrawerOpen ? "Text layers closed." : "Text layers ready.");
-            }}
-          >
-            <TypeIcon aria-hidden="true" />
-            <span>Text</span>
-          </button>
-          <button
-            className={`secondary-button compact-button phone-image-tool-button ${textSelectActive ? "active-tool" : ""}`}
-            type="button"
-            aria-pressed={textSelectActive}
-            onClick={() => {
-              setActiveStyleDrawer(null);
-              setStyleDrawMode(false);
-              setStyleStickerMoveMode(false);
-              setStyleStickerLookMode(false);
-              setStyleSelectTarget("text");
-              setStyleSelectMenuOpen(false);
-              setStyleSelectModeActive((current) => !(current && styleSelectTarget === "text"));
-              setShareStatus(textSelectActive ? "Text selection off." : "Tap a text layer to select it.");
-            }}
-          >
-            <MousePointer2 aria-hidden="true" />
-            <span>Select text</span>
-          </button>
           <button
             className="draw-icon-button draw-gold-button font-slider-apply-button"
             type="button"
@@ -7153,7 +7391,7 @@ export default function TextPreview({
           </button>
         </div>
         {textLayerDrawerOpen && renderStyleDrawer()}
-        {styleSelectTarget === "text" && renderStyleSelectionActions()}
+        {renderStyleSelectionActions()}
       </div>
     );
   }
@@ -7199,63 +7437,49 @@ export default function TextPreview({
 
   function renderDecorCategoryControls() {
     return (
-      <div className="phone-image-panel-stack decor-panel-controls" aria-label="Decor controls">
-        <div className="phone-image-action-row decor-action-row">
+      <div className="phone-image-panel-stack decor-panel-controls add-panel-controls" aria-label="Add controls">
+        <div className="phone-image-add-popover" aria-label="Add options">
           <button
-            className={`secondary-button compact-button phone-image-tool-button ${
+            className={`secondary-button compact-button phone-image-add-option ${
+              activeStyleDrawer === "text" ? "active-tool" : ""
+            }`}
+            type="button"
+            onClick={addPreviewTextLayer}
+          >
+            <span>Text</span>
+          </button>
+          <button
+            className={`secondary-button compact-button phone-image-add-option ${
+              activeStyleDrawer === "stickers" ? "active-tool" : ""
+            }`}
+            type="button"
+            aria-expanded={activeStyleDrawer === "stickers"}
+            onClick={() => openDecorDrawer("stickers")}
+          >
+            <span>Stickers</span>
+          </button>
+          <button
+            className={`secondary-button compact-button phone-image-add-option ${
+              activeStyleDrawer === "ornaments" ? "active-tool" : ""
+            }`}
+            type="button"
+            aria-expanded={activeStyleDrawer === "ornaments"}
+            onClick={() => openDecorDrawer("ornaments")}
+          >
+            <span>Ornaments</span>
+          </button>
+          <button
+            className={`secondary-button compact-button phone-image-add-option ${
               activeStyleDrawer === "doodle" || styleDrawMode ? "active-tool" : ""
             }`}
             type="button"
             aria-expanded={activeStyleDrawer === "doodle"}
             onClick={() => openDecorDrawer("doodle")}
           >
-            <Brush aria-hidden="true" />
             <span>Doodle</span>
           </button>
-          <button
-            className={`secondary-button compact-button phone-image-tool-button ${activeStyleDrawer === "stickers" ? "active-tool" : ""}`}
-            type="button"
-            aria-expanded={activeStyleDrawer === "stickers"}
-            onClick={() => openDecorDrawer("stickers")}
-          >
-            <Sticker aria-hidden="true" />
-            <span>Stickers</span>
-          </button>
-          <button
-            className={`secondary-button compact-button phone-image-tool-button ${activeStyleDrawer === "ornaments" ? "active-tool" : ""}`}
-            type="button"
-            aria-expanded={activeStyleDrawer === "ornaments"}
-            onClick={() => openDecorDrawer("ornaments")}
-          >
-            <Sparkles aria-hidden="true" />
-            <span>Ornaments</span>
-          </button>
-          <button
-            className={`secondary-button compact-button phone-image-tool-button ${
-              activeStyleDrawer === "select" || styleSelectModeActive ? "active-tool" : ""
-            }`}
-            type="button"
-            aria-expanded={activeStyleDrawer === "select"}
-            onClick={() => {
-              setStyleSelectTarget((current) => (current === "text" ? "stickers" : current));
-              openDecorDrawer("select");
-              setShareStatus("Tap decor on the page to select it.");
-            }}
-          >
-            <MousePointer2 aria-hidden="true" />
-            <span>Select</span>
-          </button>
-          <button
-            className="secondary-button compact-button phone-image-tool-button"
-            type="button"
-            disabled={previewDoodles.length === 0 && previewStickers.length === 0}
-            onClick={clearPreviewDecorations}
-          >
-            <Trash2 aria-hidden="true" />
-            <span>Clear</span>
-          </button>
         </div>
-        {activeStyleDrawer && activeStyleDrawer !== "text" ? renderStyleDrawer() : null}
+        {activeStyleDrawer ? renderStyleDrawer() : null}
         {styleSelectTarget !== "text" ? renderStyleSelectionActions() : null}
       </div>
     );
@@ -7292,18 +7516,31 @@ export default function TextPreview({
   function renderFullscreenCategoryTabs() {
     return (
       <div className="phone-image-category-row" aria-label="Preview edit categories">
-        {fullscreenPanelOptions.map((option) => (
-          <button
-            key={option.id}
-            className={`secondary-button compact-button ${activeSettingsPanel === option.id ? "active-tool" : ""}`}
-            type="button"
-            aria-expanded={activeSettingsPanel === option.id && fullscreenActionPanelOpen}
-            aria-pressed={activeSettingsPanel === option.id}
-            onClick={() => setFullscreenSettings(option.id)}
-          >
-            {option.label}
-          </button>
-        ))}
+        {fullscreenPanelOptions.map((option) => {
+          const selected = option.id === "font"
+            ? activeSettingsPanel === "font" && fullscreenActionPanelOpen
+            : activeSettingsPanel === option.id && fullscreenActionPanelOpen;
+
+          return (
+            <button
+              key={option.id}
+              className={`secondary-button compact-button ${selected ? "active-tool" : ""}`}
+              type="button"
+              aria-expanded={selected}
+              aria-pressed={selected}
+              onClick={() => {
+                if (option.id === "font") {
+                  openFullscreenSelectPopover();
+                  return;
+                }
+
+                setFullscreenSettings(option.id);
+              }}
+            >
+              {option.label}
+            </button>
+          );
+        })}
       </div>
     );
   }
