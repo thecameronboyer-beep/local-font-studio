@@ -40,8 +40,10 @@ import type { FontGuideKey } from "../utils/fontGuides";
 import { isNativeFilePlatform, saveNativeFileToDocuments, shareNativeFile } from "../utils/nativeFiles";
 
 type FontLibraryProps = {
+  homeMode: "design" | "compose";
   fonts: FontSet[];
   activeFontId: string;
+  onHomeModeChange: (mode: "design" | "compose") => void;
   onSelectFont: (fontId: string) => void;
   onCreateFont: (
     name: string,
@@ -441,8 +443,10 @@ function FontGuideEditor({
 }
 
 export default function FontLibrary({
+  homeMode,
   fonts,
   activeFontId,
+  onHomeModeChange,
   onSelectFont,
   onCreateFont,
   onCreatePresetFont,
@@ -907,8 +911,25 @@ export default function FontLibrary({
         </section>
       )}
 
-      {activeFont.homeSettings.visibleSections.drawActions && (
-        <div className="library-actions">
+      <div className="font-home-mode-toggle" aria-label="Home mode">
+        {([
+          { id: "design", label: "Design" },
+          { id: "compose", label: "Compose" },
+        ] as const).map((option) => (
+          <button
+            key={option.id}
+            className={`secondary-button font-home-mode-button ${homeMode === option.id ? "active-tool" : ""}`}
+            type="button"
+            aria-pressed={homeMode === option.id}
+            onClick={() => onHomeModeChange(option.id)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+
+      {homeMode === "design" && (
+        <div className="library-actions design-home-actions" aria-label="Design options">
           <button className="primary-button start-drawing-button" type="button" onClick={onStartDrawing}>
             Start designing
           </button>

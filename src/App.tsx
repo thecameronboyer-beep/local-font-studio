@@ -48,6 +48,8 @@ import type {
   SavedImageDraft,
 } from "./types/fontTypes";
 
+type HomeMode = "design" | "compose";
+
 export default function App() {
   const [initialLoad] = useState(() => {
     const result = loadFontStudioDataWithHealth();
@@ -89,6 +91,7 @@ export default function App() {
   });
   const [headerPreviewText, setHeaderPreviewText] = useState("");
   const [previewText, setPreviewText] = useState("the ducks know about the blue canoe.");
+  const [homeMode, setHomeMode] = useState<HomeMode>("compose");
 
   const activeFont = useMemo(
     () =>
@@ -734,8 +737,10 @@ export default function App() {
       <div className="workspace">
         <div className="left-stack">
           <FontLibrary
+            homeMode={homeMode}
             fonts={studioData.fonts}
             activeFontId={studioData.activeFontId}
+            onHomeModeChange={setHomeMode}
             onSelectFont={handleSelectFont}
             onStartDrawing={handleStartDrawing}
             onCreateFont={handleCreateFont}
@@ -746,23 +751,25 @@ export default function App() {
             onDeleteFont={handleDeleteFont}
             getSavedGlyphCount={getSavedGlyphCount}
           />
-          <TextPreview
-            font={activeFont}
-            fonts={studioData.fonts}
-            onApplyFontSpacing={handleApplyPreviewFontSpacing}
-            onOpenCharacterEditor={handleSelectCharacter}
-            onRecordExport={handleRecordPreviewExport}
-            onSaveImage={handleSaveImage}
-            onSelectCharacter={handlePreviewSelectCharacter}
-            headerPreviewText={headerPreviewText}
-            onHeaderPreviewTextChange={setHeaderPreviewText}
-            visibleHomeSections={activeFont.homeSettings.visibleSections}
-            previewText={previewText}
-            onPreviewTextChange={setPreviewText}
-            selectedGlyph={selectedGlyph}
-            spacebarGlyph={spacebarGlyph}
-          />
-          {activeFont.homeSettings.visibleSections.glyphQueue && (
+          {homeMode === "compose" && (
+            <TextPreview
+              font={activeFont}
+              fonts={studioData.fonts}
+              onApplyFontSpacing={handleApplyPreviewFontSpacing}
+              onOpenCharacterEditor={handleSelectCharacter}
+              onRecordExport={handleRecordPreviewExport}
+              onSaveImage={handleSaveImage}
+              onSelectCharacter={handlePreviewSelectCharacter}
+              headerPreviewText={headerPreviewText}
+              onHeaderPreviewTextChange={setHeaderPreviewText}
+              visibleHomeSections={activeFont.homeSettings.visibleSections}
+              previewText={previewText}
+              onPreviewTextChange={setPreviewText}
+              selectedGlyph={selectedGlyph}
+              spacebarGlyph={spacebarGlyph}
+            />
+          )}
+          {homeMode === "design" && activeFont.homeSettings.visibleSections.glyphQueue && (
             <FontMetricsPanel
               font={activeFont}
               previewText={previewText}
