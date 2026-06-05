@@ -4977,9 +4977,7 @@ export default function TextPreview({
       setSelectedPreviewStickerId(null);
     }
 
-    if (target !== "text") {
-      setSelectedPreviewTextLayerId(null);
-    }
+    setSelectedPreviewTextLayerId(null);
 
     if (target !== "doodles") {
       setSelectedPreviewDoodleId(null);
@@ -5356,6 +5354,7 @@ export default function TextPreview({
             setStyleStickerFacePanelOpen(false);
             setStyleStickerRednessPanelOpen(false);
             setStyleStickerSleepPanelOpen(false);
+            setSelectedPreviewTextLayerId(null);
             setActiveStyleDrawer(null);
             setStyleSelectModeActive(true);
             setStyleSelectMenuOpen((current) => !current);
@@ -7132,6 +7131,7 @@ export default function TextPreview({
     styleActiveDoodleRef.current = null;
     styleActiveStrokeRef.current = null;
     styleMovingStickerRef.current = null;
+    setSelectedPreviewTextLayerId(null);
     setFullscreenSelectMenuOpen(!currentlyOpen);
   }
 
@@ -7174,9 +7174,7 @@ export default function TextPreview({
       setSelectedPreviewStickerId(null);
     }
 
-    if (target !== "text") {
-      setSelectedPreviewTextLayerId(null);
-    }
+    setSelectedPreviewTextLayerId(null);
 
     if (target !== "doodles") {
       setSelectedPreviewDoodleId(null);
@@ -7207,6 +7205,7 @@ export default function TextPreview({
       setFullscreenSelectMenuOpen(false);
       setActiveFontSettingsSliderId(null);
       setFontEffectsMenuOpen(false);
+      setSelectedPreviewTextLayerId(null);
 
       if (activeStyleDrawer === "text") {
         setActiveStyleDrawer(null);
