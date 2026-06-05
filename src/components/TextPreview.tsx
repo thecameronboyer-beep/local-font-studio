@@ -7,6 +7,7 @@ import {
   ArrowLeftToLine,
   ArrowRightToLine,
   Baseline,
+  ChevronDown,
   Droplets,
   Feather,
   Hand,
@@ -309,6 +310,9 @@ type PreviewTextLayerDraft = Omit<PreviewTextLayer, "id">;
 type PreviewTextFontSource =
   | { font: FontSet; kind: "custom" }
   | { kind: "preset"; preset: FontPreset };
+type PreviewTextFontOption =
+  | { font: FontSet; id: string; kind: "custom"; label: string }
+  | { id: string; kind: "preset"; label: string; preset: FontPreset };
 
 type PreviewTextLayerHitTarget = {
   height: number;
@@ -333,6 +337,127 @@ type PreviewDocument = {
 };
 
 const PREVIEW_DOCUMENTS_KEY = "local-font-studio:preview-documents:v1";
+
+function PreviewTextFontNamePreview({
+  accentColor,
+  backgroundColor,
+  inkColor,
+  option,
+}: {
+  accentColor: string;
+  backgroundColor: string;
+  inkColor: string;
+  option: PreviewTextFontOption;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+
+    if (!canvas) {
+      return;
+    }
+
+    const height = 34;
+    const fontSize = 22;
+    const paddingX = 8;
+    const textTop = 5;
+    const glyphTop = 5;
+
+    function drawPreview() {
+      const ctx = canvas?.getContext("2d");
+
+      if (!ctx || !canvas) {
+        return;
+      }
+
+      const dpr = window.devicePixelRatio || 1;
+      const width = Math.max(1, Math.round(canvas.getBoundingClientRect().width || 220));
+
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      canvas.style.width = "100%";
+      canvas.style.height = `${height}px`;
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = backgroundColor;
+      ctx.fillRect(0, 0, width, height);
+      ctx.strokeStyle = accentColor;
+      ctx.globalAlpha = 0.34;
+      ctx.strokeRect(0.5, 0.5, width - 1, height - 1);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = inkColor;
+      ctx.textBaseline = "top";
+
+      if (option.kind === "preset") {
+        ctx.font = getFontPresetCanvasFont(option.preset, fontSize);
+        ctx.fillText(option.label, paddingX, textTop);
+        return;
+      }
+
+      const font = option.font;
+      const fontHeightScale = getFontHeightScale(font);
+      const fontWidthScale = getFontWidthScale(font);
+      let x = paddingX;
+
+      ctx.font = `900 ${fontSize}px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+
+      for (const [characterIndex, character] of [...option.label].entries()) {
+        const glyph = selectPreviewGlyph(font.glyphs, character, `${font.id}|${option.label}|${characterIndex}|${character}`);
+
+        if (glyph) {
+          const scales = getGlyphRenderScales(font, glyph);
+          const scaledBaselineY = glyphTop + fontSize * 0.76 * fontHeightScale;
+          const glyphX = x + getGlyphLeftBearingOffset(font, glyph, fontSize);
+          const glyphY = getGlyphTopForBaseline(glyph, fontSize, scaledBaselineY, scales.heightScale);
+
+          drawGlyph(ctx, glyph, {
+            x: glyphX,
+            y: glyphY,
+            size: fontSize,
+            color: inkColor,
+            renderProfile: font.renderProfile,
+            heightScale: scales.heightScale,
+            widthScale: scales.widthScale,
+            backgroundTexture: font.theme?.backgroundTexture,
+          });
+          x += getGlyphAdvance(glyph, fontSize, fontWidthScale);
+        } else if (character === " ") {
+          x += fontSize * 0.36;
+        } else {
+          ctx.fillText(character, x, glyphTop);
+          x += ctx.measureText(character).width;
+        }
+
+        if (x > width - 18) {
+          break;
+        }
+      }
+    }
+
+    drawPreview();
+    let cancelled = false;
+    const resizeObserver = typeof ResizeObserver !== "undefined" ? new ResizeObserver(drawPreview) : null;
+    resizeObserver?.observe(canvas);
+
+    if (option.kind === "preset" && document.fonts) {
+      document.fonts.load(getFontPresetCanvasFont(option.preset, fontSize)).finally(() => {
+        if (!cancelled) {
+          drawPreview();
+        }
+      });
+    }
+
+    return () => {
+      cancelled = true;
+      resizeObserver?.disconnect();
+    };
+  }, [accentColor, backgroundColor, inkColor, option]);
+
+  return <canvas ref={canvasRef} className="preview-text-font-name-preview" aria-hidden="true" />;
+}
+
 const MIN_IMAGE_CANVAS_WIDTH = 640;
 const MAX_IMAGE_CANVAS_WIDTH = 50000;
 const MIN_IMAGE_CANVAS_HEIGHT = 150;
@@ -875,6 +1000,7 @@ export default function TextPreview({
   const [previewStickers, setPreviewStickers] = useState<PreviewSticker[]>([]);
   const [styleStickerImagesReady, setStyleStickerImagesReady] = useState(0);
   const [draftPreviewTextLayer, setDraftPreviewTextLayer] = useState<PreviewTextLayerDraft | null>(null);
+  const [openPreviewTextFontPickerId, setOpenPreviewTextFontPickerId] = useState<string | null>(null);
   const [previewTextLayers, setPreviewTextLayers] = useState<PreviewTextLayer[]>([]);
   const [savedDocuments, setSavedDocuments] = useState<PreviewDocument[]>(() => loadPreviewDocuments());
   const [selectedPreviewDoodleId, setSelectedPreviewDoodleId] = useState<string | null>(null);
@@ -951,8 +1077,9 @@ export default function TextPreview({
   }, [font, fonts, previewFont]);
 
   const availableTextFontOptions = useMemo(
-    () => [
+    (): PreviewTextFontOption[] => [
       ...availableFonts.map((item) => ({
+        font: item,
         id: item.id,
         kind: "custom" as const,
         label: item.name,
@@ -961,6 +1088,7 @@ export default function TextPreview({
         id: getFontPresetOptionId(preset.id),
         kind: "preset" as const,
         label: preset.label,
+        preset,
       })),
     ],
     [availableFonts],
@@ -1107,6 +1235,23 @@ export default function TextPreview({
     setActiveFontSettingsSliderId(null);
     setFontEffectsMenuOpen(false);
   }, [selectedPreviewTextLayerId]);
+
+  useEffect(() => {
+    if (!openPreviewTextFontPickerId) {
+      return undefined;
+    }
+
+    function closePreviewTextFontPickerOnOutsidePointer(event: PointerEvent) {
+      if (event.target instanceof Element && event.target.closest(".preview-text-font-picker")) {
+        return;
+      }
+
+      setOpenPreviewTextFontPickerId(null);
+    }
+
+    document.addEventListener("pointerdown", closePreviewTextFontPickerOnOutsidePointer);
+    return () => document.removeEventListener("pointerdown", closePreviewTextFontPickerOnOutsidePointer);
+  }, [openPreviewTextFontPickerId]);
 
   useEffect(() => {
     setActiveFontSettingsSliderId(null);
@@ -4856,29 +5001,89 @@ export default function TextPreview({
     setShareStatus(`${tool === "quill" ? "Quill" : tool === "line" ? "Line" : "Pen"} doodle ready.`);
   }
 
-  function renderPreviewTextFontOptions() {
+  function renderPreviewTextFontPicker({
+    ariaLabel,
+    onChange,
+    pickerId,
+    value,
+  }: {
+    ariaLabel: string;
+    onChange: (fontId: string) => void;
+    pickerId: string;
+    value: string;
+  }) {
     const customOptions = availableTextFontOptions.filter((option) => option.kind === "custom");
     const presetOptions = availableTextFontOptions.filter((option) => option.kind === "preset");
+    const selectedOption = availableTextFontOptions.find((option) => option.id === value) ?? availableTextFontOptions[0] ?? null;
+    const pickerOpen = openPreviewTextFontPickerId === pickerId;
+    const pickerStyle = {
+      "--preview-text-font-accent": imageSettings.accentColor,
+      "--preview-text-font-bg": imageSettings.backgroundColor,
+      "--preview-text-font-ink": imageSettings.inkColor,
+    } as CSSProperties;
+
+    function renderFontOption(option: PreviewTextFontOption) {
+      const selected = option.id === value;
+
+      return (
+        <button
+          key={option.id}
+          className={`preview-text-font-picker-option ${selected ? "selected" : ""}`}
+          type="button"
+          role="option"
+          aria-selected={selected}
+          aria-label={option.label}
+          onClick={() => {
+            onChange(option.id);
+            setOpenPreviewTextFontPickerId(null);
+          }}
+        >
+          <PreviewTextFontNamePreview
+            option={option}
+            inkColor={imageSettings.inkColor}
+            backgroundColor={imageSettings.backgroundColor}
+            accentColor={imageSettings.accentColor}
+          />
+        </button>
+      );
+    }
 
     return (
-      <>
-        {customOptions.length > 0 && (
-          <optgroup label="Drawn fonts">
-            {customOptions.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </optgroup>
-        )}
-        <optgroup label="Preset fonts">
-          {presetOptions.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.label}
-            </option>
-          ))}
-        </optgroup>
-      </>
+      <div className={`preview-text-font-picker ${pickerOpen ? "open" : ""}`} style={pickerStyle}>
+        <button
+          className="preview-text-font-picker-button"
+          type="button"
+          aria-haspopup="listbox"
+          aria-expanded={pickerOpen}
+          aria-label={selectedOption ? `${ariaLabel}: ${selectedOption.label}` : ariaLabel}
+          onClick={() => setOpenPreviewTextFontPickerId((current) => (current === pickerId ? null : pickerId))}
+        >
+          {selectedOption ? (
+            <PreviewTextFontNamePreview
+              option={selectedOption}
+              inkColor={imageSettings.inkColor}
+              backgroundColor={imageSettings.backgroundColor}
+              accentColor={imageSettings.accentColor}
+            />
+          ) : (
+            <span className="preview-text-font-picker-empty">Choose font</span>
+          )}
+          <ChevronDown aria-hidden="true" />
+        </button>
+
+        {pickerOpen ? (
+          <div className="preview-text-font-picker-menu" role="listbox" aria-label={ariaLabel}>
+            {customOptions.length > 0 ? (
+              <>
+                <span className="preview-text-font-picker-group-label">Drawn fonts</span>
+                {customOptions.map(renderFontOption)}
+              </>
+            ) : null}
+            <span className="preview-text-font-picker-group-label">Preset fonts</span>
+            {presetOptions.map(renderFontOption)}
+          </div>
+        ) : null}
+      </div>
     );
   }
 
@@ -4895,6 +5100,7 @@ export default function TextPreview({
 
   function openPreviewTextLayerDraft() {
     setDraftPreviewTextLayer(getDefaultPreviewTextLayerDraft());
+    setOpenPreviewTextFontPickerId(null);
     setActiveStyleDrawer("text");
     setFullscreenAddMenuOpen(false);
     setStyleDrawMode(false);
@@ -4923,6 +5129,7 @@ export default function TextPreview({
   function addPreviewTextLayer() {
     const nextLayer = draftPreviewTextLayer ?? getDefaultPreviewTextLayerDraft();
 
+    setOpenPreviewTextFontPickerId(null);
     styleActiveDoodleRef.current = null;
     styleMovingStickerRef.current = null;
     setStyleDrawMode(false);
@@ -4950,6 +5157,10 @@ export default function TextPreview({
   }
 
   function updatePreviewTextLayer(layerId: string, patch: Partial<PreviewTextLayer>) {
+    if (patch.fontId) {
+      setOpenPreviewTextFontPickerId(null);
+    }
+
     setPreviewTextLayers((current) =>
       current.map((layer) =>
         layer.id === layerId
@@ -5895,15 +6106,15 @@ export default function TextPreview({
                 <strong>Add text</strong>
               </div>
 
-              <label className="style-text-layer-field">
+              <div className="style-text-layer-field">
                 <span>Font</span>
-                <select
-                  value={draftPreviewTextLayer.fontId}
-                  onChange={(event) => updateDraftPreviewTextLayer({ fontId: event.target.value })}
-                >
-                  {renderPreviewTextFontOptions()}
-                </select>
-              </label>
+                {renderPreviewTextFontPicker({
+                  ariaLabel: "New text font",
+                  pickerId: "draft",
+                  value: draftPreviewTextLayer.fontId,
+                  onChange: (fontId) => updateDraftPreviewTextLayer({ fontId }),
+                })}
+              </div>
 
               <label className="draw-drawer-range">
                 <span>Size</span>
@@ -5953,15 +6164,15 @@ export default function TextPreview({
                     </button>
                   </div>
 
-                  <label className="style-text-layer-field">
+                  <div className="style-text-layer-field">
                     <span>Font</span>
-                    <select
-                      value={layer.fontId}
-                      onChange={(event) => updatePreviewTextLayer(layer.id, { fontId: event.target.value })}
-                    >
-                      {renderPreviewTextFontOptions()}
-                    </select>
-                  </label>
+                    {renderPreviewTextFontPicker({
+                      ariaLabel: `Text ${index + 1} font`,
+                      pickerId: `layer:${layer.id}`,
+                      value: layer.fontId,
+                      onChange: (fontId) => updatePreviewTextLayer(layer.id, { fontId }),
+                    })}
+                  </div>
 
                   <label className="draw-drawer-range">
                     <span>Size</span>
@@ -6105,17 +6316,15 @@ export default function TextPreview({
                       Remove
                     </button>
                   </div>
-                  <label className="style-text-layer-field">
+                  <div className="style-text-layer-field">
                     <span>Font</span>
-                    <select
-                      value={selectedPreviewTextLayer.fontId}
-                      onChange={(event) =>
-                        updatePreviewTextLayer(selectedPreviewTextLayer.id, { fontId: event.target.value })
-                      }
-                    >
-                      {renderPreviewTextFontOptions()}
-                    </select>
-                  </label>
+                    {renderPreviewTextFontPicker({
+                      ariaLabel: "Selected text font",
+                      pickerId: `selected:${selectedPreviewTextLayer.id}`,
+                      value: selectedPreviewTextLayer.fontId,
+                      onChange: (fontId) => updatePreviewTextLayer(selectedPreviewTextLayer.id, { fontId }),
+                    })}
+                  </div>
                   <label className="draw-drawer-range">
                     <span>Size</span>
                     <input
