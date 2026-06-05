@@ -5279,6 +5279,18 @@ export default function TextPreview({
             </button>
           );
         })}
+        {metricConfigs.length > 0 ? (
+          <button
+            className="draw-glass-button selected-text-apply-button"
+            type="button"
+            disabled={!hasPendingFontSpacingChanges}
+            onClick={applyFontSpacingToFont}
+            aria-label="Apply text metric changes to Font"
+            title="Apply to Font"
+          >
+            Apply
+          </button>
+        ) : null}
       </div>
     );
   }

@@ -4795,25 +4795,40 @@ h1 {
 
 .selected-text-option-row {
   position: relative;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   align-items: end;
+  gap: var(--phone-image-category-gap);
+  height: var(--phone-image-category-row-height);
   overflow: visible;
 }
 
-.selected-text-option-button {
+.selected-text-option-button,
+.selected-text-apply-button {
   display: grid;
-  grid-template-rows: 17px auto;
   place-items: center;
-  gap: 2px;
-  flex: 0 0 68px;
-  width: 68px;
-  min-height: 42px;
-  padding: 3px 5px 4px;
-  font-size: 0.6rem;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  min-height: var(--phone-image-category-row-height);
+  padding: 0 6px;
+  font-weight: 900;
   line-height: 1;
 }
 
+.selected-text-option-button {
+  grid-template-rows: 17px auto;
+  gap: 2px;
+  font-size: 0.6rem;
+}
+
+.selected-text-apply-button {
+  font-size: 0.72rem;
+}
+
 .selected-text-option-row .selected-text-option-button,
-.selected-text-option-row .selected-text-inline-metric-button {
+.selected-text-option-row .selected-text-inline-metric-button,
+.selected-text-option-row .selected-text-apply-button {
   border-color: var(--app-border);
   background: var(--app-surface-raised);
   color: var(--app-heading);
@@ -4822,7 +4837,9 @@ h1 {
 .selected-text-option-row .selected-text-option-button:hover,
 .selected-text-option-row .selected-text-option-button:focus-visible,
 .selected-text-option-row .selected-text-inline-metric-button:hover,
-.selected-text-option-row .selected-text-inline-metric-button:focus-visible {
+.selected-text-option-row .selected-text-inline-metric-button:focus-visible,
+.selected-text-option-row .selected-text-apply-button:hover:not(:disabled),
+.selected-text-option-row .selected-text-apply-button:focus-visible:not(:disabled) {
   border-color: var(--app-border-strong);
   background: var(--app-surface-muted);
 }
@@ -4847,8 +4864,7 @@ h1 {
 }
 
 .selected-text-option-row.metrics-open .selected-text-option-button {
-  flex-basis: 72px;
-  width: 72px;
+  width: 100%;
 }
 
 .selected-text-metrics-popover {
@@ -4896,9 +4912,10 @@ h1 {
   grid-template-rows: 15px 12px 10px;
   place-items: center;
   gap: 1px;
-  flex: 0 0 72px;
-  width: 72px;
-  min-height: 42px;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  min-height: var(--phone-image-category-row-height);
   padding: 2px 4px;
   font-size: 0.52rem;
   line-height: 1;
