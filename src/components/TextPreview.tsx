@@ -1068,6 +1068,7 @@ export default function TextPreview({
     activeSettingsPanel,
     font,
     fontPresetsReady,
+    fullscreenSelectMenuOpen,
     headerPreviewText,
     imageSettings,
     imageViewerOpen,
@@ -1080,6 +1081,7 @@ export default function TextPreview({
     selectedPreviewDoodleId,
     selectedPreviewStickerId,
     selectedPreviewTextLayerId,
+    styleSelectMenuOpen,
     styleSelectModeActive,
     styleSelectTarget,
     styleStickerImagesReady,
@@ -4323,7 +4325,13 @@ export default function TextPreview({
       ctx.stroke();
     }
 
-    if (selectedPreviewTextLayerId) {
+    const showSelectedTextOutline =
+      styleSelectModeActive &&
+      styleSelectTarget === "text" &&
+      !styleSelectMenuOpen &&
+      !fullscreenSelectMenuOpen;
+
+    if (showSelectedTextOutline && selectedPreviewTextLayerId) {
       const selectedTextTarget = getAllPreviewTextHitTargets(ctx, renderSettings)
         .find((target) => target.id === selectedPreviewTextLayerId);
 
