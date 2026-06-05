@@ -7,6 +7,7 @@ import {
   ArrowLeftToLine,
   ArrowRightToLine,
   Baseline,
+  ChevronDown,
   Droplets,
   Feather,
   Hand,
@@ -1012,6 +1013,7 @@ export default function TextPreview({
   const [previewStickers, setPreviewStickers] = useState<PreviewSticker[]>([]);
   const [styleStickerImagesReady, setStyleStickerImagesReady] = useState(0);
   const [draftPreviewTextLayer, setDraftPreviewTextLayer] = useState<PreviewTextLayerDraft | null>(null);
+  const [expandedPreviewTextFontPickerId, setExpandedPreviewTextFontPickerId] = useState<string | null>(null);
   const [previewTextLayers, setPreviewTextLayers] = useState<PreviewTextLayer[]>([]);
   const [savedDocuments, setSavedDocuments] = useState<PreviewDocument[]>(() => loadPreviewDocuments());
   const [selectedPreviewDoodleId, setSelectedPreviewDoodleId] = useState<string | null>(null);
@@ -5056,14 +5058,18 @@ export default function TextPreview({
   function renderPreviewTextFontPicker({
     ariaLabel,
     onChange,
+    pickerId,
     value,
   }: {
     ariaLabel: string;
     onChange: (fontId: string) => void;
+    pickerId: string;
     value: string;
   }) {
     const customOptions = availableTextFontOptions.filter((option) => option.kind === "custom");
     const presetOptions = availableTextFontOptions.filter((option) => option.kind === "preset");
+    const selectedOption = availableTextFontOptions.find((option) => option.id === value) ?? availableTextFontOptions[0] ?? null;
+    const pickerOpen = expandedPreviewTextFontPickerId === pickerId;
     const pickerStyle = {
       "--preview-text-font-accent": imageSettings.accentColor,
       "--preview-text-font-bg": imageSettings.backgroundColor,
@@ -5083,6 +5089,7 @@ export default function TextPreview({
           aria-label={option.label}
           onClick={() => {
             onChange(option.id);
+            setExpandedPreviewTextFontPickerId(null);
           }}
         >
           <PreviewTextFontNamePreview
@@ -5097,16 +5104,40 @@ export default function TextPreview({
 
     return (
       <div className="preview-text-font-picker" style={pickerStyle}>
-        <div className="preview-text-font-picker-menu" role="listbox" aria-label={ariaLabel}>
-          {customOptions.length > 0 ? (
-            <>
-              <span className="preview-text-font-picker-group-label">Drawn fonts</span>
-              {customOptions.map(renderFontOption)}
-            </>
-          ) : null}
-          <span className="preview-text-font-picker-group-label">Preset fonts</span>
-          {presetOptions.map(renderFontOption)}
-        </div>
+        <button
+          className="preview-text-font-picker-button"
+          type="button"
+          aria-expanded={pickerOpen}
+          aria-label={selectedOption ? `${ariaLabel}: ${selectedOption.label}` : ariaLabel}
+          onClick={() =>
+            setExpandedPreviewTextFontPickerId((current) => (current === pickerId ? null : pickerId))
+          }
+        >
+          {selectedOption ? (
+            <PreviewTextFontNamePreview
+              option={selectedOption}
+              inkColor={imageSettings.inkColor}
+              backgroundColor={imageSettings.backgroundColor}
+              accentColor={imageSettings.accentColor}
+            />
+          ) : (
+            <span className="preview-text-font-picker-empty">Choose font</span>
+          )}
+          <ChevronDown className={pickerOpen ? "expanded" : ""} aria-hidden="true" />
+        </button>
+
+        {pickerOpen ? (
+          <div className="preview-text-font-picker-menu" role="listbox" aria-label={ariaLabel}>
+            {customOptions.length > 0 ? (
+              <>
+                <span className="preview-text-font-picker-group-label">Drawn fonts</span>
+                {customOptions.map(renderFontOption)}
+              </>
+            ) : null}
+            <span className="preview-text-font-picker-group-label">Preset fonts</span>
+            {presetOptions.map(renderFontOption)}
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -5124,6 +5155,7 @@ export default function TextPreview({
 
   function openPreviewTextLayerDraft() {
     setDraftPreviewTextLayer(getDefaultPreviewTextLayerDraft());
+    setExpandedPreviewTextFontPickerId("draft");
     setActiveStyleDrawer("text");
     setFullscreenAddMenuOpen(false);
     setStyleDrawMode(false);
@@ -5174,11 +5206,16 @@ export default function TextPreview({
     setActiveDocumentId(null);
     setActiveStyleDrawer(null);
     setDraftPreviewTextLayer(null);
+    setExpandedPreviewTextFontPickerId(null);
     setFullscreenAddMenuOpen(false);
     setShareStatus("Added text layer.");
   }
 
   function updatePreviewTextLayer(layerId: string, patch: Partial<PreviewTextLayer>) {
+    if (patch.fontId) {
+      setExpandedPreviewTextFontPickerId(null);
+    }
+
     setPreviewTextLayers((current) =>
       current.map((layer) =>
         layer.id === layerId
@@ -6210,6 +6247,7 @@ export default function TextPreview({
                 <span>Font</span>
                 {renderPreviewTextFontPicker({
                   ariaLabel: "New text font",
+                  pickerId: "draft",
                   value: draftPreviewTextLayer.fontId,
                   onChange: (fontId) => updateDraftPreviewTextLayer({ fontId }),
                 })}
@@ -6267,6 +6305,7 @@ export default function TextPreview({
                     <span>Font</span>
                     {renderPreviewTextFontPicker({
                       ariaLabel: `Text ${index + 1} font`,
+                      pickerId: `layer:${layer.id}`,
                       value: layer.fontId,
                       onChange: (fontId) => updatePreviewTextLayer(layer.id, { fontId }),
                     })}
@@ -6418,6 +6457,7 @@ export default function TextPreview({
                     <span>Font</span>
                     {renderPreviewTextFontPicker({
                       ariaLabel: "Selected text font",
+                      pickerId: `selected:${selectedPreviewTextLayer.id}`,
                       value: selectedPreviewTextLayer.fontId,
                       onChange: (fontId) => updatePreviewTextLayer(selectedPreviewTextLayer.id, { fontId }),
                     })}
@@ -6738,6 +6778,7 @@ export default function TextPreview({
   function openStyleEditor(startDrawer: StyleDrawer = null) {
     setActiveSettingsPanel("decor");
     setActiveStyleDrawer(startDrawer);
+    setExpandedPreviewTextFontPickerId(null);
     setStyleDrawMode(false);
     setStyleSelectMenuOpen(false);
     setStyleSelectModeActive(false);
@@ -6757,6 +6798,7 @@ export default function TextPreview({
     styleMovingStickerRef.current = null;
     setFullscreenAddMenuOpen(false);
     setDraftPreviewTextLayer(null);
+    setExpandedPreviewTextFontPickerId(null);
     setStyleDrawMode(false);
     setStyleSelectMenuOpen(false);
     setStyleSelectModeActive(false);
@@ -7658,6 +7700,7 @@ export default function TextPreview({
     setActiveStyleDrawer(null);
     setFullscreenAddMenuOpen(false);
     setDraftPreviewTextLayer(null);
+    setExpandedPreviewTextFontPickerId(null);
     setFullscreenSelectMenuOpen(false);
     setStyleDrawMode(false);
     setStyleSelectMenuOpen(false);
@@ -7692,6 +7735,7 @@ export default function TextPreview({
     setActiveSettingsPanel("font");
     setFullscreenAddMenuOpen(false);
     setDraftPreviewTextLayer(null);
+    setExpandedPreviewTextFontPickerId(null);
     setActiveFontSettingsSliderId(null);
     setFontEffectsMenuOpen(false);
     setActiveImageSettingsSliderId(null);
@@ -7807,6 +7851,7 @@ export default function TextPreview({
     if (panel !== "decor") {
       setFullscreenAddMenuOpen(false);
       setDraftPreviewTextLayer(null);
+      setExpandedPreviewTextFontPickerId(null);
     }
 
     if (panel !== "image") {
@@ -8142,6 +8187,7 @@ export default function TextPreview({
   function openDecorDrawer(drawer: Exclude<StyleDrawer, "text" | null>) {
     setFullscreenAddMenuOpen(false);
     setDraftPreviewTextLayer(null);
+    setExpandedPreviewTextFontPickerId(null);
     setStyleDrawMode(false);
     setStyleSelectMenuOpen(false);
     setStyleStickerLookMode(false);
@@ -8172,6 +8218,7 @@ export default function TextPreview({
     setActiveLetterSettingsSliderId(null);
     setActiveStyleDrawer(null);
     setDraftPreviewTextLayer(null);
+    setExpandedPreviewTextFontPickerId(null);
     setStyleDrawMode(false);
     setStyleSelectMenuOpen(false);
     setStyleSelectModeActive(false);

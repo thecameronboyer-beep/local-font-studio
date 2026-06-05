@@ -4415,9 +4415,43 @@ h1 {
 }
 
 .preview-text-font-picker {
+  display: grid;
+  gap: 6px;
   width: 100%;
   min-width: 0;
   color: var(--preview-text-font-ink, var(--app-text));
+}
+
+.preview-text-font-picker-button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid color-mix(in srgb, var(--preview-text-font-accent, var(--app-accent)) 36%, transparent);
+  border-radius: 8px;
+  background: var(--preview-text-font-bg, #141315);
+  color: var(--preview-text-font-ink, var(--app-text));
+  padding: 4px 7px;
+  text-align: left;
+}
+
+.preview-text-font-picker-button:focus-visible {
+  border-color: var(--preview-text-font-accent, var(--app-accent));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--preview-text-font-accent, var(--app-accent)) 26%, transparent);
+}
+
+.preview-text-font-picker-button svg {
+  width: 17px;
+  height: 17px;
+  color: var(--preview-text-font-ink, var(--app-text));
+  stroke-width: 2.5;
+  transition: transform 150ms ease;
+}
+
+.preview-text-font-picker-button svg.expanded {
+  transform: rotate(180deg);
 }
 
 .preview-text-font-name-preview {
@@ -4802,8 +4836,40 @@ h1 {
 }
 
 .add-panel-controls > .style-text-draft-drawer {
-  bottom: calc((var(--phone-image-category-row-height) * 4) + 128px);
-  max-height: min(34dvh, 300px);
+  position: fixed;
+  top: calc(max(10px, env(safe-area-inset-top)) + 68px);
+  right: auto;
+  bottom: var(--phone-image-edit-panel-height);
+  left: 50%;
+  z-index: 24;
+  display: grid;
+  align-content: start;
+  width: min(var(--phone-shell-width), 100vw);
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  background: var(--app-surface-solid);
+  padding: 12px 14px;
+  transform: translateX(-50%);
+}
+
+.add-panel-controls > .style-text-draft-drawer .style-text-layer-card {
+  min-height: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.add-panel-controls > .style-text-draft-drawer .preview-text-font-picker-menu {
+  max-height: min(38dvh, 360px);
+}
+
+.add-panel-controls > .style-text-draft-drawer .style-text-layer-input {
+  min-height: min(22dvh, 210px);
+}
+
+.add-panel-controls > .style-text-draft-drawer .style-add-text-button {
+  width: min(170px, 100%);
 }
 
 .phone-image-action-row {
