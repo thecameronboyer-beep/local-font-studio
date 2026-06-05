@@ -4406,6 +4406,18 @@ h1 {
   font-size: 0.82rem;
 }
 
+.style-add-text-button {
+  justify-self: start;
+  min-height: 28px;
+  padding: 0 9px;
+  font-size: 0.62rem;
+}
+
+.style-add-text-button svg {
+  width: 13px;
+  height: 13px;
+}
+
 .style-select-edit-panel {
   display: grid;
   gap: 8px;

@@ -5593,11 +5593,6 @@ export default function TextPreview({
     if (activeStyleDrawer === "text") {
       return (
         <div className="draw-control-drawer style-control-drawer" aria-label="Text drawer">
-          <button className="draw-drawer-button accent full" type="button" onClick={addPreviewTextLayer}>
-            <Plus aria-hidden="true" />
-            <span>Add text</span>
-          </button>
-
           {previewTextLayers.length === 0 ? (
             <p className="style-drawer-empty">Add a preview-only text box to mix another saved font into this image.</p>
           ) : (
@@ -5651,6 +5646,10 @@ export default function TextPreview({
               ))}
             </div>
           )}
+          <button className="draw-drawer-button accent style-add-text-button" type="button" onClick={addPreviewTextLayer}>
+            <Plus aria-hidden="true" />
+            <span>Add text</span>
+          </button>
         </div>
       );
     }
@@ -7438,47 +7437,47 @@ export default function TextPreview({
   function renderDecorCategoryControls() {
     return (
       <div className="phone-image-panel-stack decor-panel-controls add-panel-controls" aria-label="Add controls">
-        <div className="phone-image-add-popover" aria-label="Add options">
-          <button
-            className={`secondary-button compact-button phone-image-add-option ${
-              activeStyleDrawer === "text" ? "active-tool" : ""
-            }`}
-            type="button"
-            onClick={addPreviewTextLayer}
-          >
-            <span>Text</span>
-          </button>
-          <button
-            className={`secondary-button compact-button phone-image-add-option ${
-              activeStyleDrawer === "stickers" ? "active-tool" : ""
-            }`}
-            type="button"
-            aria-expanded={activeStyleDrawer === "stickers"}
-            onClick={() => openDecorDrawer("stickers")}
-          >
-            <span>Stickers</span>
-          </button>
-          <button
-            className={`secondary-button compact-button phone-image-add-option ${
-              activeStyleDrawer === "ornaments" ? "active-tool" : ""
-            }`}
-            type="button"
-            aria-expanded={activeStyleDrawer === "ornaments"}
-            onClick={() => openDecorDrawer("ornaments")}
-          >
-            <span>Ornaments</span>
-          </button>
-          <button
-            className={`secondary-button compact-button phone-image-add-option ${
-              activeStyleDrawer === "doodle" || styleDrawMode ? "active-tool" : ""
-            }`}
-            type="button"
-            aria-expanded={activeStyleDrawer === "doodle"}
-            onClick={() => openDecorDrawer("doodle")}
-          >
-            <span>Doodle</span>
-          </button>
-        </div>
+        {activeStyleDrawer !== "text" ? (
+          <div className="phone-image-add-popover" aria-label="Add options">
+            <button
+              className="secondary-button compact-button phone-image-add-option"
+              type="button"
+              onClick={addPreviewTextLayer}
+            >
+              <span>Text</span>
+            </button>
+            <button
+              className={`secondary-button compact-button phone-image-add-option ${
+                activeStyleDrawer === "stickers" ? "active-tool" : ""
+              }`}
+              type="button"
+              aria-expanded={activeStyleDrawer === "stickers"}
+              onClick={() => openDecorDrawer("stickers")}
+            >
+              <span>Stickers</span>
+            </button>
+            <button
+              className={`secondary-button compact-button phone-image-add-option ${
+                activeStyleDrawer === "ornaments" ? "active-tool" : ""
+              }`}
+              type="button"
+              aria-expanded={activeStyleDrawer === "ornaments"}
+              onClick={() => openDecorDrawer("ornaments")}
+            >
+              <span>Ornaments</span>
+            </button>
+            <button
+              className={`secondary-button compact-button phone-image-add-option ${
+                activeStyleDrawer === "doodle" || styleDrawMode ? "active-tool" : ""
+              }`}
+              type="button"
+              aria-expanded={activeStyleDrawer === "doodle"}
+              onClick={() => openDecorDrawer("doodle")}
+            >
+              <span>Doodle</span>
+            </button>
+          </div>
+        ) : null}
         {activeStyleDrawer ? renderStyleDrawer() : null}
         {styleSelectTarget !== "text" ? renderStyleSelectionActions() : null}
       </div>
