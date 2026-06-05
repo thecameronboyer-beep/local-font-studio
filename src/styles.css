@@ -4804,7 +4804,8 @@ h1 {
 }
 
 .selected-text-option-button,
-.selected-text-apply-button {
+.selected-text-apply-button,
+.selected-text-effect-button {
   display: grid;
   place-items: center;
   width: 100%;
@@ -4819,16 +4820,24 @@ h1 {
 .selected-text-option-button {
   grid-template-rows: 17px auto;
   gap: 2px;
-  font-size: 0.6rem;
+  font-size: 0.52rem;
 }
 
 .selected-text-apply-button {
   font-size: 0.72rem;
 }
 
+.selected-text-effect-button {
+  overflow: hidden;
+  font-size: 0.56rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .selected-text-option-row .selected-text-option-button,
 .selected-text-option-row .selected-text-inline-metric-button,
-.selected-text-option-row .selected-text-apply-button {
+.selected-text-option-row .selected-text-apply-button,
+.selected-text-option-row .selected-text-effect-button {
   border-color: var(--app-border);
   background: var(--app-surface-raised);
   color: var(--app-heading);
@@ -4839,13 +4848,16 @@ h1 {
 .selected-text-option-row .selected-text-inline-metric-button:hover,
 .selected-text-option-row .selected-text-inline-metric-button:focus-visible,
 .selected-text-option-row .selected-text-apply-button:hover:not(:disabled),
-.selected-text-option-row .selected-text-apply-button:focus-visible:not(:disabled) {
+.selected-text-option-row .selected-text-apply-button:focus-visible:not(:disabled),
+.selected-text-option-row .selected-text-effect-button:hover,
+.selected-text-option-row .selected-text-effect-button:focus-visible {
   border-color: var(--app-border-strong);
   background: var(--app-surface-muted);
 }
 
 .selected-text-option-row .selected-text-option-button.active-tool,
-.selected-text-option-row .selected-text-inline-metric-button.active-tool {
+.selected-text-option-row .selected-text-inline-metric-button.active-tool,
+.selected-text-option-row .selected-text-effect-button.active-tool {
   border-color: var(--app-accent-strong);
   background: color-mix(in srgb, var(--app-accent) 24%, var(--app-surface-solid));
   color: var(--app-text-strong);
@@ -4865,6 +4877,10 @@ h1 {
 
 .selected-text-option-row.metrics-open .selected-text-option-button {
   width: 100%;
+}
+
+.selected-text-option-row.effects-open {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
 .selected-text-metrics-popover {

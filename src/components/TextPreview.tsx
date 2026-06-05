@@ -5181,6 +5181,16 @@ export default function TextPreview({
     setShareStatus(nextOpen ? "Choose size or spacing metrics." : "Text metrics closed.");
   }
 
+  function toggleSelectedTextEffects() {
+    const nextOpen = !fontEffectsMenuOpen;
+
+    setActiveFontSettingsSliderId(null);
+    setSelectedTextMetricsOpen(false);
+    setSelectedTextMetricGroup(null);
+    setFontEffectsMenuOpen(nextOpen);
+    setShareStatus(nextOpen ? "Text effects shown." : "Text effects closed.");
+  }
+
   function selectTextMetricGroup(group: SelectedTextMetricGroup) {
     setSelectedTextMetricGroup(group);
     setSelectedTextMetricsOpen(false);
@@ -5233,64 +5243,109 @@ export default function TextPreview({
     const activeSliderConfig = activeFontSettingsSliderId
       ? metricConfigs.find((config) => config.id === activeFontSettingsSliderId) ?? null
       : null;
+    const selectedTextEffectsVisible = fontEffectsMenuOpen;
+    const activeEffectCount = previewTextEffectOptions.filter((option) => imageSettings.textEffects[option.id]).length;
 
     return (
       <div
         className={`phone-image-action-row selected-text-option-row ${
           selectedTextMetricsOpen || selectedTextMetricGroup ? "metrics-open" : ""
-        }`}
+        } ${selectedTextEffectsVisible ? "effects-open" : ""}`}
         aria-label="Selected text options"
       >
         {activeSliderConfig ? renderFontSettingsSliderDrawer(activeSliderConfig) : null}
-        <button
-          className={`draw-icon-button draw-glass-button selected-text-option-button ${
-            selectedTextMetricsOpen ? "active-tool" : ""
-          }`}
-          type="button"
-          aria-pressed={selectedTextMetricsOpen}
-          onClick={toggleSelectedTextMetrics}
-        >
-          <Ruler aria-hidden="true" />
-          <span>Metrics</span>
-        </button>
-
-        {selectedTextMetricsOpen ? renderSelectedTextMetricsPopover() : null}
-        {metricConfigs.map((config) => {
-          const selected = activeFontSettingsSliderId === config.id;
-
-          return (
+        {!selectedTextEffectsVisible ? (
+          <>
             <button
-              key={config.id}
-              className={`draw-icon-button draw-glass-button selected-text-inline-metric-button ${
-                selected ? "active-tool" : ""
+              className={`draw-icon-button draw-glass-button selected-text-option-button ${
+                selectedTextMetricsOpen ? "active-tool" : ""
               }`}
               type="button"
-              aria-expanded={selected}
-              aria-label={`${config.label}: ${formatMetricValue(config.value, config.precision)}`}
-              onClick={() => {
-                setSelectedTextMetricsOpen(false);
-                setFontEffectsMenuOpen(false);
-                setActiveFontSettingsSliderId((current) => (current === config.id ? null : config.id));
-              }}
+              aria-pressed={selectedTextMetricsOpen}
+              onClick={toggleSelectedTextMetrics}
             >
-              {getFontSettingsSliderIcon(config.id)}
-              <span>{config.label}</span>
-              <strong>{formatMetricValue(config.value, config.precision)}</strong>
+              <Ruler aria-hidden="true" />
+              <span>Metrics</span>
             </button>
-          );
-        })}
-        {metricConfigs.length > 0 ? (
-          <button
-            className="draw-glass-button selected-text-apply-button"
-            type="button"
-            disabled={!hasPendingFontSpacingChanges}
-            onClick={applyFontSpacingToFont}
-            aria-label="Apply text metric changes to Font"
-            title="Apply to Font"
-          >
-            Apply
-          </button>
-        ) : null}
+
+            <button
+              className={`draw-icon-button draw-glass-button selected-text-option-button ${
+                activeEffectCount > 0 ? "active-tool" : ""
+              }`}
+              type="button"
+              aria-expanded={selectedTextEffectsVisible}
+              aria-label={`Text effects${activeEffectCount > 0 ? `: ${activeEffectCount} active` : ""}`}
+              onClick={toggleSelectedTextEffects}
+            >
+              <Sparkles aria-hidden="true" />
+              <span>Effects</span>
+            </button>
+
+            {selectedTextMetricsOpen ? renderSelectedTextMetricsPopover() : null}
+            {metricConfigs.map((config) => {
+              const selected = activeFontSettingsSliderId === config.id;
+
+              return (
+                <button
+                  key={config.id}
+                  className={`draw-icon-button draw-glass-button selected-text-inline-metric-button ${
+                    selected ? "active-tool" : ""
+                  }`}
+                  type="button"
+                  aria-expanded={selected}
+                  aria-label={`${config.label}: ${formatMetricValue(config.value, config.precision)}`}
+                  onClick={() => {
+                    setSelectedTextMetricsOpen(false);
+                    setFontEffectsMenuOpen(false);
+                    setActiveFontSettingsSliderId((current) => (current === config.id ? null : config.id));
+                  }}
+                >
+                  {getFontSettingsSliderIcon(config.id)}
+                  <span>{config.label}</span>
+                  <strong>{formatMetricValue(config.value, config.precision)}</strong>
+                </button>
+              );
+            })}
+            {metricConfigs.length > 0 ? (
+              <button
+                className="draw-glass-button selected-text-apply-button"
+                type="button"
+                disabled={!hasPendingFontSpacingChanges}
+                onClick={applyFontSpacingToFont}
+                aria-label="Apply text metric changes to Font"
+                title="Apply to Font"
+              >
+                Apply
+              </button>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <button
+              className="draw-icon-button draw-glass-button selected-text-option-button active-tool"
+              type="button"
+              aria-expanded={selectedTextEffectsVisible}
+              aria-label={`Text effects${activeEffectCount > 0 ? `: ${activeEffectCount} active` : ""}`}
+              onClick={toggleSelectedTextEffects}
+            >
+              <Sparkles aria-hidden="true" />
+              <span>Effects</span>
+            </button>
+            {previewTextEffectOptions.map((option) => (
+              <button
+                key={option.id}
+                className={`draw-glass-button selected-text-effect-button ${
+                  imageSettings.textEffects[option.id] ? "active-tool" : ""
+                }`}
+                type="button"
+                aria-pressed={imageSettings.textEffects[option.id]}
+                onClick={() => togglePreviewTextEffect(option.id)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </>
+        )}
       </div>
     );
   }
