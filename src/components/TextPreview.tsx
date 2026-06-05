@@ -4323,24 +4323,24 @@ export default function TextPreview({
       ctx.stroke();
     }
 
-    const textSelectActive = styleSelectTarget === "text" && styleSelectModeActive;
+    if (selectedPreviewTextLayerId) {
+      const selectedTextTarget = getAllPreviewTextHitTargets(ctx, renderSettings)
+        .find((target) => target.id === selectedPreviewTextLayerId);
 
-    if (textSelectActive || selectedPreviewTextLayerId) {
-      const textTargets = textSelectActive
-        ? getAllPreviewTextHitTargets(ctx, renderSettings)
-        : getPreviewTextLayerHitTargets(
-            ctx,
-            renderSettings,
-            getPhoneImageLayout(ctx, renderSettings).bodyEndY + renderSettings.fontSize * 0.35,
-          );
-      const visibleTextTargets = textSelectActive
-        ? textTargets
-        : textTargets.filter((target) => target.id === selectedPreviewTextLayerId);
-
-      visibleTextTargets.forEach((target) => {
-        ctx.fillRect(target.x - 8, target.y - 8, target.width + 16, target.height + 16);
-        ctx.strokeRect(target.x - 8, target.y - 8, target.width + 16, target.height + 16);
-      });
+      if (selectedTextTarget) {
+        ctx.fillRect(
+          selectedTextTarget.x - 8,
+          selectedTextTarget.y - 8,
+          selectedTextTarget.width + 16,
+          selectedTextTarget.height + 16,
+        );
+        ctx.strokeRect(
+          selectedTextTarget.x - 8,
+          selectedTextTarget.y - 8,
+          selectedTextTarget.width + 16,
+          selectedTextTarget.height + 16,
+        );
+      }
     }
 
     ctx.restore();
