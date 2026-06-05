@@ -2463,6 +2463,16 @@ input[type="color"] {
   width: 100%;
   border: 0;
   cursor: zoom-in;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+.phone-image-open-button * {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
 }
 
 .phone-image-open-button:focus-visible {
@@ -2489,6 +2499,10 @@ input[type="color"] {
   border: 1px solid rgba(248, 230, 194, 0.16);
   border-radius: 8px;
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.34);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
 }
 
 .phone-image-preview.long-skinny-preview {
@@ -5119,12 +5133,26 @@ h1 {
     linear-gradient(90deg, rgba(248, 230, 194, 0.035) 1px, transparent 1px),
     #0d0c0e;
   background-size: 18px 18px;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+.phone-image-fullscreen-surface * {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
 }
 
 .phone-image-fullscreen-canvas {
   max-width: min(100%, 1080px);
   max-height: none;
   cursor: pointer;
+  outline: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
 }
 
 .phone-image-fullscreen-canvas.drawing-enabled {
