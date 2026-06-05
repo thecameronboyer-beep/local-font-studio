@@ -318,6 +318,8 @@ type PreviewTextLayerHitTarget = {
   y: number;
 };
 
+type PreviewTextSelectionTone = "active" | "available";
+
 type PreviewDocument = {
   headerText?: string;
   id: string;
@@ -4281,6 +4283,35 @@ export default function TextPreview({
     ];
   }
 
+  function drawPreviewTextSelectionTarget(
+    ctx: CanvasRenderingContext2D,
+    target: PreviewTextLayerHitTarget,
+    tone: PreviewTextSelectionTone,
+  ) {
+    const padding = 8;
+
+    if (tone === "active") {
+      ctx.fillStyle = "rgba(58, 126, 114, 0.2)";
+      ctx.strokeStyle = "#4f9f8e";
+    } else {
+      ctx.fillStyle = "rgba(130, 208, 188, 0.06)";
+      ctx.strokeStyle = "rgba(130, 208, 188, 0.58)";
+    }
+
+    ctx.fillRect(
+      target.x - padding,
+      target.y - padding,
+      target.width + padding * 2,
+      target.height + padding * 2,
+    );
+    ctx.strokeRect(
+      target.x - padding,
+      target.y - padding,
+      target.width + padding * 2,
+      target.height + padding * 2,
+    );
+  }
+
   function drawPreviewSelectionOutlines(ctx: CanvasRenderingContext2D, renderSettings: PreviewImageSettings) {
     ctx.save();
     ctx.strokeStyle = "#82d0bc";
@@ -4340,23 +4371,18 @@ export default function TextPreview({
       !styleSelectMenuOpen &&
       !fullscreenSelectMenuOpen;
 
-    if (showSelectedTextOutline && selectedPreviewTextLayerId) {
-      const selectedTextTarget = getAllPreviewTextHitTargets(ctx, renderSettings)
-        .find((target) => target.id === selectedPreviewTextLayerId);
+    if (showSelectedTextOutline) {
+      const textTargets = getAllPreviewTextHitTargets(ctx, renderSettings);
+      const selectedTextTarget = selectedPreviewTextLayerId
+        ? textTargets.find((target) => target.id === selectedPreviewTextLayerId)
+        : null;
+
+      textTargets
+        .filter((target) => target.id !== selectedPreviewTextLayerId)
+        .forEach((target) => drawPreviewTextSelectionTarget(ctx, target, "available"));
 
       if (selectedTextTarget) {
-        ctx.fillRect(
-          selectedTextTarget.x - 8,
-          selectedTextTarget.y - 8,
-          selectedTextTarget.width + 16,
-          selectedTextTarget.height + 16,
-        );
-        ctx.strokeRect(
-          selectedTextTarget.x - 8,
-          selectedTextTarget.y - 8,
-          selectedTextTarget.width + 16,
-          selectedTextTarget.height + 16,
-        );
+        drawPreviewTextSelectionTarget(ctx, selectedTextTarget, "active");
       }
     }
 
