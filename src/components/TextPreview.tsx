@@ -7,7 +7,6 @@ import {
   ArrowLeftToLine,
   ArrowRightToLine,
   Baseline,
-  ChevronDown,
   Droplets,
   Feather,
   Hand,
@@ -1013,7 +1012,6 @@ export default function TextPreview({
   const [previewStickers, setPreviewStickers] = useState<PreviewSticker[]>([]);
   const [styleStickerImagesReady, setStyleStickerImagesReady] = useState(0);
   const [draftPreviewTextLayer, setDraftPreviewTextLayer] = useState<PreviewTextLayerDraft | null>(null);
-  const [openPreviewTextFontPickerId, setOpenPreviewTextFontPickerId] = useState<string | null>(null);
   const [previewTextLayers, setPreviewTextLayers] = useState<PreviewTextLayer[]>([]);
   const [savedDocuments, setSavedDocuments] = useState<PreviewDocument[]>(() => loadPreviewDocuments());
   const [selectedPreviewDoodleId, setSelectedPreviewDoodleId] = useState<string | null>(null);
@@ -1250,23 +1248,6 @@ export default function TextPreview({
     setActiveFontSettingsSliderId(null);
     setFontEffectsMenuOpen(false);
   }, [selectedPreviewTextLayerId]);
-
-  useEffect(() => {
-    if (!openPreviewTextFontPickerId) {
-      return undefined;
-    }
-
-    function closePreviewTextFontPickerOnOutsidePointer(event: PointerEvent) {
-      if (event.target instanceof Element && event.target.closest(".preview-text-font-picker")) {
-        return;
-      }
-
-      setOpenPreviewTextFontPickerId(null);
-    }
-
-    document.addEventListener("pointerdown", closePreviewTextFontPickerOnOutsidePointer);
-    return () => document.removeEventListener("pointerdown", closePreviewTextFontPickerOnOutsidePointer);
-  }, [openPreviewTextFontPickerId]);
 
   useEffect(() => {
     setActiveFontSettingsSliderId(null);
@@ -5075,18 +5056,14 @@ export default function TextPreview({
   function renderPreviewTextFontPicker({
     ariaLabel,
     onChange,
-    pickerId,
     value,
   }: {
     ariaLabel: string;
     onChange: (fontId: string) => void;
-    pickerId: string;
     value: string;
   }) {
     const customOptions = availableTextFontOptions.filter((option) => option.kind === "custom");
     const presetOptions = availableTextFontOptions.filter((option) => option.kind === "preset");
-    const selectedOption = availableTextFontOptions.find((option) => option.id === value) ?? availableTextFontOptions[0] ?? null;
-    const pickerOpen = openPreviewTextFontPickerId === pickerId;
     const pickerStyle = {
       "--preview-text-font-accent": imageSettings.accentColor,
       "--preview-text-font-bg": imageSettings.backgroundColor,
@@ -5106,7 +5083,6 @@ export default function TextPreview({
           aria-label={option.label}
           onClick={() => {
             onChange(option.id);
-            setOpenPreviewTextFontPickerId(null);
           }}
         >
           <PreviewTextFontNamePreview
@@ -5120,40 +5096,17 @@ export default function TextPreview({
     }
 
     return (
-      <div className={`preview-text-font-picker ${pickerOpen ? "open" : ""}`} style={pickerStyle}>
-        <button
-          className="preview-text-font-picker-button"
-          type="button"
-          aria-haspopup="listbox"
-          aria-expanded={pickerOpen}
-          aria-label={selectedOption ? `${ariaLabel}: ${selectedOption.label}` : ariaLabel}
-          onClick={() => setOpenPreviewTextFontPickerId((current) => (current === pickerId ? null : pickerId))}
-        >
-          {selectedOption ? (
-            <PreviewTextFontNamePreview
-              option={selectedOption}
-              inkColor={imageSettings.inkColor}
-              backgroundColor={imageSettings.backgroundColor}
-              accentColor={imageSettings.accentColor}
-            />
-          ) : (
-            <span className="preview-text-font-picker-empty">Choose font</span>
-          )}
-          <ChevronDown aria-hidden="true" />
-        </button>
-
-        {pickerOpen ? (
-          <div className="preview-text-font-picker-menu" role="listbox" aria-label={ariaLabel}>
-            {customOptions.length > 0 ? (
-              <>
-                <span className="preview-text-font-picker-group-label">Drawn fonts</span>
-                {customOptions.map(renderFontOption)}
-              </>
-            ) : null}
-            <span className="preview-text-font-picker-group-label">Preset fonts</span>
-            {presetOptions.map(renderFontOption)}
-          </div>
-        ) : null}
+      <div className="preview-text-font-picker" style={pickerStyle}>
+        <div className="preview-text-font-picker-menu" role="listbox" aria-label={ariaLabel}>
+          {customOptions.length > 0 ? (
+            <>
+              <span className="preview-text-font-picker-group-label">Drawn fonts</span>
+              {customOptions.map(renderFontOption)}
+            </>
+          ) : null}
+          <span className="preview-text-font-picker-group-label">Preset fonts</span>
+          {presetOptions.map(renderFontOption)}
+        </div>
       </div>
     );
   }
@@ -5171,7 +5124,6 @@ export default function TextPreview({
 
   function openPreviewTextLayerDraft() {
     setDraftPreviewTextLayer(getDefaultPreviewTextLayerDraft());
-    setOpenPreviewTextFontPickerId(null);
     setActiveStyleDrawer("text");
     setFullscreenAddMenuOpen(false);
     setStyleDrawMode(false);
@@ -5200,7 +5152,6 @@ export default function TextPreview({
   function addPreviewTextLayer() {
     const nextLayer = draftPreviewTextLayer ?? getDefaultPreviewTextLayerDraft();
 
-    setOpenPreviewTextFontPickerId(null);
     styleActiveDoodleRef.current = null;
     styleMovingStickerRef.current = null;
     setStyleDrawMode(false);
@@ -5228,10 +5179,6 @@ export default function TextPreview({
   }
 
   function updatePreviewTextLayer(layerId: string, patch: Partial<PreviewTextLayer>) {
-    if (patch.fontId) {
-      setOpenPreviewTextFontPickerId(null);
-    }
-
     setPreviewTextLayers((current) =>
       current.map((layer) =>
         layer.id === layerId
@@ -6263,7 +6210,6 @@ export default function TextPreview({
                 <span>Font</span>
                 {renderPreviewTextFontPicker({
                   ariaLabel: "New text font",
-                  pickerId: "draft",
                   value: draftPreviewTextLayer.fontId,
                   onChange: (fontId) => updateDraftPreviewTextLayer({ fontId }),
                 })}
@@ -6321,7 +6267,6 @@ export default function TextPreview({
                     <span>Font</span>
                     {renderPreviewTextFontPicker({
                       ariaLabel: `Text ${index + 1} font`,
-                      pickerId: `layer:${layer.id}`,
                       value: layer.fontId,
                       onChange: (fontId) => updatePreviewTextLayer(layer.id, { fontId }),
                     })}
@@ -6473,7 +6418,6 @@ export default function TextPreview({
                     <span>Font</span>
                     {renderPreviewTextFontPicker({
                       ariaLabel: "Selected text font",
-                      pickerId: `selected:${selectedPreviewTextLayer.id}`,
                       value: selectedPreviewTextLayer.fontId,
                       onChange: (fontId) => updatePreviewTextLayer(selectedPreviewTextLayer.id, { fontId }),
                     })}
