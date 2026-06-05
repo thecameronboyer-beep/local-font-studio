@@ -303,6 +303,7 @@ type PreviewTextLayer = {
   sizeScale: number;
   text: string;
 };
+type PreviewTextLayerDraft = Omit<PreviewTextLayer, "id">;
 
 type PreviewTextFontSource =
   | { font: FontSet; kind: "custom" }
@@ -868,6 +869,7 @@ export default function TextPreview({
   const [previewDoodles, setPreviewDoodles] = useState<PreviewDoodleStroke[]>([]);
   const [previewStickers, setPreviewStickers] = useState<PreviewSticker[]>([]);
   const [styleStickerImagesReady, setStyleStickerImagesReady] = useState(0);
+  const [draftPreviewTextLayer, setDraftPreviewTextLayer] = useState<PreviewTextLayerDraft | null>(null);
   const [previewTextLayers, setPreviewTextLayers] = useState<PreviewTextLayer[]>([]);
   const [savedDocuments, setSavedDocuments] = useState<PreviewDocument[]>(() => loadPreviewDocuments());
   const [selectedPreviewDoodleId, setSelectedPreviewDoodleId] = useState<string | null>(null);
@@ -4807,9 +4809,44 @@ export default function TextPreview({
     );
   }
 
-  function addPreviewTextLayer() {
+  function getDefaultPreviewTextLayerDraft(): PreviewTextLayerDraft {
     const firstPreset = fontPresets[0] ? getFontPresetOptionId(fontPresets[0].id) : null;
     const alternateFont = availableFonts.find((item) => item.id !== previewFont.id) ?? previewFont;
+
+    return {
+      fontId: firstPreset ?? alternateFont.id,
+      sizeScale: 1,
+      text: "",
+    };
+  }
+
+  function openPreviewTextLayerDraft() {
+    setDraftPreviewTextLayer(getDefaultPreviewTextLayerDraft());
+    setActiveStyleDrawer("text");
+    setFullscreenAddMenuOpen(false);
+    setStyleDrawMode(false);
+    setStyleSelectMenuOpen(false);
+    setStyleSelectModeActive(false);
+    setStyleStickerLookMode(false);
+    setStyleStickerMoveMode(false);
+    setStyleStickerFacePanelOpen(false);
+    setStyleStickerRednessPanelOpen(false);
+    setStyleStickerSleepPanelOpen(false);
+    styleActiveDoodleRef.current = null;
+    styleActiveStrokeRef.current = null;
+    styleMovingStickerRef.current = null;
+    setShareStatus("Text box ready.");
+  }
+
+  function updateDraftPreviewTextLayer(patch: Partial<PreviewTextLayerDraft>) {
+    setDraftPreviewTextLayer((current) => ({
+      ...(current ?? getDefaultPreviewTextLayerDraft()),
+      ...patch,
+    }));
+  }
+
+  function addPreviewTextLayer() {
+    const nextLayer = draftPreviewTextLayer ?? getDefaultPreviewTextLayerDraft();
 
     styleActiveDoodleRef.current = null;
     styleMovingStickerRef.current = null;
@@ -4824,16 +4861,17 @@ export default function TextPreview({
     setPreviewTextLayers((current) => [
       ...current,
       {
-        fontId: firstPreset ?? alternateFont.id,
+        fontId: nextLayer.fontId,
         id: createPreviewId(),
-        sizeScale: 1,
-        text: "strawberry market",
+        sizeScale: nextLayer.sizeScale,
+        text: nextLayer.text,
       },
     ]);
     setActiveDocumentId(null);
     setActiveStyleDrawer(null);
+    setDraftPreviewTextLayer(null);
     setFullscreenAddMenuOpen(false);
-    setShareStatus("Added preset text layer.");
+    setShareStatus("Added text layer.");
   }
 
   function updatePreviewTextLayer(layerId: string, patch: Partial<PreviewTextLayer>) {
@@ -5595,7 +5633,54 @@ export default function TextPreview({
     if (activeStyleDrawer === "text") {
       return (
         <div className="draw-control-drawer style-control-drawer" aria-label="Text drawer">
-          {previewTextLayers.length === 0 ? (
+          {draftPreviewTextLayer ? (
+            <div className="style-text-layer-card">
+              <div className="style-text-layer-heading">
+                <strong>Add text</strong>
+              </div>
+
+              <label className="style-text-layer-field">
+                <span>Font</span>
+                <select
+                  value={draftPreviewTextLayer.fontId}
+                  onChange={(event) => updateDraftPreviewTextLayer({ fontId: event.target.value })}
+                >
+                  {renderPreviewTextFontOptions()}
+                </select>
+              </label>
+
+              <label className="draw-drawer-range">
+                <span>Size</span>
+                <input
+                  type="range"
+                  min="0.55"
+                  max="2"
+                  step="0.05"
+                  value={draftPreviewTextLayer.sizeScale}
+                  onChange={(event) => updateDraftPreviewTextLayer({ sizeScale: Number(event.target.value) })}
+                />
+                <output>{draftPreviewTextLayer.sizeScale.toFixed(2)}x</output>
+              </label>
+
+              <textarea
+                className="style-text-layer-input"
+                aria-label="New text layer"
+                value={draftPreviewTextLayer.text}
+                onChange={(event) => updateDraftPreviewTextLayer({ text: event.target.value })}
+                placeholder="Type text"
+                spellCheck={false}
+              />
+              <button
+                className="draw-drawer-button accent style-add-text-button"
+                type="button"
+                disabled={!draftPreviewTextLayer.text.trim()}
+                onClick={addPreviewTextLayer}
+              >
+                <Plus aria-hidden="true" />
+                <span>Add text</span>
+              </button>
+            </div>
+          ) : previewTextLayers.length === 0 ? (
             <p className="style-drawer-empty">Add a preview-only text box to mix another saved font into this image.</p>
           ) : (
             <div className="style-text-layer-list">
@@ -5648,10 +5733,16 @@ export default function TextPreview({
               ))}
             </div>
           )}
-          <button className="draw-drawer-button accent style-add-text-button" type="button" onClick={addPreviewTextLayer}>
-            <Plus aria-hidden="true" />
-            <span>Add text</span>
-          </button>
+          {!draftPreviewTextLayer ? (
+            <button
+              className="draw-drawer-button accent style-add-text-button"
+              type="button"
+              onClick={openPreviewTextLayerDraft}
+            >
+              <Plus aria-hidden="true" />
+              <span>Add text</span>
+            </button>
+          ) : null}
         </div>
       );
     }
@@ -5741,7 +5832,7 @@ export default function TextPreview({
               {previewTextLayers.length === 0 ? (
                 <>
                   <p className="style-drawer-empty">No extra text layers yet.</p>
-                  <button className="draw-drawer-button accent full" type="button" onClick={addPreviewTextLayer}>
+                  <button className="draw-drawer-button accent full" type="button" onClick={openPreviewTextLayerDraft}>
                     <Plus aria-hidden="true" />
                     <span>Add text</span>
                   </button>
@@ -6101,6 +6192,7 @@ export default function TextPreview({
     styleActiveStrokeRef.current = null;
     styleMovingStickerRef.current = null;
     setFullscreenAddMenuOpen(false);
+    setDraftPreviewTextLayer(null);
     setStyleDrawMode(false);
     setStyleSelectMenuOpen(false);
     setStyleSelectModeActive(false);
@@ -6990,6 +7082,7 @@ export default function TextPreview({
     setImageStyleDrawerOpen(false);
     setActiveStyleDrawer(null);
     setFullscreenAddMenuOpen(false);
+    setDraftPreviewTextLayer(null);
     setFullscreenSelectMenuOpen(false);
     setStyleDrawMode(false);
     setStyleSelectMenuOpen(false);
@@ -7010,6 +7103,7 @@ export default function TextPreview({
     setFullscreenActionPanelOpen(true);
     setActiveSettingsPanel("font");
     setFullscreenAddMenuOpen(false);
+    setDraftPreviewTextLayer(null);
     setActiveFontSettingsSliderId(null);
     setFontEffectsMenuOpen(false);
     setActiveImageSettingsSliderId(null);
@@ -7034,6 +7128,7 @@ export default function TextPreview({
     setFullscreenActionPanelOpen(true);
     setActiveSettingsPanel("font");
     setFullscreenAddMenuOpen(false);
+    setDraftPreviewTextLayer(null);
     setFullscreenSelectMenuOpen(false);
     setActiveFontSettingsSliderId(null);
     setFontEffectsMenuOpen(false);
@@ -7109,6 +7204,7 @@ export default function TextPreview({
 
     if (panel !== "decor") {
       setFullscreenAddMenuOpen(false);
+      setDraftPreviewTextLayer(null);
     }
 
     if (panel !== "image") {
@@ -7431,6 +7527,7 @@ export default function TextPreview({
 
   function openDecorDrawer(drawer: Exclude<StyleDrawer, "text" | null>) {
     setFullscreenAddMenuOpen(false);
+    setDraftPreviewTextLayer(null);
     setStyleDrawMode(false);
     setStyleSelectMenuOpen(false);
     setStyleStickerLookMode(false);
@@ -7458,6 +7555,7 @@ export default function TextPreview({
     setImageStyleDrawerOpen(false);
     setActiveLetterSettingsSliderId(null);
     setActiveStyleDrawer(null);
+    setDraftPreviewTextLayer(null);
     setStyleDrawMode(false);
     setStyleSelectMenuOpen(false);
     setStyleSelectModeActive(false);
@@ -7480,7 +7578,7 @@ export default function TextPreview({
             <button
               className="secondary-button compact-button phone-image-add-option"
               type="button"
-              onClick={addPreviewTextLayer}
+              onClick={openPreviewTextLayerDraft}
             >
               <span>Text</span>
             </button>
