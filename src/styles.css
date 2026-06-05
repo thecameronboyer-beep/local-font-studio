@@ -4812,6 +4812,28 @@ h1 {
   line-height: 1;
 }
 
+.selected-text-option-row .selected-text-option-button,
+.selected-text-option-row .selected-text-inline-metric-button {
+  border-color: var(--app-border);
+  background: var(--app-surface-raised);
+  color: var(--app-heading);
+}
+
+.selected-text-option-row .selected-text-option-button:hover,
+.selected-text-option-row .selected-text-option-button:focus-visible,
+.selected-text-option-row .selected-text-inline-metric-button:hover,
+.selected-text-option-row .selected-text-inline-metric-button:focus-visible {
+  border-color: var(--app-border-strong);
+  background: var(--app-surface-muted);
+}
+
+.selected-text-option-row .selected-text-option-button.active-tool,
+.selected-text-option-row .selected-text-inline-metric-button.active-tool {
+  border-color: var(--app-accent-strong);
+  background: color-mix(in srgb, var(--app-accent) 24%, var(--app-surface-solid));
+  color: var(--app-text-strong);
+}
+
 .selected-text-option-button svg {
   width: 15px;
   height: 15px;
