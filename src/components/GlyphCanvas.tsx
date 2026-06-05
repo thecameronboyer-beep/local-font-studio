@@ -1598,7 +1598,7 @@ export default function GlyphCanvas({
       <canvas
         ref={canvasRef}
         className={`glyph-canvas ${tool === "eraser" ? "eraser-cursor" : ""} ${tool === "eyes" ? "eyes-cursor" : ""} ${tool === "select" ? "select-cursor" : ""} ${tool === "pan" ? "pan-cursor" : ""} ${guideEditMode ? "guide-cursor" : ""}`}
-        aria-label="Glyph drawing canvas"
+        aria-label="Glyph design canvas"
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={finishStroke}

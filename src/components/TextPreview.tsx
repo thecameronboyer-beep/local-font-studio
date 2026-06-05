@@ -5231,7 +5231,7 @@ export default function TextPreview({
           <div className="preview-text-font-picker-menu" role="listbox" aria-label={ariaLabel}>
             {customOptions.length > 0 ? (
               <>
-                <span className="preview-text-font-picker-group-label">Drawn fonts</span>
+                <span className="preview-text-font-picker-group-label">Designed fonts</span>
                 {customOptions.map(renderFontOption)}
               </>
             ) : null}
@@ -5899,7 +5899,7 @@ export default function TextPreview({
     const doodleId = getCurrentStyleSelectDoodle()?.id ?? null;
 
     if (!doodleId) {
-      setShareStatus("Draw a doodle first.");
+      setShareStatus("Design a doodle first.");
       return;
     }
 
@@ -6336,7 +6336,7 @@ export default function TextPreview({
               onClick={() => {
                 setStyleStickerMoveMode(false);
                 setStyleDrawMode((current) => !current);
-                setShareStatus(styleDrawMode ? "Doodle off." : "Draw doodles on the page.");
+                setShareStatus(styleDrawMode ? "Doodle off." : "Design doodles on the page.");
               }}
             >
               <PenLine aria-hidden="true" />
@@ -8361,7 +8361,7 @@ export default function TextPreview({
           {renderLetterSettingsControls("phone-image-fullscreen-tools preview-layout-tools letter-settings-tools")}
           <button className="secondary-button compact-button phone-image-tool-button" type="button" onClick={openSelectedLetterEditor}>
             <PenLine aria-hidden="true" />
-            <span>Draw letter</span>
+            <span>Design letter</span>
           </button>
           <button
             className="draw-icon-button draw-gold-button font-slider-apply-button"

@@ -96,7 +96,7 @@ export const defaultFontShapeSettings: FontShapeSettings = {
 };
 
 export const fontHomeSectionOptions: Array<{ id: FontHomeSectionId; label: string }> = [
-  { id: "drawActions", label: "Draw actions" },
+  { id: "drawActions", label: "Design actions" },
   { id: "exportControls", label: "Export controls" },
   { id: "previewText", label: "Preview text" },
   { id: "glyphQueue", label: "Glyph queue" },
@@ -110,7 +110,7 @@ export const defaultFontHomeSettings: FontHomeSettings = {
 };
 
 export const fontWritingStyleOptions: Array<{ id: FontWritingStyleId; label: string }> = [
-  { id: "draw", label: "Draw" },
+  { id: "draw", label: "Design" },
   { id: "build", label: "Build" },
 ];
 

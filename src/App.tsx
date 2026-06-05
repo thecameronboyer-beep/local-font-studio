@@ -664,7 +664,7 @@ export default function App() {
               setEditorFullScreen(true);
             }}
           >
-            Draw Letters
+            Design Letters
           </button>
           <button
             type="button"

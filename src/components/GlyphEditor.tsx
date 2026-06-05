@@ -2066,14 +2066,14 @@ export default function GlyphEditor({
               <button
                 className="draw-glass-button draw-top-construction-button"
                 type="button"
-                aria-label="Return to drawing mode"
-                title="Draw"
+                aria-label="Return to design mode"
+                title="Design"
                 onClick={() => {
                   setEditorMode("draw");
                   setActiveFullscreenDrawer(null);
                 }}
               >
-                Draw
+                Design
               </button>
             )}
             <button
@@ -2514,8 +2514,8 @@ export default function GlyphEditor({
           }}
         />
 
-        <div className="draw-header-stack" aria-label="Drawing header">
-          <div className="draw-only-topbar" aria-label="Drawing navigation">
+        <div className="draw-header-stack" aria-label="Design header">
+          <div className="draw-only-topbar" aria-label="Design navigation">
             <button
               className="draw-glass-button draw-icon-button draw-top-icon"
               type="button"
@@ -2747,7 +2747,7 @@ export default function GlyphEditor({
           )}
 
           {activeFullscreenDrawer === "more" && (
-            <div id="draw-more-drawer" className="draw-control-drawer" aria-label="More drawing controls">
+            <div id="draw-more-drawer" className="draw-control-drawer" aria-label="More design controls">
               {renderVariationControls("glyph-variation-strip draw-variation-strip")}
 
               <div className="draw-drawer-grid three" aria-label="Save actions">
@@ -3000,7 +3000,7 @@ export default function GlyphEditor({
           )}
 
           {!stickerMode ? (
-          <div className="draw-only-toolbar" aria-label="Drawing dock">
+          <div className="draw-only-toolbar" aria-label="Design dock">
             <button
               className={`draw-glass-button draw-icon-button ${tool === lastInkTool ? "active-tool" : ""}`}
               type="button"
@@ -3103,7 +3103,7 @@ export default function GlyphEditor({
                 activeFullscreenDrawer === "more" ? "active-tool" : ""
               }`}
               type="button"
-              aria-label="Open more drawing controls"
+              aria-label="Open more design controls"
               aria-expanded={activeFullscreenDrawer === "more"}
               aria-controls="draw-more-drawer"
               title="More"
@@ -3237,7 +3237,7 @@ export default function GlyphEditor({
             type="button"
             onClick={() => setEditorMode("draw")}
           >
-            Draw
+            Design
           </button>
           <button
             className={`secondary-button ${editorMode === "construction" ? "active-tool" : ""}`}
@@ -3313,7 +3313,7 @@ export default function GlyphEditor({
 
       {editorMode === "draw" && (
       <div className="editor-controls">
-        <div className="tool-row" aria-label="Drawing tools">
+        <div className="tool-row" aria-label="Design tools">
           <button
             className={`secondary-button ${tool === "pen" ? "active-tool" : ""}`}
             type="button"

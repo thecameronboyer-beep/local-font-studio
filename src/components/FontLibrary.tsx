@@ -388,12 +388,12 @@ function FontGuideEditor({
   }
 
   return (
-    <section className="font-guide-overlay" aria-label="Drawing line setup">
+    <section className="font-guide-overlay" aria-label="Design line setup">
       <div className="font-guide-card">
         <div className="font-guide-heading">
           <div>
             <p className="eyebrow">Font settings</p>
-            <h2>Drawing lines</h2>
+            <h2>Design lines</h2>
           </div>
           <button className="secondary-button compact-button" type="button" onClick={onClose}>
             Done
@@ -404,7 +404,7 @@ function FontGuideEditor({
           <canvas
             ref={canvasRef}
             className="font-guide-canvas"
-            aria-label="Adjust drawing guide lines"
+            aria-label="Adjust design guide lines"
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
@@ -641,7 +641,7 @@ export default function FontLibrary({
                 type="button"
                 onClick={() => setGuideEditorOpen(true)}
               >
-                Adjust drawing lines
+                Adjust design lines
               </button>
               <div className="font-guide-summary">
                 <span>Height {Math.round(newFontGuideSettings.xHeight * 100)}%</span>
@@ -859,7 +859,7 @@ export default function FontLibrary({
                   type="button"
                   onClick={() => setActiveGuideEditorOpen(true)}
                 >
-                  Adjust drawing lines
+                  Adjust design lines
                 </button>
                 <div className="font-guide-summary">
                   <span>Height {Math.round(activeFont.guideSettings.xHeight * 100)}%</span>
@@ -910,7 +910,7 @@ export default function FontLibrary({
       {activeFont.homeSettings.visibleSections.drawActions && (
         <div className="library-actions">
           <button className="primary-button start-drawing-button" type="button" onClick={onStartDrawing}>
-            Start drawing
+            Start designing
           </button>
         </div>
       )}
