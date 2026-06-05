@@ -7517,19 +7517,28 @@ export default function TextPreview({
     return (
       <div className="phone-image-category-row" aria-label="Preview edit categories">
         {fullscreenPanelOptions.map((option) => {
+          const isSelectPanel = option.id === "font";
           const selected = option.id === "font"
             ? activeSettingsPanel === "font" && fullscreenActionPanelOpen
             : activeSettingsPanel === option.id && fullscreenActionPanelOpen;
+          const selectTargetLabel = getStyleSelectTargetLabel(styleSelectTarget);
+          const showSelectTarget = isSelectPanel && styleSelectModeActive;
 
           return (
             <button
               key={option.id}
-              className={`secondary-button compact-button ${selected ? "active-tool" : ""}`}
+              className={[
+                "secondary-button",
+                "compact-button",
+                showSelectTarget ? "phone-image-select-category-button" : "",
+                selected ? "active-tool" : "",
+              ].filter(Boolean).join(" ")}
               type="button"
               aria-expanded={selected}
               aria-pressed={selected}
+              aria-label={showSelectTarget ? `Select ${selectTargetLabel}` : option.label}
               onClick={() => {
-                if (option.id === "font") {
+                if (isSelectPanel) {
                   openFullscreenSelectPopover();
                   return;
                 }
@@ -7537,7 +7546,12 @@ export default function TextPreview({
                 setFullscreenSettings(option.id);
               }}
             >
-              {option.label}
+              {showSelectTarget ? (
+                <>
+                  <MousePointer2 aria-hidden="true" />
+                  <span className="phone-image-select-category-label">{selectTargetLabel}</span>
+                </>
+              ) : option.label}
             </button>
           );
         })}
