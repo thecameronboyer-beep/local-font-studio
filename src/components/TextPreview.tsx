@@ -5580,6 +5580,8 @@ export default function TextPreview({
         title={label}
         onClick={() => {
           if (drawer === "select") {
+            const selectMenuWasOpen = styleSelectMenuOpen;
+
             setStyleDrawMode(false);
             setStyleStickerLookMode(false);
             setStyleStickerMoveMode(false);
@@ -5592,8 +5594,16 @@ export default function TextPreview({
             setActiveFontSettingsSliderId(null);
             setFontEffectsMenuOpen(false);
             setActiveStyleDrawer(null);
+
+            if (selectMenuWasOpen) {
+              setStyleSelectModeActive(false);
+              setStyleSelectMenuOpen(false);
+              setShareStatus("Select closed.");
+              return;
+            }
+
             setStyleSelectModeActive(true);
-            setStyleSelectMenuOpen((current) => !current);
+            setStyleSelectMenuOpen(true);
             return;
           }
 
@@ -7350,6 +7360,13 @@ export default function TextPreview({
   function openFullscreenSelectPopover() {
     const currentlyOpen = activeSettingsPanel === "font" && fullscreenActionPanelOpen && fullscreenSelectMenuOpen;
 
+    if (currentlyOpen) {
+      closeFullscreenActionControls();
+      setFullscreenActionPanelOpen(false);
+      setShareStatus("Select closed.");
+      return;
+    }
+
     setFullscreenActionPanelOpen(true);
     setActiveSettingsPanel("font");
     setFullscreenAddMenuOpen(false);
@@ -7376,7 +7393,7 @@ export default function TextPreview({
     styleActiveStrokeRef.current = null;
     styleMovingStickerRef.current = null;
     setSelectedPreviewTextLayerId(null);
-    setFullscreenSelectMenuOpen(!currentlyOpen);
+    setFullscreenSelectMenuOpen(true);
   }
 
   function chooseFullscreenSelectTarget(target: StyleSelectTarget) {
