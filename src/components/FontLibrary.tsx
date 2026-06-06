@@ -40,10 +40,10 @@ import type { FontGuideKey } from "../utils/fontGuides";
 import { isNativeFilePlatform, saveNativeFileToDocuments, shareNativeFile } from "../utils/nativeFiles";
 
 type FontLibraryProps = {
-  homeMode: "design" | "compose" | "seal";
+  homeMode: "design" | "compose";
   fonts: FontSet[];
   activeFontId: string;
-  onHomeModeChange: (mode: "design" | "compose" | "seal") => void;
+  onHomeModeChange: (mode: "design" | "compose") => void;
   onSelectFont: (fontId: string) => void;
   onCreateFont: (
     name: string,
@@ -915,7 +915,6 @@ export default function FontLibrary({
         {([
           { id: "design", label: "Design" },
           { id: "compose", label: "Compose" },
-          { id: "seal", label: "Seal" },
         ] as const).map((option) => (
           <button
             key={option.id}
