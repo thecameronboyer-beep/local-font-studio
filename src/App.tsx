@@ -1,10 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Plus } from "lucide-react";
+import { CompileView } from "./components/CompileView";
 import FontLibrary from "./components/FontLibrary";
 import FontMetricsPanel from "./components/FontMetricsPanel";
 import GlyphEditor from "./components/GlyphEditor";
 import GlyphGrid from "./components/GlyphGrid";
+import { QuillLibraryView } from "./components/QuillLibraryView";
 import SavedImagesPanel from "./components/SavedImagesPanel";
-import TextPreview from "./components/TextPreview";
+import TextPreview, {
+  loadPreviewDesignPresetSummaries,
+  type PreviewDesignPresetSummary,
+} from "./components/TextPreview";
 import {
   APP_THEME_STORAGE_KEY,
   APP_THEME_BACKGROUND_STORAGE_KEY,
@@ -30,6 +36,37 @@ import {
   saveFontStudioData,
 } from "./storage/fontStorage";
 import { loadSavedImages, saveSavedImages } from "./storage/savedImageStorage";
+import {
+  buildAutoEntryPair,
+  formatAutoEntryTimestamp,
+  getLatestAutoEntryPageInfo,
+  isMeaningfulAutoEntryActivity,
+  type AutoEntryKind,
+  type AutoEntryPairDraft,
+} from "./storage/quillAutoEntryLog";
+import {
+  addStructureItemToCompilation,
+  ensureBookHasAutoSections,
+  createBookCompilation,
+  loadBookCompilations,
+  loadCompiledPages,
+  loadUpdateEntries,
+  movePlacedPageInCompilation,
+  movePlacedPageToStructureItemInCompilation,
+  placePageInCompilation,
+  removeStructureItemFromCompilation,
+  removePlacedPageFromCompilation,
+  renameStructureItemInCompilation,
+  renameBookCompilation,
+  saveBookCompilations,
+  saveUpdateEntries,
+  type BookStructureKind,
+  type BookCompilation,
+  saveRenderedQuillPage,
+  type CompiledPage,
+  type SaveRenderedQuillPageInput,
+  type UpdateEntry,
+} from "./storage/quillWorkspaceStorage";
 import type {
   FontCharacterSettings,
   FontGuideSettings,
@@ -38,6 +75,7 @@ import type {
   FontSpacingApplyDraft,
   FontShapeSettings,
   FontSet,
+  ProjectActivity,
   FontStudioData,
   FontTheme,
   FontWritingStyleSettings,
@@ -48,7 +86,43 @@ import type {
   SavedImageDraft,
 } from "./types/fontTypes";
 
-type HomeMode = "design" | "compose";
+type HomeMode = "design" | "compose" | "compile" | "library";
+
+type PendingAutoEntryRequest = {
+  bookId: string;
+  bookTitle: string;
+  createdAt: string;
+  fallbackPresetKinds: AutoEntryKind[];
+  id: number;
+  pair: AutoEntryPairDraft;
+};
+
+type AutoEntryRenderJob = {
+  bookId: string;
+  entries: Array<{
+    currentPageId?: string;
+    currentPageText?: string;
+    kind: AutoEntryKind;
+    nextPageNumber: number;
+    pageNumber: number;
+    pageTitle: string;
+    presetId?: string;
+    text: string;
+  }>;
+  requestId: number;
+};
+
+type AutoEntryRenderResult = {
+  bookId: string;
+  entries: Array<{
+    fallbackUsed: boolean;
+    kind: AutoEntryKind;
+    page: CompiledPage;
+    pageNumber: number;
+    rolledOver: boolean;
+  }>;
+  requestId: number;
+};
 
 export default function App() {
   const [initialLoad] = useState(() => {
@@ -92,6 +166,21 @@ export default function App() {
   const [headerPreviewText, setHeaderPreviewText] = useState("");
   const [previewText, setPreviewText] = useState("the ducks know about the blue canoe.");
   const [homeMode, setHomeMode] = useState<HomeMode>("compose");
+  const [previewDesignPresets, setPreviewDesignPresets] = useState<PreviewDesignPresetSummary[]>(() =>
+    loadPreviewDesignPresetSummaries(),
+  );
+  const [activePreviewDesignPresetId, setActivePreviewDesignPresetId] = useState("");
+  const [designPresetApplyRequestId, setDesignPresetApplyRequestId] = useState(0);
+  const [presetBuilderRequestId, setPresetBuilderRequestId] = useState(0);
+  const [compiledPages, setCompiledPages] = useState<CompiledPage[]>(() => loadCompiledPages());
+  const [initialBookCompilations] = useState<BookCompilation[]>(() => loadBookCompilations().map(ensureBookHasAutoSections));
+  const [bookCompilations, setBookCompilations] = useState<BookCompilation[]>(initialBookCompilations);
+  const [updateEntries, setUpdateEntries] = useState<UpdateEntry[]>(() => loadUpdateEntries());
+  const [autoEntryQueue, setAutoEntryQueue] = useState<PendingAutoEntryRequest[]>([]);
+  const [activeAutoEntryRequestId, setActiveAutoEntryRequestId] = useState<number | null>(null);
+  const [autoEntryStatus, setAutoEntryStatus] = useState("Story and Changelog auto-entry is ready for this book.");
+  const [activeCompiledPageId, setActiveCompiledPageId] = useState("");
+  const [activeBookId, setActiveBookId] = useState(() => initialBookCompilations[0]?.id ?? "");
 
   const activeFont = useMemo(
     () =>
@@ -109,18 +198,58 @@ export default function App() {
     [activeAppTheme, activeAppThemeBackgroundId],
   );
   const selectedCharacterIndex = activeCharacters.indexOf(selectedCharacter);
+  const activeBook = useMemo(
+    () => bookCompilations.find((book) => book.id === activeBookId) ?? bookCompilations[0],
+    [activeBookId, bookCompilations],
+  );
+  const activeAutoEntryRequest = useMemo(
+    () => autoEntryQueue.find((request) => request.id === activeAutoEntryRequestId) ?? null,
+    [activeAutoEntryRequestId, autoEntryQueue],
+  );
+  const autoEntryRenderJob = useMemo(
+    () =>
+      activeAutoEntryRequest
+        ? buildAutoEntryRenderJob(activeAutoEntryRequest, compiledPages, updateEntries, previewDesignPresets)
+        : null,
+    [activeAutoEntryRequest, compiledPages, updateEntries, previewDesignPresets],
+  );
+  const latestStoryPage = useMemo(
+    () => (activeBook ? getLatestAutoEntryPageInfo(updateEntries, activeBook.id, "story") : null),
+    [activeBook, updateEntries],
+  );
+  const latestChangelogPage = useMemo(
+    () => (activeBook ? getLatestAutoEntryPageInfo(updateEntries, activeBook.id, "changelog") : null),
+    [activeBook, updateEntries],
+  );
+  const compilationPages = useMemo(
+    () => buildCompilationPages(compiledPages, updateEntries, studioData.activityLog),
+    [compiledPages, studioData.activityLog, updateEntries],
+  );
+  const handlePreviewDesignPresetsChange = useCallback((presets: PreviewDesignPresetSummary[], activePresetId?: string) => {
+    setPreviewDesignPresets(presets);
+    setActivePreviewDesignPresetId((currentPresetId) => {
+      if (activePresetId) {
+        return activePresetId;
+      }
+
+      return presets.some((preset) => preset.id === currentPresetId) ? currentPresetId : "";
+    });
+  }, []);
 
   function getSavedGlyphCount(font: FontSet) {
     return getVisibleCharacters(font).filter((character) => hasDrawnGlyph(font.glyphs[character])).length;
   }
 
   useEffect(() => {
-    document.body.classList.toggle("editor-fullscreen-open", editorFullScreen || gridFullScreen || savedImagesOpen);
+    document.body.classList.toggle(
+      "editor-fullscreen-open",
+      editorFullScreen || gridFullScreen || savedImagesOpen || homeMode === "library",
+    );
 
     return () => {
       document.body.classList.remove("editor-fullscreen-open");
     };
-  }, [editorFullScreen, gridFullScreen, savedImagesOpen]);
+  }, [editorFullScreen, gridFullScreen, homeMode, savedImagesOpen]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -170,11 +299,67 @@ export default function App() {
 
     setStudioData(dataWithActivity);
     saveProjectData(dataWithActivity, activity);
+    queueAutoEntriesForActivity(activity ? dataWithActivity.activityLog[0] ?? null : null);
   }
 
   function persistSavedImages(nextImages: SavedImage[]) {
     saveSavedImages(nextImages);
     setSavedImages(nextImages);
+  }
+
+  function persistBookCompilations(nextBooks: BookCompilation[]) {
+    const normalizedBooks = nextBooks.map(ensureBookHasAutoSections);
+    saveBookCompilations(normalizedBooks);
+    setBookCompilations(normalizedBooks);
+    if (!normalizedBooks.some((book) => book.id === activeBookId)) {
+      setActiveBookId(normalizedBooks[0]?.id ?? "");
+    }
+  }
+
+  function persistUpdateEntries(nextEntries: UpdateEntry[]) {
+    saveUpdateEntries(nextEntries);
+    setUpdateEntries(nextEntries);
+  }
+
+  function queueAutoEntriesForActivity(activity: ProjectActivity | null) {
+    if (!isMeaningfulAutoEntryActivity(activity) || !activeBook) {
+      return;
+    }
+
+    const pair = buildAutoEntryPair(activity);
+    const requestId = Date.now() + autoEntryQueue.length;
+    const storyPresetId = resolveAutoEntryPresetId(previewDesignPresets, "story");
+    const changelogPresetId = resolveAutoEntryPresetId(previewDesignPresets, "changelog");
+    const fallbackPresetKinds: AutoEntryKind[] = [];
+
+    if (!storyPresetId) {
+      fallbackPresetKinds.push("story");
+    }
+    if (!changelogPresetId) {
+      fallbackPresetKinds.push("changelog");
+    }
+
+    if (fallbackPresetKinds.length > 0) {
+      setAutoEntryStatus(
+        `Using the current compose layout until the ${fallbackPresetKinds
+          .map((kind) => (kind === "story" ? "Story" : "Changelog"))
+          .join(" and ")} preset is available.`,
+      );
+    } else {
+      setAutoEntryStatus(`Auto-entry is writing into ${activeBook.title}.`);
+    }
+
+    setAutoEntryQueue((current) => [
+      ...current,
+      {
+        bookId: activeBook.id,
+        bookTitle: activeBook.title,
+        createdAt: pair.createdAt,
+        fallbackPresetKinds,
+        id: requestId,
+        pair,
+      },
+    ]);
   }
 
   function handleSelectCharacter(character: string) {
@@ -607,6 +792,151 @@ export default function App() {
     persistSavedImages(savedImages.filter((image) => image.id !== imageId));
   }
 
+  useEffect(() => {
+    if (activeAutoEntryRequestId === null && autoEntryQueue.length > 0) {
+      setActiveAutoEntryRequestId(autoEntryQueue[0].id);
+    }
+  }, [activeAutoEntryRequestId, autoEntryQueue]);
+
+  async function handleSaveRenderedPage(input: SaveRenderedQuillPageInput) {
+    const page = await saveRenderedQuillPage(input);
+    setCompiledPages(loadCompiledPages());
+    setActiveCompiledPageId(page.id);
+    return page;
+  }
+
+  function handleAutoEntryRenderComplete(result: AutoEntryRenderResult) {
+    const request = autoEntryQueue.find((item) => item.id === result.requestId);
+
+    if (!request) {
+      setActiveAutoEntryRequestId(null);
+      return;
+    }
+
+    const storyResult = result.entries.find((entry) => entry.kind === "story");
+    const changelogResult = result.entries.find((entry) => entry.kind === "changelog");
+
+    if (!storyResult || !changelogResult) {
+      setActiveAutoEntryRequestId(null);
+      setAutoEntryQueue((current) => current.filter((item) => item.id !== result.requestId));
+      return;
+    }
+
+    const nextBooks = placeAutoEntryPagesIntoBook(
+      bookCompilations,
+      request.bookId,
+      storyResult.page,
+      changelogResult.page,
+    );
+    persistBookCompilations(nextBooks);
+
+    const nextEntries: UpdateEntry[] = [
+      {
+        bookId: request.bookId,
+        changelogPageId: changelogResult.page.id,
+        changelogPageNumber: changelogResult.pageNumber,
+        changelogText: request.pair.changelogText,
+        createdAt: request.createdAt,
+        entryPairId: `entry-pair-${request.pair.sourceActivityId}`,
+        id: `update-entry-${request.pair.sourceActivityId}`,
+        sourceActivityId: request.pair.sourceActivityId,
+        storyPageId: storyResult.page.id,
+        storyPageNumber: storyResult.pageNumber,
+        storyText: request.pair.storyText,
+      },
+      ...updateEntries.filter((entry) => entry.sourceActivityId !== request.pair.sourceActivityId),
+    ];
+    persistUpdateEntries(nextEntries);
+    setCompiledPages(loadCompiledPages());
+    setActiveCompiledPageId(storyResult.page.id);
+    setAutoEntryStatus(
+      result.entries.some((entry) => entry.fallbackUsed)
+        ? `Updated ${request.bookTitle} using the current compose layout because one or more auto-entry presets were missing.`
+        : `Updated ${request.bookTitle}: Story ${storyResult.pageNumber} and Changelog ${changelogResult.pageNumber}.`,
+    );
+    setAutoEntryQueue((current) => current.filter((item) => item.id !== result.requestId));
+    setActiveAutoEntryRequestId(null);
+  }
+
+  function handleCreateBookCompilation() {
+    const book = createBookCompilation(`Book ${bookCompilations.length + 1}`);
+    const nextBooks = [book, ...bookCompilations];
+    persistBookCompilations(nextBooks);
+    setActiveBookId(book.id);
+  }
+
+  function handleAddBookStructureItem(kind: BookStructureKind, title: string) {
+    if (!activeBook) {
+      return;
+    }
+
+    persistBookCompilations(addStructureItemToCompilation(bookCompilations, activeBook.id, title, kind));
+  }
+
+  function handleRenameBookStructureItem(structureItemId: string, title: string) {
+    if (!activeBook) {
+      return;
+    }
+
+    persistBookCompilations(renameStructureItemInCompilation(bookCompilations, activeBook.id, structureItemId, title));
+  }
+
+  function handleRemoveBookStructureItem(structureItemId: string) {
+    if (!activeBook) {
+      return;
+    }
+
+    persistBookCompilations(removeStructureItemFromCompilation(bookCompilations, activeBook.id, structureItemId));
+  }
+
+  function handlePlaceCompiledPage(pageId: string, structureItemId?: string) {
+    if (!activeBook) {
+      return;
+    }
+
+    const page = compilationPages.find((item) => item.id === pageId);
+    if (!page) {
+      return;
+    }
+
+    persistBookCompilations(placePageInCompilation(bookCompilations, activeBook.id, page, structureItemId));
+    setActiveCompiledPageId(page.id);
+  }
+
+  function handleRemovePlacedPage(placedPageId: string) {
+    if (!activeBook) {
+      return;
+    }
+
+    persistBookCompilations(removePlacedPageFromCompilation(bookCompilations, activeBook.id, placedPageId));
+  }
+
+  function handleMovePlacedPage(placedPageId: string, offset: number) {
+    if (!activeBook) {
+      return;
+    }
+
+    persistBookCompilations(movePlacedPageInCompilation(bookCompilations, activeBook.id, placedPageId, offset));
+  }
+
+  function handleMovePlacedPageToLocation(placedPageId: string, structureItemId: string, targetIndex: number) {
+    if (!activeBook) {
+      return;
+    }
+
+    persistBookCompilations(
+      movePlacedPageToStructureItemInCompilation(bookCompilations, activeBook.id, placedPageId, structureItemId, targetIndex),
+    );
+  }
+
+  function handleRenameBookCompilation(title: string) {
+    if (!activeBook) {
+      return;
+    }
+
+    persistBookCompilations(renameBookCompilation(bookCompilations, activeBook.id, title));
+  }
+
   function selectAppTheme(themeId: AppThemeId) {
     const nextTheme = getAppTheme(themeId);
 
@@ -614,10 +944,58 @@ export default function App() {
     setActiveAppThemeBackgroundId(getDefaultAppThemeBackgroundId(nextTheme));
   }
 
+  function resolveAutoSectionId(book: BookCompilation, kind: AutoEntryKind) {
+    return book.structureItems.find((item) => item.systemSectionKey === kind)?.id;
+  }
+
+  function placeAutoEntryPagesIntoBook(
+    books: BookCompilation[],
+    bookId: string,
+    storyPage: CompiledPage,
+    changelogPage: CompiledPage,
+  ): BookCompilation[] {
+    const book = books.find((item) => item.id === bookId);
+
+    if (!book) {
+      return books;
+    }
+
+    const storySectionId = resolveAutoSectionId(book, "story");
+    const changelogSectionId = resolveAutoSectionId(book, "changelog");
+    let nextBooks = books;
+
+    if (storySectionId && !book.placedPages.some((page) => page.pageId === storyPage.id)) {
+      nextBooks = placePageInCompilation(nextBooks, bookId, storyPage, storySectionId);
+    }
+
+    const nextBook = nextBooks.find((item) => item.id === bookId) ?? book;
+    if (changelogSectionId && !nextBook.placedPages.some((page) => page.pageId === changelogPage.id)) {
+      nextBooks = placePageInCompilation(nextBooks, bookId, changelogPage, changelogSectionId);
+    }
+
+    return nextBooks;
+  }
+
+  const sidebarModeOptions: Array<{ id: HomeMode; label: string }> = [
+    { id: "design", label: "Design" },
+    { id: "compose", label: "Compose" },
+    { id: "compile", label: "Compile" },
+    { id: "library", label: "Library" },
+  ];
+
+  function openHomeMode(mode: HomeMode) {
+    setEditorFullScreen(false);
+    setGridFullScreen(false);
+    setSavedImagesOpen(false);
+    setThemesMenuOpen(false);
+    setHomeMode(mode);
+    setSidebarOpen(false);
+  }
+
   return (
     <main className="app-shell">
       <button
-        className="menu-toggle"
+        className={`menu-toggle ${sidebarOpen ? "open" : ""}`}
         type="button"
         aria-label={sidebarOpen ? "Close menu" : "Open menu"}
         aria-expanded={sidebarOpen}
@@ -639,9 +1017,20 @@ export default function App() {
           <h2>Menu</h2>
         </div>
 
-        <div id="preview-text-menu-slot" className="sidebar-preview-slot" />
-
         <nav className="sidebar-nav">
+          <div className="sidebar-mode-buttons" aria-label="App modes">
+            {sidebarModeOptions.map((option) => (
+              <button
+                key={option.id}
+                className={homeMode === option.id ? "active-tool" : ""}
+                type="button"
+                aria-pressed={homeMode === option.id}
+                onClick={() => openHomeMode(option.id)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
           <button
             type="button"
             onClick={() => {
@@ -728,12 +1117,6 @@ export default function App() {
         )}
       </aside>
 
-      <header className="app-header">
-        <div className="app-title-block">
-          <h1>Quill</h1>
-        </div>
-      </header>
-
       <div className="workspace">
         <div className="left-stack">
           <FontLibrary
@@ -750,31 +1133,130 @@ export default function App() {
             onDuplicateFont={handleDuplicateFont}
             onDeleteFont={handleDeleteFont}
             getSavedGlyphCount={getSavedGlyphCount}
+            modeSlot={homeMode === "compose" ? (
+              <div className="compose-mode-slot-stack">
+                <div className="compose-preset-selector" aria-label="Preset selector">
+                  <select
+                    value={activePreviewDesignPresetId}
+                    onChange={(event) => {
+                      const presetId = event.target.value;
+                      setActivePreviewDesignPresetId(presetId);
+                      if (presetId) {
+                        setDesignPresetApplyRequestId((requestId) => requestId + 1);
+                      }
+                    }}
+                    aria-label="Active preset"
+                  >
+                    <option value="">Presets</option>
+                    {previewDesignPresets.map((preset) => (
+                      <option key={preset.id} value={preset.id}>
+                        {preset.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="secondary-button compact-button compose-preset-add-button"
+                    type="button"
+                    aria-label="Create preset"
+                    title="Create preset"
+                    onClick={() => setPresetBuilderRequestId((requestId) => requestId + 1)}
+                  >
+                    <Plus aria-hidden="true" size={18} />
+                  </button>
+                </div>
+                {activeBook ? (
+                  <div className="compose-auto-entry-status" aria-label="Auto-entry status">
+                    <strong>{activeBook.title}</strong>
+                    <span>
+                      Latest Story: {latestStoryPage ? `Story ${latestStoryPage.pageNumber}` : "Story 1 not started"}
+                    </span>
+                    <span>
+                      Latest Changelog: {latestChangelogPage ? `Changelog ${latestChangelogPage.pageNumber}` : "Changelog 1 not started"}
+                    </span>
+                    <small>{autoEntryStatus}</small>
+                  </div>
+                ) : null}
+              </div>
+            ) : homeMode === "compile" && activeBook ? (
+              <div className="compile-book-selector" aria-label="Book selector">
+                <select value={activeBook.id} onChange={(event) => setActiveBookId(event.target.value)} aria-label="Active book">
+                  {bookCompilations.map((book) => (
+                    <option key={book.id} value={book.id}>
+                      {book.title}
+                    </option>
+                  ))}
+                </select>
+                <button className="secondary-button compact-button" type="button" onClick={handleCreateBookCompilation}>
+                  New
+                </button>
+              </div>
+            ) : null}
           />
-          {homeMode === "compose" && (
+          <div style={{ display: homeMode === "compose" ? undefined : "none" }}>
             <TextPreview
+              autoEntryRequest={autoEntryRenderJob}
+              composeFullscreenOnly={homeMode === "compose"}
+              designPresetApplyRequestId={designPresetApplyRequestId}
+              designPresetIdToApply={activePreviewDesignPresetId}
               font={activeFont}
               fonts={studioData.fonts}
               onApplyFontSpacing={handleApplyPreviewFontSpacing}
+              onAutoEntryRenderComplete={handleAutoEntryRenderComplete}
+              onCreatePresetFont={handleCreatePresetFont}
+              onDesignPresetsChange={handlePreviewDesignPresetsChange}
               onOpenCharacterEditor={handleSelectCharacter}
+              onOpenAppMenu={() => setSidebarOpen(true)}
               onRecordExport={handleRecordPreviewExport}
               onSaveImage={handleSaveImage}
+              onSaveRenderedPage={handleSaveRenderedPage}
               onSelectCharacter={handlePreviewSelectCharacter}
+              onSelectFont={handleSelectFont}
               headerPreviewText={headerPreviewText}
               onHeaderPreviewTextChange={setHeaderPreviewText}
               visibleHomeSections={activeFont.homeSettings.visibleSections}
               previewText={previewText}
               onPreviewTextChange={setPreviewText}
+              presetBuilderRequestId={presetBuilderRequestId}
               selectedGlyph={selectedGlyph}
               spacebarGlyph={spacebarGlyph}
             />
-          )}
+          </div>
           {homeMode === "design" && activeFont.homeSettings.visibleSections.glyphQueue && (
             <FontMetricsPanel
               font={activeFont}
               previewText={previewText}
               selectedCharacter={selectedCharacter}
               onSelectCharacter={handleSelectCharacter}
+            />
+          )}
+          {homeMode === "compile" && activeBook && (
+            <CompileView
+              activeBook={activeBook}
+              activePageId={activeCompiledPageId}
+              books={bookCompilations}
+              pages={compilationPages}
+              onAddStructureItem={handleAddBookStructureItem}
+              onCreateBook={handleCreateBookCompilation}
+              onMovePlacedPage={handleMovePlacedPage}
+              onMovePlacedPageToLocation={handleMovePlacedPageToLocation}
+              onOpenAppMenu={() => setSidebarOpen(true)}
+              onPlacePage={handlePlaceCompiledPage}
+              onRemoveStructureItem={handleRemoveBookStructureItem}
+              onRemovePlacedPage={handleRemovePlacedPage}
+              onRenameStructureItem={handleRenameBookStructureItem}
+              onSelectBook={setActiveBookId}
+              onSelectPage={setActiveCompiledPageId}
+            />
+          )}
+          {homeMode === "library" && activeBook && (
+            <QuillLibraryView
+              activeBook={activeBook}
+              activePageId={activeCompiledPageId}
+              books={bookCompilations}
+              pages={compilationPages}
+              onOpenAppMenu={() => setSidebarOpen(true)}
+              onOpenBook={setActiveBookId}
+              onOpenPage={setActiveCompiledPageId}
             />
           )}
         </div>
@@ -820,4 +1302,125 @@ export default function App() {
       )}
     </main>
   );
+}
+
+function resolveAutoEntryPresetId(
+  presets: PreviewDesignPresetSummary[],
+  kind: AutoEntryKind,
+): string | undefined {
+  const labels =
+    kind === "story"
+      ? new Set(["story", "story entry"])
+      : new Set(["changelog", "change log", "changelog entry", "change log entry"]);
+
+  return presets.find((preset) => labels.has(preset.name.trim().toLowerCase()))?.id;
+}
+
+function buildAutoEntryRenderJob(
+  request: PendingAutoEntryRequest,
+  compiledPages: CompiledPage[],
+  updateEntries: UpdateEntry[],
+  previewDesignPresets: PreviewDesignPresetSummary[],
+): AutoEntryRenderJob {
+  return {
+    bookId: request.bookId,
+    entries: (["story", "changelog"] as const).map((kind) => {
+      const latestPage = getLatestAutoEntryPageInfo(updateEntries, request.bookId, kind);
+      const compiledPage = latestPage ? compiledPages.find((page) => page.id === latestPage.pageId) : undefined;
+      const currentPageNumber = latestPage?.pageNumber ?? 1;
+      const currentPageId = compiledPage?.id;
+      const presetId = resolveAutoEntryPresetId(previewDesignPresets, kind);
+
+      return {
+        currentPageId,
+        currentPageText: compiledPage?.textContent,
+        kind,
+        nextPageNumber: (latestPage?.pageNumber ?? 0) + 1,
+        pageNumber: currentPageNumber,
+        pageTitle: `${kind === "story" ? "Story" : "Changelog"} ${currentPageNumber}`,
+        presetId,
+        text: kind === "story" ? request.pair.storyText : request.pair.changelogText,
+      };
+    }),
+    requestId: request.id,
+  };
+}
+
+function buildCompilationPages(
+  compiledPages: CompiledPage[],
+  updateEntries: UpdateEntry[],
+  activityLog: ProjectActivity[],
+): CompiledPage[] {
+  const pages = [...compiledPages];
+  const pageIds = new Set(pages.map((page) => page.id));
+  const renderedActivityIds = new Set(updateEntries.map((entry) => entry.sourceActivityId));
+
+  for (const entry of updateEntries) {
+    addEntryPage(pages, pageIds, {
+      createdAt: entry.createdAt,
+      id: entry.storyPageId,
+      text: entry.storyText,
+      title: `Story ${entry.storyPageNumber}`,
+    });
+    addEntryPage(pages, pageIds, {
+      createdAt: entry.createdAt,
+      id: entry.changelogPageId,
+      text: entry.changelogText,
+      title: `Changelog ${entry.changelogPageNumber}`,
+    });
+  }
+
+  for (const activity of activityLog.filter(isMeaningfulAutoEntryActivity)) {
+    if (renderedActivityIds.has(activity.id)) {
+      continue;
+    }
+
+    const pair = buildAutoEntryPair(activity);
+    const stamp = formatAutoEntryTimestamp(pair.createdAt);
+    addEntryPage(pages, pageIds, {
+      createdAt: pair.createdAt,
+      id: `entry-story-${pair.sourceActivityId}`,
+      text: pair.storyText,
+      title: `Story Entry - ${stamp}`,
+    });
+    addEntryPage(pages, pageIds, {
+      createdAt: pair.createdAt,
+      id: `entry-changelog-${pair.sourceActivityId}`,
+      text: pair.changelogText,
+      title: `Changelog Entry - ${stamp}`,
+    });
+  }
+
+  return pages;
+}
+
+function addEntryPage(
+  pages: CompiledPage[],
+  pageIds: Set<string>,
+  entry: {
+    createdAt: string;
+    id: string;
+    text: string;
+    title: string;
+  },
+) {
+  if (pageIds.has(entry.id)) {
+    return;
+  }
+
+  pageIds.add(entry.id);
+  pages.push({
+    createdAt: entry.createdAt,
+    excerpt: getEntryExcerpt(entry.text),
+    height: 1200,
+    id: entry.id,
+    textContent: entry.text,
+    title: entry.title,
+    updatedAt: entry.createdAt,
+    width: 900,
+  });
+}
+
+function getEntryExcerpt(text: string): string {
+  return text.replace(/\s+/g, " ").trim().slice(0, 150) || "Saved entry.";
 }

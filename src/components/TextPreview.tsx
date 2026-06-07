@@ -1,17 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
-import { createPortal } from "react-dom";
+import type {
+  CSSProperties,
+  FormEvent as ReactFormEvent,
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
+  ReactNode,
+} from "react";
 import {
   AlignHorizontalSpaceAround,
   AlignVerticalSpaceAround,
   ArrowLeftToLine,
   ArrowRightToLine,
   Baseline,
+  Check,
   ChevronDown,
   Droplets,
   Feather,
   Hand,
-  Home,
+  Menu,
   Minus,
   Moon,
   MousePointer2,
@@ -83,6 +89,7 @@ import {
   selectPreviewGlyph,
 } from "../render/glyphRenderer";
 import { defaultGlyphMetrics, defaultSpacebarMetrics } from "../storage/fontStorage";
+import type { CompiledPage, SaveRenderedQuillPageInput } from "../storage/quillWorkspaceStorage";
 import { isNativeFilePlatform, saveNativeFileToDocuments, shareNativeFile } from "../utils/nativeFiles";
 
 type SavedPreviewImage = {
@@ -93,19 +100,57 @@ type SavedPreviewImage = {
   width: number;
 };
 
+type AutoBookEntryRenderRequest = {
+  bookId: string;
+  entries: Array<{
+    currentPageId?: string;
+    currentPageText?: string;
+    kind: "story" | "changelog";
+    nextPageNumber: number;
+    pageNumber: number;
+    pageTitle: string;
+    presetId?: string;
+    text: string;
+  }>;
+  requestId: number;
+};
+
+type AutoBookEntryRenderResult = {
+  bookId: string;
+  entries: Array<{
+    fallbackUsed: boolean;
+    kind: "story" | "changelog";
+    page: CompiledPage;
+    pageNumber: number;
+    rolledOver: boolean;
+  }>;
+  requestId: number;
+};
+
 type TextPreviewProps = {
+  autoEntryRequest?: AutoBookEntryRenderRequest | null;
+  composeFullscreenOnly?: boolean;
+  designPresetApplyRequestId?: number;
+  designPresetIdToApply?: string;
   font: FontSet;
   fonts: FontSet[];
+  onOpenAppMenu?: () => void;
+  onCreatePresetFont: (presetFontId: string) => void;
+  onDesignPresetsChange?: (presets: PreviewDesignPresetSummary[], activePresetId?: string) => void;
+  onAutoEntryRenderComplete?: (result: AutoBookEntryRenderResult) => void;
   onRecordExport?: (message: string) => void;
   onSaveImage?: (image: SavedPreviewImage) => boolean;
+  onSaveRenderedPage?: (page: SaveRenderedQuillPageInput) => Promise<CompiledPage>;
   onApplyFontSpacing: (settings: FontSpacingApplyDraft) => void;
   onOpenCharacterEditor: (character: string) => void;
   onSelectCharacter: (character: string) => void;
+  onSelectFont: (fontId: string) => void;
   headerPreviewText: string;
   onHeaderPreviewTextChange: (text: string) => void;
   visibleHomeSections: Record<FontHomeSectionId, boolean>;
   previewText: string;
   onPreviewTextChange: (text: string) => void;
+  presetBuilderRequestId?: number;
   selectedGlyph: Glyph;
   spacebarGlyph: Glyph;
 };
@@ -119,7 +164,7 @@ type LetterMetricOverrides = AppliedLetterMetricOverrides;
 type ImageSettingsSliderId = "canvasHeight" | "canvasWidth" | "pagePadding" | "size";
 type StickerMetricId = "height" | "size" | "width";
 type ManuscriptMetricKey = "manuscriptAge" | "manuscriptEdges" | "manuscriptFibers" | "manuscriptInkSoak" | "manuscriptRuling" | "manuscriptStains";
-type SettingsPanel = "decor" | "font" | "image" | "letter" | "position";
+type SettingsPanel = "decor" | "font" | "image" | "letter" | "preset";
 type FontSettingsSliderId = "height" | "letterSpacing" | "rowSpacing" | "size" | "spacebar" | "width";
 type FontSettingsSliderConfig = {
   id: FontSettingsSliderId;
@@ -173,14 +218,14 @@ const settingsPanelLabels: Record<SettingsPanel, string> = {
   font: "Select",
   image: "Canvas",
   letter: "Letter Tuning",
-  position: "Position settings",
+  preset: "Preset",
 };
 
 const fullscreenPanelOptions: Array<{ id: SettingsPanel; label: string }> = [
   { id: "image", label: "Canvas" },
   { id: "font", label: "Select" },
   { id: "letter", label: "Letter" },
-  { id: "position", label: "Position" },
+  { id: "preset", label: "Preset" },
   { id: "decor", label: "Add" },
 ];
 const fullscreenSelectOptions: Array<{ id: StyleSelectTarget; label: string }> = [
@@ -235,6 +280,7 @@ type PreviewTextEffects = Record<PreviewTextEffectId, boolean>;
 
 type PhoneImageLayout = {
   bodyEndY: number;
+  bodyFontSize: number;
   bodyStartY: number;
   headerFontSize: number;
   headerLines: string[];
@@ -333,8 +379,9 @@ type PreviewTextLayer = {
 type PreviewTextLayerDraft = Omit<PreviewTextLayer, "id">;
 
 type PreviewTextPlacement = {
-  x: number;
-  y: number;
+  sizeScale?: number;
+  x?: number;
+  y?: number;
 };
 
 type StyleMovingText = {
@@ -379,7 +426,22 @@ type PreviewDocument = {
   updatedAt: string;
 };
 
-const PREVIEW_DOCUMENTS_KEY = "local-font-studio:preview-documents:v1";
+type PreviewDesignPreset = {
+  fontOptionId: string;
+  id: string;
+  name: string;
+  settings: PreviewImageSettings;
+  updatedAt: string;
+};
+
+export type PreviewDesignPresetSummary = {
+  id: string;
+  name: string;
+  updatedAt: string;
+};
+
+const PREVIEW_DOCUMENTS_KEY = "quill:preview-documents:v1";
+const PREVIEW_DESIGN_PRESETS_KEY = "quill:preview-design-presets:v1";
 
 function PreviewTextFontNamePreview({
   accentColor,
@@ -639,8 +701,8 @@ const previewPresets = [
     text: "The quick brown fox jumps over 13 lazy dogs.\nSphinx of black quartz, judge my vow.",
   },
   {
-    id: "journal",
-    label: "Journal",
+    id: "entry",
+    label: "Entry",
     text: "Tuesday, 7:45 p.m.\nI walked home under a blue evening sky and wrote down the small things before they vanished.",
   },
   {
@@ -922,6 +984,14 @@ function clampUnit(value: unknown, fallback: number) {
     : fallback;
 }
 
+function clampPreviewTextSizeScale(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return undefined;
+  }
+
+  return Number(Math.min(2.5, Math.max(0.45, value)).toFixed(2));
+}
+
 function normalizePreviewTextEffects(value: unknown): PreviewTextEffects {
   const effects = typeof value === "object" && value !== null
     ? value as Partial<Record<PreviewTextEffectId, unknown>>
@@ -967,13 +1037,16 @@ function normalizePreviewTextPlacement(value: unknown): PreviewTextPlacement | n
 
   const placement = value as Partial<PreviewTextPlacement>;
 
-  if (typeof placement.x !== "number" || typeof placement.y !== "number") {
+  const hasPosition = typeof placement.x === "number" && typeof placement.y === "number";
+  const hasSizeScale = typeof placement.sizeScale === "number";
+
+  if (!hasPosition && !hasSizeScale) {
     return null;
   }
 
   return {
-    x: clampUnit(placement.x, 0),
-    y: clampUnit(placement.y, 0),
+    ...(hasSizeScale ? { sizeScale: clampPreviewTextSizeScale(placement.sizeScale) } : {}),
+    ...(hasPosition ? { x: clampUnit(placement.x, 0), y: clampUnit(placement.y, 0) } : {}),
   };
 }
 
@@ -1036,19 +1109,71 @@ function savePreviewDocuments(documents: PreviewDocument[]) {
   window.localStorage.setItem(PREVIEW_DOCUMENTS_KEY, JSON.stringify(documents));
 }
 
+function loadPreviewDesignPresets() {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(PREVIEW_DESIGN_PRESETS_KEY) ?? "[]") as PreviewDesignPreset[];
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .filter((preset) => preset?.id && typeof preset.fontOptionId === "string")
+      .map((preset) => ({
+        ...preset,
+        name: preset.name || "Untitled preset",
+        settings: normalizePreviewSettings(preset.settings),
+        updatedAt: typeof preset.updatedAt === "string" ? preset.updatedAt : new Date().toISOString(),
+      }));
+  } catch {
+    return [];
+  }
+}
+
+function savePreviewDesignPresets(presets: PreviewDesignPreset[]) {
+  window.localStorage.setItem(PREVIEW_DESIGN_PRESETS_KEY, JSON.stringify(presets));
+}
+
+function getPreviewDesignPresetSummaries(presets: PreviewDesignPreset[]): PreviewDesignPresetSummary[] {
+  return presets.map((preset) => ({
+    id: preset.id,
+    name: preset.name,
+    updatedAt: preset.updatedAt,
+  }));
+}
+
+export function loadPreviewDesignPresetSummaries(): PreviewDesignPresetSummary[] {
+  return getPreviewDesignPresetSummaries(loadPreviewDesignPresets());
+}
+
 export default function TextPreview({
+  autoEntryRequest = null,
+  composeFullscreenOnly = false,
+  designPresetApplyRequestId = 0,
+  designPresetIdToApply = "",
   font,
   fonts,
+  onOpenAppMenu,
   onApplyFontSpacing,
+  onAutoEntryRenderComplete,
+  onCreatePresetFont,
+  onDesignPresetsChange,
   onOpenCharacterEditor,
   onRecordExport,
   onSaveImage,
+  onSaveRenderedPage,
   onSelectCharacter,
+  onSelectFont,
   headerPreviewText,
   onHeaderPreviewTextChange,
   visibleHomeSections,
   previewText,
   onPreviewTextChange,
+  presetBuilderRequestId = 0,
   selectedGlyph,
   spacebarGlyph,
 }: TextPreviewProps) {
@@ -1058,6 +1183,7 @@ export default function TextPreview({
   const previewPointerStartRef = useRef<{ id: number; x: number; y: number } | null>(null);
   const previewDoodlesRef = useRef<PreviewDoodleStroke[]>([]);
   const previewStickersRef = useRef<PreviewSticker[]>([]);
+  const autoEntryRequestRef = useRef<number>(0);
   const styleActiveDoodleRef = useRef<PreviewDoodleStroke | null>(null);
   const styleActiveStrokeRef = useRef<string | null>(null);
   const styleActiveStrokeTimeRef = useRef(0);
@@ -1066,10 +1192,13 @@ export default function TextPreview({
   const styleMovingStickerRef = useRef<string | null>(null);
   const styleMovingTextRef = useRef<StyleMovingText | null>(null);
   const styleMovingDoodleRef = useRef<StyleMovingDoodle | null>(null);
+  const designPresetApplyRequestRef = useRef(designPresetApplyRequestId);
   const hiddenPreviewTextTargetIdsRef = useRef<Set<string>>(new Set());
   const styleStickerImagesRef = useRef<Partial<Record<PreviewStickerKind, HTMLImageElement>>>({});
   const manuscriptParchmentRef = useRef<HTMLImageElement | null>(null);
+  const presetBuilderRequestRef = useRef(presetBuilderRequestId);
   const viewerCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const saveTitleInputRef = useRef<HTMLInputElement | null>(null);
   const customImageMetricDefaultsRef = useRef<ImageMetricDefaults>(getImageMetricDefaults(defaultPhoneImageSettings));
   const [activeDocumentId, setActiveDocumentId] = useState<string | null>(null);
   const [activeSettingsPanel, setActiveSettingsPanel] = useState<SettingsPanel>("image");
@@ -1086,17 +1215,20 @@ export default function TextPreview({
   const [fullscreenSelectMenuOpen, setFullscreenSelectMenuOpen] = useState(false);
   const [otherBackgroundsOpen, setOtherBackgroundsOpen] = useState(false);
   const [imageStyleDrawerOpen, setImageStyleDrawerOpen] = useState(false);
-  const [imageViewerOpen, setImageViewerOpen] = useState(false);
+  const [imageViewerMode, setImageViewerMode] = useState<"page" | "preset">("page");
+  const [imageViewerOpen, setImageViewerOpen] = useState(composeFullscreenOnly);
+  const [saveTitleDraft, setSaveTitleDraft] = useState("");
+  const [saveTitlePromptOpen, setSaveTitlePromptOpen] = useState(false);
   const [fontPresetsReady, setFontPresetsReady] = useState(false);
   const [hiddenPreviewTextTargetIds, setHiddenPreviewTextTargetIds] = useState<string[]>([]);
   const [manuscriptParchmentReady, setManuscriptParchmentReady] = useState(false);
-  const [previewMenuRoot, setPreviewMenuRoot] = useState<HTMLElement | null>(null);
   const [previewDoodles, setPreviewDoodles] = useState<PreviewDoodleStroke[]>([]);
   const [previewStickers, setPreviewStickers] = useState<PreviewSticker[]>([]);
   const [styleStickerImagesReady, setStyleStickerImagesReady] = useState(0);
   const [draftPreviewTextLayer, setDraftPreviewTextLayer] = useState<PreviewTextLayerDraft | null>(null);
   const [expandedPreviewTextFontPickerId, setExpandedPreviewTextFontPickerId] = useState<string | null>(null);
   const [previewTextLayers, setPreviewTextLayers] = useState<PreviewTextLayer[]>([]);
+  const [previewDesignPresets, setPreviewDesignPresets] = useState<PreviewDesignPreset[]>(() => loadPreviewDesignPresets());
   const [previewTextTargetPlacements, setPreviewTextTargetPlacements] = useState<Record<string, PreviewTextPlacement>>({});
   const [savedDocuments, setSavedDocuments] = useState<PreviewDocument[]>(() => loadPreviewDocuments());
   const [selectedPreviewDoodleId, setSelectedPreviewDoodleId] = useState<string | null>(null);
@@ -1238,10 +1370,6 @@ export default function TextPreview({
     ],
   );
   useEffect(() => {
-    setPreviewMenuRoot(document.getElementById("preview-text-menu-slot"));
-  }, []);
-
-  useEffect(() => {
     const image = new Image();
     image.onload = () => {
       manuscriptParchmentRef.current = image;
@@ -1300,6 +1428,81 @@ export default function TextPreview({
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (presetBuilderRequestId === presetBuilderRequestRef.current) {
+      return;
+    }
+
+    presetBuilderRequestRef.current = presetBuilderRequestId;
+    openPresetBuilderCanvas();
+  }, [presetBuilderRequestId]);
+
+  useEffect(() => {
+    if (designPresetApplyRequestId === designPresetApplyRequestRef.current) {
+      return;
+    }
+
+    designPresetApplyRequestRef.current = designPresetApplyRequestId;
+
+    if (designPresetIdToApply) {
+      applyDesignPreset(designPresetIdToApply);
+    }
+  }, [designPresetApplyRequestId, designPresetIdToApply]);
+
+  useEffect(() => {
+    onDesignPresetsChange?.(getPreviewDesignPresetSummaries(previewDesignPresets));
+  }, [onDesignPresetsChange, previewDesignPresets]);
+
+  useEffect(() => {
+    if (!autoEntryRequest || !onSaveRenderedPage || !onAutoEntryRenderComplete) {
+      return;
+    }
+
+    if (autoEntryRequest.requestId === autoEntryRequestRef.current) {
+      return;
+    }
+
+    autoEntryRequestRef.current = autoEntryRequest.requestId;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const results = [];
+
+        for (const entry of autoEntryRequest.entries) {
+          const result = await renderAndSaveAutoEntryPage(entry);
+
+          if (cancelled) {
+            return;
+          }
+
+          if (result) {
+            results.push(result);
+          }
+        }
+
+        onAutoEntryRenderComplete({
+          bookId: autoEntryRequest.bookId,
+          entries: results,
+          requestId: autoEntryRequest.requestId,
+        });
+      } catch (error) {
+        console.error("Could not write auto-entry pages.", error);
+        if (!cancelled) {
+          onAutoEntryRenderComplete({
+            bookId: autoEntryRequest.bookId,
+            entries: [],
+            requestId: autoEntryRequest.requestId,
+          });
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [autoEntryRequest, onAutoEntryRenderComplete, onSaveRenderedPage, previewDesignPresets]);
 
   useEffect(() => {
     renderPhoneImage();
@@ -1403,6 +1606,21 @@ export default function TextPreview({
       document.body.classList.remove("editor-fullscreen-open");
     };
   }, [imageViewerOpen]);
+
+  useEffect(() => {
+    if (composeFullscreenOnly) {
+      setImageViewerOpen(true);
+    } else {
+      setImageViewerOpen(false);
+    }
+  }, [composeFullscreenOnly]);
+
+  useEffect(() => {
+    if (saveTitlePromptOpen) {
+      saveTitleInputRef.current?.focus();
+      saveTitleInputRef.current?.select();
+    }
+  }, [saveTitlePromptOpen]);
 
   useEffect(() => {
     if (!font.theme) {
@@ -2115,6 +2333,7 @@ export default function TextPreview({
           }),
           ...getPresetPreviewGlyphHitTargets(ctx, layout.lines, layout.settings, activeFontPreset, {
             font: previewFont,
+            fontSize: layout.bodyFontSize,
             startX: bodyPlacement?.x,
             startY: bodyPlacement?.y ?? layout.bodyStartY,
           }),
@@ -2130,6 +2349,7 @@ export default function TextPreview({
           }),
           ...getPreviewGlyphHitTargets(ctx, layout.lines, layout.settings, {
             font: previewFont,
+            fontSize: layout.bodyFontSize,
             sourceText: previewText,
             startX: bodyPlacement?.x,
             startY: bodyPlacement?.y ?? layout.bodyStartY,
@@ -2611,7 +2831,10 @@ export default function TextPreview({
     if (targetId === "preview-header" || targetId === "preview-body") {
       setPreviewTextTargetPlacements((current) => ({
         ...current,
-        [targetId]: placement,
+        [targetId]: {
+          ...current[targetId],
+          ...placement,
+        },
       }));
       return;
     }
@@ -4342,18 +4565,41 @@ export default function TextPreview({
     };
   }
 
+  function getPreviewTextTargetSizeScale(targetId: string) {
+    const layer = previewTextLayers.find((item) => item.id === targetId);
+
+    if (layer) {
+      return getClampedMetricValue(layer.sizeScale, 0.45, 2.5, 2);
+    }
+
+    const placementScale = previewTextTargetPlacements[targetId]?.sizeScale;
+
+    return typeof placementScale === "number" ? getClampedMetricValue(placementScale, 0.45, 2.5, 2) : 1;
+  }
+
+  function getPreviewTextTargetBaseSizeScale(targetId: string) {
+    if (targetId === "preview-header" || targetId === "preview-body") {
+      return getPreviewTextTargetSizeScale(targetId);
+    }
+
+    return selectedPreviewTextLayer?.id === targetId
+      ? getClampedMetricValue(selectedPreviewTextLayer.sizeScale, 0.45, 2.5, 2)
+      : 1;
+  }
+
   function getPhoneImageLayout(
     ctx: CanvasRenderingContext2D,
     renderSettings: PreviewImageSettings = imageSettings,
   ): PhoneImageLayout {
     const maxLineWidth = Math.max(1, renderSettings.canvasWidth - renderSettings.pagePadding * 2);
-    const headerFontSize = renderSettings.fontSize * HEADER_FONT_SIZE_MULTIPLIER;
+    const headerFontSize = renderSettings.fontSize * HEADER_FONT_SIZE_MULTIPLIER * getPreviewTextTargetSizeScale("preview-header");
+    const bodyFontSize = renderSettings.fontSize * getPreviewTextTargetSizeScale("preview-body");
     const hasHeaderText = headerPreviewText.trim().length > 0;
     const useLongSkinnyFormat = shouldUseLongSkinnyFormat(renderSettings);
 
     if (activeFontPreset) {
       const presetHeaderFontSize = getActivePresetFontSize(headerFontSize);
-      const presetBodyFontSize = getActivePresetFontSize(renderSettings.fontSize);
+      const presetBodyFontSize = getActivePresetFontSize(bodyFontSize);
       const headerLines = hasHeaderText
         ? renderSettings.autoFit
           ? buildPresetWordWrappedLines(
@@ -4418,6 +4664,7 @@ export default function TextPreview({
       return {
         settings: longSkinnyLayout?.settings ?? renderSettings,
         bodyEndY: longSkinnyLayout?.bodyEndY ?? bodyEndY,
+        bodyFontSize: presetBodyFontSize,
         bodyStartY: longSkinnyLayout?.bodyStartY ?? bodyStartY,
         headerFontSize: presetHeaderFontSize,
         headerLines,
@@ -4446,15 +4693,15 @@ export default function TextPreview({
           )
       : [];
     const headerLineHeight = headerFontSize * renderSettings.lineSpacing;
-    const headerGap = headerLines.length > 0 ? renderSettings.fontSize * 0.85 : 0;
+    const headerGap = headerLines.length > 0 ? bodyFontSize * 0.85 : 0;
     const bodyStartY = renderSettings.pagePadding + headerLines.length * headerLineHeight + headerGap;
-    ctx.font = getFallbackFont(renderSettings.fontSize);
+    ctx.font = getFallbackFont(bodyFontSize);
     const wrappedLines = useLongSkinnyFormat
       ? getLongSkinnySingleLineBodyText(previewText)
       : renderSettings.autoFit
-        ? buildWordWrappedLines(ctx, previewText, maxLineWidth, renderSettings.fontSize, false, previewFont)
-        : buildCharacterWrappedLines(ctx, previewText, maxLineWidth, renderSettings.fontSize, false, previewFont);
-    const bodyLineHeight = renderSettings.fontSize * renderSettings.lineSpacing;
+        ? buildWordWrappedLines(ctx, previewText, maxLineWidth, bodyFontSize, false, previewFont)
+        : buildCharacterWrappedLines(ctx, previewText, maxLineWidth, bodyFontSize, false, previewFont);
+    const bodyLineHeight = bodyFontSize * renderSettings.lineSpacing;
     const bodyVisualHeight = useLongSkinnyFormat
       ? bodyLineHeight * Math.max(1, getFontHeightScale(previewFont))
       : bodyLineHeight;
@@ -4462,7 +4709,7 @@ export default function TextPreview({
     const longSkinnyLayout = useLongSkinnyFormat
       ? getLongSkinnyLayoutSettings(
           renderSettings,
-          measureTextRun(ctx, wrappedLines[0] ?? "", renderSettings.fontSize, false, previewFont),
+          measureTextRun(ctx, wrappedLines[0] ?? "", bodyFontSize, false, previewFont),
           bodyStartY,
           bodyVisualHeight,
           hasHeaderText,
@@ -4472,6 +4719,7 @@ export default function TextPreview({
     return {
       settings: longSkinnyLayout?.settings ?? renderSettings,
       bodyEndY: longSkinnyLayout?.bodyEndY ?? bodyEndY,
+      bodyFontSize,
       bodyStartY: longSkinnyLayout?.bodyStartY ?? bodyStartY,
       headerFontSize,
       headerLines,
@@ -4497,12 +4745,310 @@ export default function TextPreview({
 
     if (textLayer && typeof textLayer.x === "number" && typeof textLayer.y === "number") {
       return {
+        sizeScale: getClampedMetricValue(textLayer.sizeScale, 0.45, 2.5, 2),
         x: clampPreviewPoint(textLayer.x),
         y: clampPreviewPoint(textLayer.y),
       };
     }
 
     return previewTextTargetPlacements[targetId] ?? null;
+  }
+
+  function resolveAutoEntryPreset(presetId?: string) {
+    const preset = presetId ? previewDesignPresets.find((item) => item.id === presetId) : undefined;
+    const renderSettings = normalizePreviewSettings(preset?.settings ?? imageSettings);
+
+    if (!preset) {
+      return {
+        fallbackUsed: true,
+        fontForText: previewFont,
+        presetFont: undefined as FontPreset | undefined,
+        renderSettings,
+      };
+    }
+
+    const presetFont = getFontPresetFromOptionId(preset.fontOptionId);
+
+    if (presetFont) {
+      return {
+        fallbackUsed: false,
+        fontForText: previewFont,
+        presetFont,
+        renderSettings,
+      };
+    }
+
+    return {
+      fallbackUsed: !availableFonts.some((item) => item.id === preset.fontOptionId),
+      fontForText: availableFonts.find((item) => item.id === preset.fontOptionId) ?? previewFont,
+      presetFont: undefined as FontPreset | undefined,
+      renderSettings,
+    };
+  }
+
+  function getAutoEntryPhoneImageLayout(
+    ctx: CanvasRenderingContext2D,
+    options: {
+      bodyText: string;
+      fontForText: FontSet;
+      headerText: string;
+      presetFont?: FontPreset;
+      renderSettings: PreviewImageSettings;
+    },
+  ): PhoneImageLayout {
+    const { bodyText, fontForText, headerText, presetFont, renderSettings } = options;
+    const maxLineWidth = Math.max(1, renderSettings.canvasWidth - renderSettings.pagePadding * 2);
+    const headerFontSize = renderSettings.fontSize * HEADER_FONT_SIZE_MULTIPLIER;
+    const bodyFontSize = renderSettings.fontSize;
+    const hasHeaderText = headerText.trim().length > 0;
+    const useLongSkinnyFormat = shouldUseLongSkinnyFormat(renderSettings);
+
+    if (presetFont) {
+      const presetHeaderFontSize = getActivePresetFontSize(headerFontSize);
+      const presetBodyFontSize = getActivePresetFontSize(bodyFontSize);
+      const headerLines = hasHeaderText
+        ? renderSettings.autoFit
+          ? buildPresetWordWrappedLines(ctx, headerText, maxLineWidth, presetFont, presetHeaderFontSize, fontForText, true)
+          : buildPresetCharacterWrappedLines(ctx, headerText, maxLineWidth, presetFont, presetHeaderFontSize, fontForText, true)
+        : [];
+      const headerLineHeight = getPresetLineHeight(renderSettings, presetHeaderFontSize);
+      const headerGap = headerLines.length > 0 ? presetBodyFontSize * 0.85 : 0;
+      const bodyStartY = renderSettings.pagePadding + headerLines.length * headerLineHeight + headerGap;
+      const wrappedLines = useLongSkinnyFormat
+        ? getLongSkinnySingleLineBodyText(bodyText)
+        : renderSettings.autoFit
+          ? buildPresetWordWrappedLines(ctx, bodyText, maxLineWidth, presetFont, presetBodyFontSize, fontForText)
+          : buildPresetCharacterWrappedLines(ctx, bodyText, maxLineWidth, presetFont, presetBodyFontSize, fontForText);
+      const bodyLineHeight = getPresetLineHeight(renderSettings, presetBodyFontSize);
+      const bodyVisualHeight = useLongSkinnyFormat
+        ? bodyLineHeight * Math.max(1, getFontHeightScale(fontForText))
+        : bodyLineHeight;
+      const bodyEndY = bodyStartY + wrappedLines.length * bodyVisualHeight;
+      const longSkinnyLayout = useLongSkinnyFormat
+        ? getLongSkinnyLayoutSettings(
+            renderSettings,
+            (() => {
+              setPresetCanvasFont(ctx, presetFont, presetBodyFontSize);
+              return measurePresetTextRun(ctx, wrappedLines[0] ?? "", presetBodyFontSize, fontForText);
+            })(),
+            bodyStartY,
+            bodyVisualHeight,
+            hasHeaderText,
+          )
+        : null;
+
+      return {
+        settings: longSkinnyLayout?.settings ?? renderSettings,
+        bodyEndY: longSkinnyLayout?.bodyEndY ?? bodyEndY,
+        bodyFontSize: presetBodyFontSize,
+        bodyStartY: longSkinnyLayout?.bodyStartY ?? bodyStartY,
+        headerFontSize: presetHeaderFontSize,
+        headerLines,
+        lines: wrappedLines,
+      };
+    }
+
+    ctx.font = getFallbackFont(headerFontSize);
+    const headerLines = hasHeaderText
+      ? renderSettings.autoFit
+        ? buildWordWrappedLines(ctx, headerText, maxLineWidth, headerFontSize, true, fontForText)
+        : buildCharacterWrappedLines(ctx, headerText, maxLineWidth, headerFontSize, true, fontForText)
+      : [];
+    const headerLineHeight = headerFontSize * renderSettings.lineSpacing;
+    const headerGap = headerLines.length > 0 ? bodyFontSize * 0.85 : 0;
+    const bodyStartY = renderSettings.pagePadding + headerLines.length * headerLineHeight + headerGap;
+    ctx.font = getFallbackFont(bodyFontSize);
+    const wrappedLines = useLongSkinnyFormat
+      ? getLongSkinnySingleLineBodyText(bodyText)
+      : renderSettings.autoFit
+        ? buildWordWrappedLines(ctx, bodyText, maxLineWidth, bodyFontSize, false, fontForText)
+        : buildCharacterWrappedLines(ctx, bodyText, maxLineWidth, bodyFontSize, false, fontForText);
+    const bodyLineHeight = bodyFontSize * renderSettings.lineSpacing;
+    const bodyVisualHeight = useLongSkinnyFormat
+      ? bodyLineHeight * Math.max(1, getFontHeightScale(fontForText))
+      : bodyLineHeight;
+    const bodyEndY = bodyStartY + wrappedLines.length * bodyVisualHeight;
+    const longSkinnyLayout = useLongSkinnyFormat
+      ? getLongSkinnyLayoutSettings(
+          renderSettings,
+          measureTextRun(ctx, wrappedLines[0] ?? "", bodyFontSize, false, fontForText),
+          bodyStartY,
+          bodyVisualHeight,
+          hasHeaderText,
+        )
+      : null;
+
+    return {
+      settings: longSkinnyLayout?.settings ?? renderSettings,
+      bodyEndY: longSkinnyLayout?.bodyEndY ?? bodyEndY,
+      bodyFontSize,
+      bodyStartY: longSkinnyLayout?.bodyStartY ?? bodyStartY,
+      headerFontSize,
+      headerLines,
+      lines: wrappedLines,
+    };
+  }
+
+  function drawAutoEntryContentToCanvas(
+    ctx: CanvasRenderingContext2D,
+    layout: PhoneImageLayout,
+    options: {
+      bodyText: string;
+      fontForText: FontSet;
+      headerText: string;
+      presetFont?: FontPreset;
+    },
+  ) {
+    if (options.presetFont) {
+      drawPresetTextToCanvas(ctx, layout.headerLines, layout.settings, {
+        fontForText: options.fontForText,
+        fontSize: layout.headerFontSize,
+        preset: options.presetFont,
+        startY: layout.settings.pagePadding,
+        useHeaderLetters: true,
+      });
+      drawPresetTextToCanvas(ctx, layout.lines, layout.settings, {
+        fontForText: options.fontForText,
+        fontSize: layout.bodyFontSize,
+        preset: options.presetFont,
+        startY: layout.bodyStartY,
+      });
+      return;
+    }
+
+    drawTextToCanvas(ctx, layout.headerLines, layout.settings, {
+      font: options.fontForText,
+      fontSize: layout.headerFontSize,
+      sourceText: options.headerText,
+      startY: layout.settings.pagePadding,
+      useHeaderLetters: true,
+    });
+    drawTextToCanvas(ctx, layout.lines, layout.settings, {
+      font: options.fontForText,
+      fontSize: layout.bodyFontSize,
+      sourceText: options.bodyText,
+      startY: layout.bodyStartY,
+    });
+  }
+
+  function renderAutoEntryPageToCanvas(
+    canvas: HTMLCanvasElement,
+    options: {
+      bodyText: string;
+      fontForText: FontSet;
+      headerText: string;
+      presetFont?: FontPreset;
+      renderSettings: PreviewImageSettings;
+    },
+  ) {
+    const ctx = canvas.getContext("2d");
+
+    if (!ctx) {
+      return null;
+    }
+
+    const layout = getAutoEntryPhoneImageLayout(ctx, options);
+    canvas.width = layout.settings.canvasWidth;
+    canvas.height = layout.settings.canvasHeight;
+    drawPreviewBackground(ctx, layout.settings);
+
+    if (layout.settings.backgroundStyle === "manuscript" && !layout.settings.transparent) {
+      const contentCanvas = document.createElement("canvas");
+      contentCanvas.width = layout.settings.canvasWidth;
+      contentCanvas.height = layout.settings.canvasHeight;
+      const contentCtx = contentCanvas.getContext("2d");
+
+      if (contentCtx) {
+        drawAutoEntryContentToCanvas(contentCtx, layout, options);
+        drawManuscriptInkLayer(ctx, contentCanvas, layout.settings);
+      } else {
+        drawAutoEntryContentToCanvas(ctx, layout, options);
+      }
+    } else {
+      drawAutoEntryContentToCanvas(ctx, layout, options);
+    }
+
+    return layout;
+  }
+
+  function autoEntryLayoutFits(layout: PhoneImageLayout) {
+    return layout.bodyEndY <= layout.settings.canvasHeight - layout.settings.pagePadding;
+  }
+
+  function getAutoEntryPageLabel(kind: "story" | "changelog", pageNumber: number) {
+    return `${kind === "story" ? "Story" : "Changelog"} ${pageNumber}`;
+  }
+
+  async function getCanvasBlob(canvas: HTMLCanvasElement) {
+    return new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((blob) => resolve(blob), "image/png");
+    });
+  }
+
+  async function renderAndSaveAutoEntryPage(requestEntry: AutoBookEntryRenderRequest["entries"][number]) {
+    const resolvedPreset = resolveAutoEntryPreset(requestEntry.presetId);
+    const attemptText = requestEntry.currentPageText
+      ? `${requestEntry.currentPageText.trim()}\n\n${requestEntry.text}`.trim()
+      : requestEntry.text;
+    const initialCanvas = document.createElement("canvas");
+    const initialLayout = renderAutoEntryPageToCanvas(initialCanvas, {
+      bodyText: attemptText,
+      fontForText: resolvedPreset.fontForText,
+      headerText: requestEntry.pageTitle,
+      presetFont: resolvedPreset.presetFont,
+      renderSettings: resolvedPreset.renderSettings,
+    });
+
+    let finalCanvas = initialCanvas;
+    let finalLayout = initialLayout;
+    let finalText = attemptText;
+    let finalPageId = requestEntry.currentPageId;
+    let finalPageNumber = requestEntry.pageNumber;
+    let finalPageTitle = requestEntry.pageTitle;
+    let rolledOver = false;
+
+    if (
+      requestEntry.currentPageId &&
+      finalLayout &&
+      !autoEntryLayoutFits(finalLayout)
+    ) {
+      rolledOver = true;
+      finalCanvas = document.createElement("canvas");
+      finalPageId = undefined;
+      finalPageNumber = requestEntry.nextPageNumber;
+      finalPageTitle = getAutoEntryPageLabel(requestEntry.kind, finalPageNumber);
+      finalText = requestEntry.text;
+      finalLayout = renderAutoEntryPageToCanvas(finalCanvas, {
+        bodyText: finalText,
+        fontForText: resolvedPreset.fontForText,
+        headerText: finalPageTitle,
+        presetFont: resolvedPreset.presetFont,
+        renderSettings: resolvedPreset.renderSettings,
+      });
+    }
+
+    const blob = await getCanvasBlob(finalCanvas);
+
+    if (!blob || !finalLayout || !onSaveRenderedPage) {
+      return null;
+    }
+
+    const page = await onSaveRenderedPage({
+      blob,
+      height: finalCanvas.height,
+      pageId: finalPageId,
+      textContent: finalText,
+      title: finalPageTitle,
+      width: finalCanvas.width,
+    });
+
+    return {
+      fallbackUsed: resolvedPreset.fallbackUsed,
+      kind: requestEntry.kind,
+      page,
+      pageNumber: finalPageNumber,
+      rolledOver,
+    };
   }
 
   function isPreviewTextTargetHidden(targetId: string) {
@@ -4512,7 +5058,7 @@ export default function TextPreview({
   function getPreviewTextCanvasPlacement(targetId: string, renderSettings: PreviewImageSettings) {
     const placement = getPreviewTextPlacement(targetId);
 
-    if (!placement) {
+    if (!placement || typeof placement.x !== "number" || typeof placement.y !== "number") {
       return null;
     }
 
@@ -4698,7 +5244,7 @@ export default function TextPreview({
         useHeaderLetters: true,
       });
       drawPresetTextToCanvas(ctx, bodyLines, layout.settings, {
-        fontSize: getActivePresetFontSize(layout.settings.fontSize),
+        fontSize: layout.bodyFontSize,
         fontForText: previewFont,
         preset: activeFontPreset,
         startX: bodyPlacement?.x,
@@ -4715,6 +5261,7 @@ export default function TextPreview({
       });
       drawTextToCanvas(ctx, bodyLines, layout.settings, {
         font: previewFont,
+        fontSize: layout.bodyFontSize,
         sourceText: previewText,
         startX: bodyPlacement?.x,
         startY: bodyPlacement?.y ?? layout.bodyStartY,
@@ -4910,12 +5457,9 @@ export default function TextPreview({
     }
 
     if (layout.lines.length > 0 && previewText.trim() && !isPreviewTextTargetHidden("preview-body")) {
-      const bodyFontSize = activeFontPreset
-        ? getActivePresetFontSize(layout.settings.fontSize)
-        : layout.settings.fontSize;
       const bodyLineHeight = activeFontPreset
-        ? getPresetLineHeight(layout.settings, bodyFontSize)
-        : bodyFontSize * layout.settings.lineSpacing;
+        ? getPresetLineHeight(layout.settings, layout.bodyFontSize)
+        : layout.bodyFontSize * layout.settings.lineSpacing;
       const bodyVisualHeight = shouldUseLongSkinnyFormat(layout.settings)
         ? bodyLineHeight * Math.max(1, getFontHeightScale(previewFont))
         : bodyLineHeight;
@@ -5126,7 +5670,7 @@ export default function TextPreview({
     drawLongSkinnyPaperRules(
       ctx,
       layout,
-      activeFontPreset ? getActivePresetFontSize(layout.settings.fontSize) : layout.settings.fontSize,
+      layout.bodyFontSize,
     );
 
     drawPreviewTextLayerWithEffects(ctx, layout);
@@ -5306,7 +5850,7 @@ export default function TextPreview({
       base64Data,
       dialogTitle: "Share image",
       fileName,
-      text: "Made in Local Font Studio",
+      text: "Made in Quill",
       title: font.name,
     });
 
@@ -5404,6 +5948,137 @@ export default function TextPreview({
     setShareStatus("Deleted preview document.");
   }
 
+  function getRenderedPageTitle(titleOverride?: string) {
+    const namedDocument = titleOverride?.trim() || documentName.trim();
+    if (namedDocument && namedDocument !== "Untitled preview") {
+      return namedDocument;
+    }
+
+    return `${font.name} page`;
+  }
+
+  function getDesignPresetTitle(titleOverride?: string) {
+    const namedPreset = titleOverride?.trim();
+
+    return namedPreset || `${font.name} preset`;
+  }
+
+  function getRenderedPageTextContent() {
+    return [
+      isPreviewTextTargetHidden("preview-header") ? "" : headerPreviewText,
+      isPreviewTextTargetHidden("preview-body") ? "" : previewText,
+      ...previewTextLayers
+        .filter((layer) => !isPreviewTextTargetHidden(layer.id))
+        .map((layer) => layer.text),
+    ]
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .join("\n\n");
+  }
+
+  function openSaveTitlePrompt() {
+    setSaveTitleDraft(imageViewerMode === "preset" ? getDesignPresetTitle() : getRenderedPageTitle());
+    setSaveTitlePromptOpen(true);
+  }
+
+  function saveDesignPreset(titleOverride?: string) {
+    const now = new Date().toISOString();
+    const nextPreset: PreviewDesignPreset = {
+      fontOptionId: getActivePreviewFontOptionId(),
+      id: createPreviewId(),
+      name: getDesignPresetTitle(titleOverride),
+      settings: normalizePreviewSettings(imageSettings),
+      updatedAt: now,
+    };
+    const nextPresets = [nextPreset, ...previewDesignPresets].slice(0, 24);
+
+    setPreviewDesignPresets(nextPresets);
+    savePreviewDesignPresets(nextPresets);
+    onDesignPresetsChange?.(getPreviewDesignPresetSummaries(nextPresets), nextPreset.id);
+    setShareStatus(`Saved "${nextPreset.name}" preset.`);
+    onRecordExport?.(`Saved "${nextPreset.name}" compose preset.`);
+    return true;
+  }
+
+  function applyDesignPreset(presetId: string) {
+    const preset = previewDesignPresets.find((item) => item.id === presetId);
+
+    if (!preset) {
+      return;
+    }
+
+    const nextSettings = normalizePreviewSettings(preset.settings);
+
+    if (nextSettings.exportPreset === "custom") {
+      customImageMetricDefaultsRef.current = getImageMetricDefaults(nextSettings);
+    }
+
+    setImageSettings(nextSettings);
+    selectPrimaryPreviewFont(preset.fontOptionId);
+    setCanvasFormatDrawerOpen(false);
+    setImageStyleDrawerOpen(false);
+    setActiveFontSettingsSliderId(null);
+    setFullscreenActionPanelOpen(false);
+    setShareStatus(`Applied "${preset.name}" preset.`);
+  }
+
+  async function saveRenderedPage(titleOverride?: string) {
+    const canvas = imageCanvasRef.current;
+
+    if (!canvas || !onSaveRenderedPage) {
+      setShareStatus("Could not save a page yet.");
+      return false;
+    }
+
+    const blob = await getPhoneImageBlob();
+
+    if (!blob) {
+      setShareStatus("Could not make an image yet.");
+      return false;
+    }
+
+    try {
+      const imageDataUrl = getPhoneImageDataUrl();
+      const title = getRenderedPageTitle(titleOverride);
+      const page = await onSaveRenderedPage({
+        blob,
+        height: canvas.height,
+        textContent: getRenderedPageTextContent(),
+        title,
+        width: canvas.width,
+      });
+
+      onSaveImage?.({
+        fontName: font.name,
+        height: canvas.height,
+        imageDataUrl,
+        message: getRenderedPageTextContent() || "(blank page)",
+        width: canvas.width,
+      });
+      setShareStatus(`Saved "${page.title}" to Library.`);
+      onRecordExport?.(`Saved "${page.title}" as a Quill page.`);
+      return true;
+    } catch {
+      setShareStatus("Could not save this page.");
+      return false;
+    }
+  }
+
+  async function submitSaveTitle(event: ReactFormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (imageViewerMode === "preset") {
+      if (saveDesignPreset(saveTitleDraft)) {
+        setSaveTitlePromptOpen(false);
+      }
+      return;
+    }
+
+    if (await saveRenderedPage(saveTitleDraft)) {
+      setSaveTitlePromptOpen(false);
+    }
+  }
+
   async function downloadPhoneImage() {
     const canvas = imageCanvasRef.current;
 
@@ -5427,7 +6102,7 @@ export default function TextPreview({
           base64Data,
           fileName,
         });
-        setShareStatus("Saved PNG to Documents / Local Font Studio.");
+        setShareStatus("Saved PNG to Documents / Quill.");
         onRecordExport?.(`Exported ${imageSettings.exportPreset} preview PNG.`);
         return;
       }
@@ -5481,7 +6156,7 @@ export default function TextPreview({
     const file = new File([blob], getPhoneImageFileName(), { type: "image/png" });
     const shareData: ShareData & { files?: File[] } = {
       files: [file],
-      text: "Made in Local Font Studio",
+      text: "Made in Quill",
       title: font.name,
     };
 
@@ -5495,11 +6170,11 @@ export default function TextPreview({
 
       if (navigator.share) {
         await navigator.share({
-          text: "Made in Local Font Studio",
+          text: "Made in Quill",
           title: font.name,
         });
         setShareStatus("This browser shared the app text, but not the image file.");
-        onRecordExport?.("Shared Local Font Studio preview text.");
+        onRecordExport?.("Shared Quill preview text.");
         return;
       }
 
@@ -5644,12 +6319,31 @@ export default function TextPreview({
     );
   }
 
-  function getDefaultPreviewTextLayerDraft(): PreviewTextLayerDraft {
-    const firstPreset = fontPresets[0] ? getFontPresetOptionId(fontPresets[0].id) : null;
-    const alternateFont = availableFonts.find((item) => item.id !== previewFont.id) ?? previewFont;
+  function getActivePreviewFontOptionId() {
+    return activeFontPreset ? getFontPresetOptionId(activeFontPreset.id) : previewFont.id;
+  }
 
+  function selectPrimaryPreviewFont(fontId: string) {
+    const preset = getFontPresetFromOptionId(fontId);
+
+    setExpandedPreviewTextFontPickerId(null);
+
+    if (preset) {
+      onCreatePresetFont(preset.id);
+      setShareStatus(`Using "${preset.label}" font.`);
+      return;
+    }
+
+    if (availableFonts.some((item) => item.id === fontId)) {
+      onSelectFont(fontId);
+      const fontLabel = availableFonts.find((item) => item.id === fontId)?.name ?? "selected";
+      setShareStatus(`Using "${fontLabel}" font.`);
+    }
+  }
+
+  function getDefaultPreviewTextLayerDraft(): PreviewTextLayerDraft {
     return {
-      fontId: firstPreset ?? alternateFont.id,
+      fontId: getActivePreviewFontOptionId(),
       sizeScale: 1,
       text: "",
     };
@@ -5657,7 +6351,7 @@ export default function TextPreview({
 
   function openPreviewTextLayerDraft() {
     setDraftPreviewTextLayer(getDefaultPreviewTextLayerDraft());
-    setExpandedPreviewTextFontPickerId("draft");
+    setExpandedPreviewTextFontPickerId(null);
     setActiveStyleDrawer("text");
     setFullscreenAddMenuOpen(false);
     setFullscreenMoveMenuOpen(false);
@@ -6080,6 +6774,25 @@ export default function TextPreview({
     setShareStatus(group === "size" ? "Size metrics shown." : "Spacing metrics shown.");
   }
 
+  function getSelectedPreviewTextTargetId() {
+    return selectedPreviewTextLayerId ?? selectedTextDeletePrimedId;
+  }
+
+  function getSelectedTextSizeConfig(): FontSettingsSliderConfig {
+    const id: FontSettingsSliderId = "size";
+    const value = getPreviewTextTargetBaseSizeScale(getSelectedPreviewTextTargetId() ?? "");
+
+    return {
+      id,
+      label: "Size",
+      max: 2.5,
+      min: 0.45,
+      precision: 2,
+      step: 0.05,
+      value,
+    };
+  }
+
   function getSelectedTextMetricConfigs() {
     const metricIds: FontSettingsSliderId[] = selectedTextMetricGroup === "spacing"
       ? ["letterSpacing", "rowSpacing", "spacebar"]
@@ -6087,7 +6800,7 @@ export default function TextPreview({
         ? ["size", "height", "width"]
         : [];
 
-    return metricIds.map((id) => getFontSettingsSliderConfig(id));
+    return metricIds.map((id) => (id === "size" ? getSelectedTextSizeConfig() : getFontSettingsSliderConfig(id)));
   }
 
   function renderSelectedTextMetricsPopover() {
@@ -6939,6 +7652,7 @@ export default function TextPreview({
           className={`draw-control-drawer style-control-drawer ${draftPreviewTextLayer ? "style-text-draft-drawer" : ""}`}
           aria-label="Text drawer"
         >
+          {renderPositionSettingsControls("alignment-row text-position-row style-text-position-row")}
           {draftPreviewTextLayer ? (
             <div className="style-text-layer-card">
               <div className="style-text-layer-heading">
@@ -7472,6 +8186,11 @@ export default function TextPreview({
   }
 
   function openSelectedLetterEditor() {
+    if (composeFullscreenOnly) {
+      setImageViewerOpen(true);
+      return;
+    }
+
     setImageViewerOpen(false);
     onOpenCharacterEditor(settingsGlyph.character);
     setShareStatus(`Editing "${settingsGlyphLabel}".`);
@@ -8046,8 +8765,47 @@ export default function TextPreview({
     }
   }
 
+  function updateSelectedPreviewTextSize(value: number, min: number, max: number, precision: number) {
+    const targetId = getSelectedPreviewTextTargetId();
+
+    if (!targetId) {
+      setShareStatus("Select text first.");
+      return false;
+    }
+
+    const sizeScale = getClampedMetricValue(value, min, max, precision);
+
+    if (targetId === "preview-header" || targetId === "preview-body") {
+      setPreviewTextTargetPlacements((current) => ({
+        ...current,
+        [targetId]: {
+          ...current[targetId],
+          sizeScale,
+        },
+      }));
+      unhidePreviewTextTarget(targetId);
+      setActiveDocumentId(null);
+      setShareStatus("Selected text size updated.");
+      return true;
+    }
+
+    if (previewTextLayers.some((layer) => layer.id === targetId)) {
+      updatePreviewTextLayer(targetId, { sizeScale });
+      setShareStatus("Selected text size updated.");
+      return true;
+    }
+
+    setShareStatus("Select text first.");
+    return false;
+  }
+
   function setFontSettingsSliderValue(id: FontSettingsSliderId, value: number) {
     const config = getFontSettingsSliderConfig(id);
+
+    if (id === "size" && selectedTextMetricGroup === "size" && getSelectedPreviewTextTargetId()) {
+      updateSelectedPreviewTextSize(value, 0.45, 2.5, 2);
+      return;
+    }
 
     if (id === "size") {
       const sizeBase = getFontSizeScaleBase();
@@ -8754,10 +9512,40 @@ export default function TextPreview({
     setActiveLetterSettingsSliderId(null);
     setCanvasFormatDrawerOpen(false);
     setFontEffectsMenuOpen(false);
+    setFullscreenAddMenuOpen(false);
     setFullscreenActionPanelOpen(true);
+    setFullscreenMoveMenuOpen(false);
+    setFullscreenSelectMenuOpen(false);
     setImageStyleDrawerOpen(false);
+    setImageViewerMode("page");
+    setSaveTitlePromptOpen(false);
     closeStyleEditor();
+    if (composeFullscreenOnly) {
+      setActiveSettingsPanel("image");
+      setImageViewerOpen(true);
+      return;
+    }
+
     setImageViewerOpen(false);
+  }
+
+  function openPresetBuilderCanvas() {
+    setActiveSettingsPanel("preset");
+    setFullscreenActionPanelOpen(true);
+    setImageViewerMode("preset");
+    setActiveFontSettingsSliderId(null);
+    setActiveImageSettingsSliderId(null);
+    setActiveLetterSettingsSliderId(null);
+    setCanvasFormatDrawerOpen(false);
+    setFontEffectsMenuOpen(false);
+    setFullscreenAddMenuOpen(false);
+    setFullscreenMoveMenuOpen(false);
+    setFullscreenSelectMenuOpen(false);
+    setImageStyleDrawerOpen(false);
+    setSaveTitlePromptOpen(false);
+    closeStyleEditor();
+    setImageViewerOpen(true);
+    setShareStatus("Preset builder ready.");
   }
 
   function renderFontEffectsMenu() {
@@ -8797,21 +9585,33 @@ export default function TextPreview({
   }
 
   function renderPositionSettingsControls(className = "alignment-row image-option-row") {
+    const alignmentOptions: Array<{ id: TextAlignment; label: string }> = [
+      { id: "left", label: "Left" },
+      { id: "center", label: "Middle" },
+      { id: "right", label: "Right" },
+    ];
+
     return (
       <div className={className} aria-label="Position settings">
-        {(["left", "center", "right"] as const).map((alignment) => (
-          <button
-            key={alignment}
-            className={`secondary-button compact-button ${imageSettings.alignment === alignment ? "active-tool" : ""}`}
-            type="button"
-            onClick={() => setImageSettings((current) => ({ ...current, alignment }))}
-          >
-            {alignment}
-          </button>
+        {alignmentOptions.map((option) => (
+          <label key={option.id} className={`check-control ${imageSettings.alignment === option.id ? "active-tool" : ""}`}>
+            <input
+              type="checkbox"
+              aria-label={option.label}
+              checked={imageSettings.alignment === option.id}
+              onChange={(event) => {
+                if (event.target.checked) {
+                  setImageSettings((current) => ({ ...current, alignment: option.id }));
+                }
+              }}
+            />
+            {option.label}
+          </label>
         ))}
-        <label className="check-control">
+        <label className={`check-control ${imageSettings.autoFit ? "active-tool" : ""}`}>
           <input
             type="checkbox"
+            aria-label="Fit"
             checked={imageSettings.autoFit}
             onChange={(event) =>
               setImageSettings((current) => ({ ...current, autoFit: event.target.checked }))
@@ -9028,8 +9828,94 @@ export default function TextPreview({
             </button>
           </div>
         ) : null}
+        {fontMetricControlsVisible ? renderPositionSettingsControls("alignment-row text-position-row phone-image-fullscreen-options") : null}
         {textLayerDrawerOpen && renderStyleDrawer()}
         {renderStyleSelectionActions()}
+      </div>
+    );
+  }
+
+  function renderPresetCategoryControls() {
+    const fontSizeConfig = getFontSettingsSliderConfig("size");
+    const activeFontOptionId = getActivePreviewFontOptionId();
+
+    if (imageViewerMode !== "preset") {
+      return (
+        <div className="phone-image-panel-stack preset-panel-controls preset-picker-controls" aria-label="Preset controls">
+          <div className="preset-picker-popover" aria-label="Saved presets">
+            <button
+              className="primary-button compact-button preset-picker-new-button"
+              type="button"
+              onClick={openPresetBuilderCanvas}
+            >
+              New Preset
+            </button>
+            {previewDesignPresets.length > 0 ? (
+              previewDesignPresets.map((preset) => (
+                <button
+                  key={preset.id}
+                  className="secondary-button compact-button preset-picker-option"
+                  type="button"
+                  onClick={() => applyDesignPreset(preset.id)}
+                >
+                  <strong>{preset.name}</strong>
+                  <span>{preset.settings.exportPreset}</span>
+                </button>
+              ))
+            ) : (
+              <p className="preset-picker-empty">No presets saved.</p>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="phone-image-panel-stack preset-panel-controls" aria-label="Preset controls">
+        {canvasFormatDrawerOpen ? renderFormatPresetControls("phone-image-format-preset-row phone-image-canvas-format-drawer preset-format-drawer") : null}
+        {imageStyleDrawerOpen ?
+          renderPageStyleControls("draw-control-drawer style-control-drawer phone-image-inline-style-drawer preset-style-drawer")
+          : null}
+        <div className="phone-image-action-row preset-action-row">
+          <button
+            className={`secondary-button compact-button phone-image-tool-button ${canvasFormatDrawerOpen ? "active-tool" : ""}`}
+            type="button"
+            aria-expanded={canvasFormatDrawerOpen}
+            onClick={() => {
+              setImageStyleDrawerOpen(false);
+              setActiveFontSettingsSliderId(null);
+              setCanvasFormatDrawerOpen((open) => !open);
+            }}
+          >
+            <span>Format</span>
+          </button>
+          <button
+            className={`secondary-button compact-button phone-image-tool-button ${imageStyleDrawerOpen ? "active-tool" : ""}`}
+            type="button"
+            aria-expanded={imageStyleDrawerOpen}
+            onClick={() => {
+              setCanvasFormatDrawerOpen(false);
+              setActiveFontSettingsSliderId(null);
+              setImageStyleDrawerOpen((open) => !open);
+            }}
+          >
+            <span>Style</span>
+          </button>
+          <div className="preset-font-control">
+            {renderPreviewTextFontPicker({
+              ariaLabel: "Preview font",
+              pickerId: "primary-preview-font",
+              value: activeFontOptionId,
+              onChange: selectPrimaryPreviewFont,
+            })}
+          </div>
+          <div className={`font-slider-shell preset-size-slider-shell ${activeFontSettingsSliderId === "size" ? "has-open-slider" : ""}`}>
+            {activeFontSettingsSliderId === "size" ? renderFontSettingsSliderDrawer(fontSizeConfig) : null}
+            <div className="font-slider-button-row" aria-label="Preset font size">
+              {renderFontSliderTrigger(fontSizeConfig)}
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -9188,12 +10074,8 @@ export default function TextPreview({
       return renderLetterCategoryControls();
     }
 
-    if (activeSettingsPanel === "position") {
-      return (
-        <div className="phone-image-panel-stack position-panel-controls" aria-label="Position controls">
-          {renderPositionSettingsControls("alignment-row image-option-row phone-image-fullscreen-options")}
-        </div>
-      );
+    if (activeSettingsPanel === "preset") {
+      return renderPresetCategoryControls();
     }
 
     if (activeSettingsPanel === "decor") {
@@ -9280,54 +10162,6 @@ export default function TextPreview({
     );
   }
 
-  function renderPreviewTextMenu() {
-    return (
-      <details className="sidebar-dropdown preview-text-dropdown">
-        <summary>
-          <span>Preview Text</span>
-          <strong>{savedGlyphCount} saved</strong>
-        </summary>
-
-        <div className="sidebar-preview-controls">
-          <div className="preview-preset-grid" aria-label="Preview presets">
-            {previewPresets.map((preset) => (
-              <button key={preset.id} className="secondary-button compact-button" type="button" onClick={() => applyTextPreset(preset)}>
-                {preset.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="preview-document-tools" aria-label="Preview documents">
-            <input
-              aria-label="Preview document name"
-              value={documentName}
-              onChange={(event) => setDocumentName(event.target.value)}
-            />
-            <button className="primary-button compact-button" type="button" onClick={savePreviewDocument}>
-              Save doc
-            </button>
-          </div>
-
-          {savedDocuments.length > 0 && (
-            <div className="preview-document-list" aria-label="Saved preview documents">
-              {savedDocuments.map((document) => (
-                <div key={document.id} className={`preview-document-card ${activeDocumentId === document.id ? "selected" : ""}`}>
-                  <button type="button" onClick={() => loadPreviewDocument(document.id)}>
-                    <strong>{document.name}</strong>
-                    <span>{document.text.slice(0, 42) || "(blank)"}</span>
-                  </button>
-                  <button className="metric-default-button" type="button" onClick={() => deletePreviewDocument(document.id)}>
-                    Delete
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </details>
-    );
-  }
-
   function renderPreviewTextBox(className = "preview-input phone-text-input") {
     return (
       <textarea
@@ -9363,8 +10197,6 @@ export default function TextPreview({
 
   return (
     <>
-      {previewMenuRoot ? createPortal(renderPreviewTextMenu(), previewMenuRoot) : null}
-
       <section
         id="preview-panel"
         className={`studio-panel preview-panel phone-generator-panel ${
@@ -9393,12 +10225,14 @@ export default function TextPreview({
           onClick={() => {
             setActiveSettingsPanel("image");
             setFullscreenActionPanelOpen(true);
+            setImageViewerMode("page");
             setActiveFontSettingsSliderId(null);
             setActiveImageSettingsSliderId(null);
             setActiveLetterSettingsSliderId(null);
             setCanvasFormatDrawerOpen(false);
             setFontEffectsMenuOpen(false);
             setImageStyleDrawerOpen(false);
+            setSaveTitlePromptOpen(false);
             setImageViewerOpen(true);
           }}
         >
@@ -9430,15 +10264,33 @@ export default function TextPreview({
               <button className="primary-button compact-button" type="button" onClick={sharePhoneImage}>
                 Share
               </button>
+              <button className="primary-button compact-button" type="button" onClick={openSaveTitlePrompt}>
+                Save As
+              </button>
               <button className="secondary-button compact-button" type="button" onClick={downloadPhoneImage}>
                 Export PNG
               </button>
             </div>
+            {saveTitlePromptOpen && !imageViewerOpen && (
+              <form className="phone-image-actions phone-image-save-as-form inline-save-as-form" aria-label="Save As" onSubmit={submitSaveTitle}>
+                <input
+                  ref={saveTitleInputRef}
+                  aria-label="Save as title"
+                  placeholder={imageViewerMode === "preset" ? "Title this preset" : "Title this save"}
+                  value={saveTitleDraft}
+                  onChange={(event) => setSaveTitleDraft(event.target.value)}
+                />
+                <button className="primary-button compact-button phone-image-save-confirm" type="submit" aria-label="Confirm Save As" title="Confirm">
+                  <Check aria-hidden="true" size={18} />
+                </button>
+              </form>
+            )}
           </>
         )}
 
         {showPreviewText && (
           <>
+            {renderPositionSettingsControls("alignment-row text-position-row")}
             <div className="header-letter-input-group">
               <span className="preview-field-label">Header</span>
               {renderHeaderPreviewTextBox("preview-input phone-text-input phone-image-text-input phone-header-text-input")}
@@ -9459,11 +10311,11 @@ export default function TextPreview({
             <button
               className="secondary-button compact-button phone-image-home-button"
               type="button"
-              aria-label="Home"
-              title="Home"
-              onClick={closeFullscreenPreview}
+              aria-label="Open menu"
+              title="Menu"
+              onClick={composeFullscreenOnly && onOpenAppMenu ? onOpenAppMenu : closeFullscreenPreview}
             >
-              <Home aria-hidden="true" />
+              <Menu aria-hidden="true" />
             </button>
             <div
               className={`phone-image-active-settings ${
@@ -9482,32 +10334,68 @@ export default function TextPreview({
                     {settingsGlyphLabel}
                   </strong>
                 </>
+              ) : imageViewerMode === "preset" ? (
+                "Preset Builder"
               ) : (
                 settingsPanelLabels[activeSettingsPanel]
               )}
             </div>
-            <div className="phone-image-header-actions" aria-label="Output actions">
-              <button
-                className="secondary-button compact-button"
-                type="button"
-                onClick={sharePhoneImage}
-              >
-                Share
-              </button>
-              <button
-                className="secondary-button compact-button"
-                type="button"
-                onClick={downloadPhoneImage}
-              >
-                Export PNG
-              </button>
-            </div>
+            {saveTitlePromptOpen ? (
+              <form className="phone-image-header-actions phone-image-save-as-form" aria-label="Save As" onSubmit={submitSaveTitle}>
+                <input
+                  ref={saveTitleInputRef}
+                  aria-label="Save as title"
+                  placeholder={imageViewerMode === "preset" ? "Title this preset" : "Title this save"}
+                  value={saveTitleDraft}
+                  onChange={(event) => setSaveTitleDraft(event.target.value)}
+                />
+                <button className="primary-button compact-button phone-image-save-confirm" type="submit" aria-label="Confirm Save As" title="Confirm">
+                  <Check aria-hidden="true" size={18} />
+                </button>
+              </form>
+            ) : imageViewerMode === "preset" ? (
+              <div className="phone-image-header-actions" aria-label="Preset actions">
+                <button
+                  className="primary-button compact-button"
+                  type="button"
+                  onClick={openSaveTitlePrompt}
+                >
+                  Save As
+                </button>
+              </div>
+            ) : (
+              <div className="phone-image-header-actions" aria-label="Output actions">
+                <button
+                  className="secondary-button compact-button"
+                  type="button"
+                  onClick={sharePhoneImage}
+                >
+                  Share
+                </button>
+                <button
+                  className="primary-button compact-button"
+                  type="button"
+                  onClick={openSaveTitlePrompt}
+                >
+                  Save As
+                </button>
+                <button
+                  className="secondary-button compact-button"
+                  type="button"
+                  onClick={downloadPhoneImage}
+                >
+                  Export PNG
+                </button>
+              </div>
+            )}
           </div>
 
           <div
             className={`phone-image-fullscreen-surface ${
               imageSettings.transparent ? "transparent-preview" : ""
-            } ${shouldUseLongSkinnyFormat(imageSettings) ? "long-skinny-preview" : ""}`}
+            } ${imageSettings.exportPreset === "phone" ? "phone-format-preview" : ""} ${
+              shouldUseLongSkinnyFormat(imageSettings) ? "long-skinny-preview" : ""
+            }`}
           >
             <canvas
               ref={viewerCanvasRef}

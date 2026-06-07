@@ -111,7 +111,7 @@ export type BackgroundTexture = "clean" | "grain" | "fiber" | "canvas" | "woven"
 
 export type FontRenderProfile = "plain" | "quillParchment";
 
-export type FontPaletteId = "midnightCorrespondence" | "strawberryMarket";
+export type FontPaletteId = "midnightLetters" | "strawberryMarket";
 
 export type FontTheme = {
   accentColor: string;
@@ -246,14 +246,14 @@ export type StorageHealthCheck = {
 };
 
 export type ProjectExportFile = {
-  app: "local-font-studio";
+  app: "quill";
   data: FontStudioData;
   exportedAt: string;
   schemaVersion: 3;
 };
 
 export type FontExportFile = {
-  app: "local-font-studio";
+  app: "quill";
   exportType: "font";
   exportedAt: string;
   font: FontSet;

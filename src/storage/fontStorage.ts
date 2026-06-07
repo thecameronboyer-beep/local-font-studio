@@ -36,9 +36,9 @@ import type {
   StorageHealthCheck,
 } from "../types/fontTypes";
 
-const STORAGE_KEY = "local-font-studio:data:v1";
-const BACKUP_STORAGE_KEY = "local-font-studio:backups:v1";
-const CORRUPT_STORAGE_KEY = "local-font-studio:data:corrupt:v1";
+const STORAGE_KEY = "quill:data:v1";
+const BACKUP_STORAGE_KEY = "quill:backups:v1";
+const CORRUPT_STORAGE_KEY = "quill:data:corrupt:v1";
 const CURRENT_STORAGE_VERSION = 3;
 const MAX_ACTIVITY_ENTRIES = 80;
 const MAX_BACKUPS = 12;
@@ -268,7 +268,7 @@ function normalizeRenderProfile(value: unknown): FontRenderProfile | undefined {
 }
 
 function normalizePaletteId(value: unknown): FontPaletteId | undefined {
-  return value === "strawberryMarket" || value === "midnightCorrespondence" ? value : undefined;
+  return value === "strawberryMarket" || value === "midnightLetters" ? value : undefined;
 }
 
 function normalizeBackgroundStyle(value: unknown): BackgroundStyle {
@@ -1074,7 +1074,7 @@ export function saveFontStudioData(data: FontStudioData, options: SaveOptions = 
 
 export function exportFontStudioProject(data: FontStudioData) {
   const exportFile: ProjectExportFile = {
-    app: "local-font-studio",
+    app: "quill",
     data: migrateFontStudioData(data),
     exportedAt: new Date().toISOString(),
     schemaVersion: CURRENT_STORAGE_VERSION,
@@ -1085,7 +1085,7 @@ export function exportFontStudioProject(data: FontStudioData) {
 
 export function exportFontSet(font: FontSet) {
   const exportFile: FontExportFile = {
-    app: "local-font-studio",
+    app: "quill",
     exportType: "font",
     exportedAt: new Date().toISOString(),
     font,
@@ -1097,7 +1097,7 @@ export function exportFontSet(font: FontSet) {
 
 export function importFontStudioProject(jsonText: string): FontStudioData {
   const parsed = JSON.parse(jsonText) as unknown;
-  const data = isRecord(parsed) && parsed.app === "local-font-studio" && parsed.data
+  const data = isRecord(parsed) && parsed.app === "quill" && parsed.data
     ? parsed.data
     : parsed;
 

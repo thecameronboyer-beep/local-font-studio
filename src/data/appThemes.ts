@@ -1,6 +1,6 @@
 import { strawberryMarketPalette } from "./palettes";
 
-export type AppThemeId = "classic" | "midnightCorrespondence" | "strawberryMarket";
+export type AppThemeId = "classic" | "midnightLetters" | "strawberryMarket";
 
 export type AppThemeBackground = {
   cssVariables: Record<string, string>;
@@ -21,8 +21,8 @@ export type AppTheme = {
 };
 
 export const defaultAppThemeId: AppThemeId = "classic";
-export const APP_THEME_STORAGE_KEY = "local-font-studio:app-theme:v3";
-export const APP_THEME_BACKGROUND_STORAGE_KEY = "local-font-studio:app-theme-background:v1";
+export const APP_THEME_STORAGE_KEY = "quill:app-theme:v3";
+export const APP_THEME_BACKGROUND_STORAGE_KEY = "quill:app-theme-background:v1";
 
 export const appThemes: AppTheme[] = [
   {
@@ -61,10 +61,10 @@ export const appThemes: AppTheme[] = [
     },
   },
   {
-    id: "midnightCorrespondence",
-    label: "Midnight Correspondence",
+    id: "midnightLetters",
+    label: "Midnight Letters",
     description: "Private night letters, fountain pen ink, and calm literary stationery.",
-    paletteId: "midnightCorrespondence",
+    paletteId: "midnightLetters",
     swatches: ["#F5F1E8", "#D7E3F4", "#A8B0BF", "#7A2E3A", "#C9A45A", "#2B2F3A"],
     defaultBackgroundId: "parchmentIvory",
     cssVariables: {
@@ -183,7 +183,7 @@ export const appThemes: AppTheme[] = [
 ];
 
 export function normalizeAppThemeId(value: unknown): AppThemeId {
-  return value === "classic" || value === "midnightCorrespondence" || value === "strawberryMarket"
+  return value === "classic" || value === "midnightLetters" || value === "strawberryMarket"
     ? value
     : defaultAppThemeId;
 }

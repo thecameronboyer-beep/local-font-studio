@@ -1,6 +1,6 @@
 import type { SavedImage } from "../types/fontTypes";
 
-const SAVED_IMAGES_KEY = "local-font-studio:saved-images:v1";
+const SAVED_IMAGES_KEY = "quill:saved-images:v1";
 
 export const MAX_SAVED_IMAGES = 24;
 

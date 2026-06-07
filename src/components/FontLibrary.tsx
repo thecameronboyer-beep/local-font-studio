@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { Check, Feather, Palette, X } from "lucide-react";
 import {
   drawGlyph,
@@ -40,10 +40,10 @@ import type { FontGuideKey } from "../utils/fontGuides";
 import { isNativeFilePlatform, saveNativeFileToDocuments, shareNativeFile } from "../utils/nativeFiles";
 
 type FontLibraryProps = {
-  homeMode: "design" | "compose";
+  homeMode: "design" | "compose" | "compile" | "library";
   fonts: FontSet[];
   activeFontId: string;
-  onHomeModeChange: (mode: "design" | "compose") => void;
+  onHomeModeChange: (mode: "design" | "compose" | "compile" | "library") => void;
   onSelectFont: (fontId: string) => void;
   onCreateFont: (
     name: string,
@@ -69,6 +69,7 @@ type FontLibraryProps = {
   onDuplicateFont: (fontId: string) => void;
   onDeleteFont: (fontId: string) => void;
   getSavedGlyphCount: (font: FontSet) => number;
+  modeSlot?: ReactNode;
 };
 
 function FontNamePreview({
@@ -456,6 +457,7 @@ export default function FontLibrary({
   onDuplicateFont,
   onDeleteFont,
   getSavedGlyphCount,
+  modeSlot,
 }: FontLibraryProps) {
   const activeFont = fonts.find((font) => font.id === activeFontId) ?? fonts[0];
   const [createFormOpen, setCreateFormOpen] = useState(false);
@@ -473,6 +475,7 @@ export default function FontLibrary({
   const [fontRenameValue, setFontRenameValue] = useState("");
   const [presetPickerOpen, setPresetPickerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const navigationOnly = homeMode === "library";
 
   useEffect(() => {
     setSettingsOpen(false);
@@ -566,8 +569,8 @@ export default function FontLibrary({
     setSettingsOpen(false);
   }
 
-  function renderPresetPicker() {
-    if (!presetPickerOpen) {
+  function renderPresetPicker(forceOpen = false) {
+    if (!forceOpen && !presetPickerOpen) {
       return null;
     }
 
@@ -687,19 +690,27 @@ export default function FontLibrary({
   }
 
   return (
-    <section className="studio-panel library-panel font-profile-panel" aria-label="Font profile">
-      <div className="font-list">
-        <div className="font-row selected active-profile-row themed-font-row" style={getFontThemeRowStyle(activeFont)}>
-          <button
-            type="button"
-            className="font-select-button active-font-preview-button"
-            onClick={() => setSettingsOpen(true)}
-            aria-label={`Open ${activeFont.name} font profile`}
-          >
-            <FontNamePreview font={activeFont} />
-          </button>
+    <section className={`studio-panel library-panel font-profile-panel ${navigationOnly ? "navigation-only" : ""}`} aria-label="Font profile">
+      {!navigationOnly && (
+        <div className={`font-list ${homeMode === "compose" ? "compose-font-presets" : ""}`}>
+          {modeSlot ? (
+            <div className={`${homeMode}-mode-slot`}>
+              {modeSlot}
+            </div>
+          ) : (
+            <div className="font-row selected active-profile-row themed-font-row" style={getFontThemeRowStyle(activeFont)}>
+              <button
+                type="button"
+                className="font-select-button active-font-preview-button"
+                onClick={() => setSettingsOpen(true)}
+                aria-label={`Open ${activeFont.name} font profile`}
+              >
+                <FontNamePreview font={activeFont} />
+              </button>
+            </div>
+          )}
         </div>
-      </div>
+      )}
 
       {settingsOpen && (
         <section className="font-profile-fullscreen" aria-label="Font profile">
@@ -915,6 +926,8 @@ export default function FontLibrary({
         {([
           { id: "design", label: "Design" },
           { id: "compose", label: "Compose" },
+          { id: "compile", label: "Compile" },
+          { id: "library", label: "Library" },
         ] as const).map((option) => (
           <button
             key={option.id}

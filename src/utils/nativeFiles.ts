@@ -43,7 +43,7 @@ export async function saveNativeFileToDocuments(options: NativeFileData) {
     data: fileData.data,
     directory: Directory.Documents,
     encoding: fileData.encoding,
-    path: `Local Font Studio/${options.fileName}`,
+    path: `Quill/${options.fileName}`,
     recursive: true,
   });
 }

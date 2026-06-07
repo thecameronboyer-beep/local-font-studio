@@ -70,16 +70,16 @@ export const strawberryMarketPalette: FontPalette = {
   defaultTexture: "grain",
 };
 
-export const midnightCorrespondencePalette: FontPalette = {
-  id: "midnightCorrespondence",
-  label: "Midnight Correspondence",
+export const midnightLettersPalette: FontPalette = {
+  id: "midnightLetters",
+  label: "Midnight Letters",
   main: [
     { color: "#F5F1E8", label: "Parchment Ivory" },
     { color: "#D7E3F4", label: "Moonlit Blue" },
     { color: "#A8B0BF", label: "Dusty Slate" },
   ],
   accents: [
-    { color: "#7A2E3A", label: "Seal Garnet" },
+    { color: "#7A2E3A", label: "Garnet" },
     { color: "#C9A45A", label: "Antique Gold" },
   ],
   ink: { color: "#2B2F3A", label: "Midnight Ink" },
@@ -116,7 +116,7 @@ export const midnightCorrespondencePalette: FontPalette = {
   defaultTexture: "clean",
 };
 
-export const fontPalettes: FontPalette[] = [strawberryMarketPalette, midnightCorrespondencePalette];
+export const fontPalettes: FontPalette[] = [strawberryMarketPalette, midnightLettersPalette];
 export const defaultFontPaletteId: FontPaletteId = "strawberryMarket";
 
 export function getFontPalette(paletteId?: FontPaletteId) {

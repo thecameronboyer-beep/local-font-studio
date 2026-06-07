@@ -166,7 +166,7 @@ export default function SavedImagesPanel({ images, onClose, onDeleteImage }: Sav
                   onClick={async () => {
                     try {
                       await downloadSavedImage(image);
-                      setStatus("Saved PNG to Documents / Local Font Studio.");
+                      setStatus("Saved PNG to Documents / Quill.");
                     } catch {
                       setStatus("Could not save the PNG.");
                     }
