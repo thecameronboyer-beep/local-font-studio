@@ -7108,6 +7108,13 @@ h1 {
   margin-inline: -1px;
 }
 
+.canvas-panel-controls > .padding-slider-drawer {
+  right: 0;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 18;
+}
+
 .phone-image-tool-button {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -7199,6 +7206,10 @@ h1 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.phone-image-padding-button span {
+  display: block;
 }
 
 .phone-image-inline-style-drawer {

@@ -9760,7 +9760,9 @@ export default function TextPreview({
 
     return (
       <div
-        className="font-slider-drawer image-slider-drawer"
+        className={`font-slider-drawer image-slider-drawer ${
+          config.id === "pagePadding" ? "padding-slider-drawer" : ""
+        }`}
         style={{ "--slider-fill": `${sliderFill}%` } as CSSProperties}
         aria-label={`${config.label} slider`}
       >
@@ -10304,10 +10306,13 @@ export default function TextPreview({
     );
   }
 
-  function renderImageLayoutControls(className = "phone-image-tools preview-layout-tools image-settings-tools") {
-    const sliderConfigs = imageSettingsSliderOrder.map((id) => getImageSettingsSliderConfig(id));
+  function renderImageLayoutControls(
+    className = "phone-image-tools preview-layout-tools image-settings-tools",
+    sliderIds: ImageSettingsSliderId[] = imageSettingsSliderOrder,
+  ) {
+    const sliderConfigs = sliderIds.map((id) => getImageSettingsSliderConfig(id));
     const activeSliderConfig = activeImageSettingsSliderId
-      ? getImageSettingsSliderConfig(activeImageSettingsSliderId)
+      ? sliderConfigs.find((config) => config.id === activeImageSettingsSliderId) ?? null
       : null;
 
     return (
@@ -10431,10 +10436,13 @@ export default function TextPreview({
 
   function renderCanvasCategoryControls() {
     const customFormatActive = imageSettings.exportPreset === "custom";
+    const paddingConfig = getImageSettingsSliderConfig("pagePadding");
+    const paddingSliderOpen = activeImageSettingsSliderId === "pagePadding";
 
     return (
       <div className="phone-image-panel-stack canvas-panel-controls" aria-label="Canvas controls">
         {canvasFormatDrawerOpen ? renderFormatPresetControls("phone-image-format-preset-row phone-image-canvas-format-drawer") : null}
+        {paddingSliderOpen ? renderImageSettingsSliderDrawer(paddingConfig) : null}
         <div className="phone-image-action-row canvas-action-row">
           <button
             className={`secondary-button compact-button phone-image-tool-button phone-image-format-trigger ${
@@ -10467,7 +10475,29 @@ export default function TextPreview({
           >
             <span>Style</span>
           </button>
-          {customFormatActive ? renderImageLayoutControls("phone-image-fullscreen-tools preview-layout-tools image-settings-tools") : null}
+          <button
+            className={`secondary-button compact-button phone-image-style-button phone-image-padding-button ${
+              paddingSliderOpen ? "active-tool" : ""
+            }`}
+            type="button"
+            aria-expanded={paddingSliderOpen}
+            aria-label={`Padding: ${formatMetricValue(paddingConfig.value, paddingConfig.precision)}`}
+            title={`Padding: ${formatMetricValue(paddingConfig.value, paddingConfig.precision)}`}
+            onClick={() => {
+              setCanvasFormatDrawerOpen(false);
+              setFontEffectsMenuOpen(false);
+              setImageStyleDrawerOpen(false);
+              setActiveImageSettingsSliderId((current) => (current === "pagePadding" ? null : "pagePadding"));
+            }}
+          >
+            <span>Padding</span>
+          </button>
+          {customFormatActive
+            ? renderImageLayoutControls(
+                "phone-image-fullscreen-tools preview-layout-tools image-settings-tools",
+                ["size", "canvasWidth", "canvasHeight"],
+              )
+            : null}
         </div>
         {imageStyleDrawerOpen &&
           renderPageStyleControls("draw-control-drawer style-control-drawer phone-image-inline-style-drawer")}
