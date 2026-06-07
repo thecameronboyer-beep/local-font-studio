@@ -430,7 +430,9 @@ type PalettePageDraft = Record<PalettePageColorKey, string> & {
   title: string;
 };
 
-const PREVIEW_TEXT_SELECTION_PADDING = 8;
+const PREVIEW_TEXT_SELECTION_HIT_PADDING = 8;
+const PREVIEW_TEXT_SELECTION_VISUAL_PADDING = 3;
+const PREVIEW_TEXT_LAYER_EDGE_BLEED = 12;
 
 type PreviewDocument = {
   headerText?: string;
@@ -1941,8 +1943,7 @@ export default function TextPreview({
       fontSize * 0.18,
       fontSize * Math.max(glyph.xAdvance, bearingAdvance) * fontWidthScale,
     );
-    const bearingCushion = Math.max(0, glyph.leftBearing) * 0.35 + Math.max(0, glyph.rightBearing) * 0.35;
-    const visibleWidth = fontSize * Math.max(0.18, glyph.width + bearingCushion) * fontWidthScale;
+    const visibleWidth = fontSize * Math.max(0.18, glyph.width) * fontWidthScale;
 
     return Math.min(renderedAdvance, visibleWidth);
   }
@@ -3014,7 +3015,7 @@ export default function TextPreview({
     const targets = getAllPreviewTextHitTargets(ctx, renderSettings);
     const x = point.x * renderSettings.canvasWidth;
     const y = point.y * renderSettings.canvasHeight;
-    const visiblePadding = PREVIEW_TEXT_SELECTION_PADDING;
+    const visiblePadding = PREVIEW_TEXT_SELECTION_HIT_PADDING;
     const hitSlop = Math.max(42, renderSettings.canvasWidth / 24);
     const targetStack = [...targets].reverse();
 
@@ -5430,13 +5431,30 @@ export default function TextPreview({
     };
   }
 
+  function getPreviewTextLayerLineBox(layer: PreviewTextLayer, renderSettings: PreviewImageSettings, fallbackY: number) {
+    const maxLineWidth = Math.max(1, renderSettings.canvasWidth - renderSettings.pagePadding * 2);
+    const layerPlacement = getPreviewTextCanvasPlacement(layer.id, renderSettings);
+    const baseX = layerPlacement?.x ?? renderSettings.pagePadding;
+    const edgeBleed = layerPlacement ? 0 : Math.min(PREVIEW_TEXT_LAYER_EDGE_BLEED, renderSettings.pagePadding);
+    const x = Math.max(0, baseX - edgeBleed);
+    const layerWidth = layer.width
+      ? Math.max(1, layer.width * renderSettings.canvasWidth)
+      : maxLineWidth;
+    const width = Math.max(1, Math.min(renderSettings.canvasWidth - x, layerWidth + edgeBleed * 2));
+
+    return {
+      width,
+      x,
+      y: layerPlacement?.y ?? fallbackY,
+    };
+  }
+
   function drawPreviewTextLayers(
     ctx: CanvasRenderingContext2D,
     renderSettings: PreviewImageSettings,
     startY: number,
   ) {
     let y = startY;
-    const maxLineWidth = Math.max(1, renderSettings.canvasWidth - renderSettings.pagePadding * 2);
 
     previewTextLayers.forEach((layer) => {
       if (!layer.text.trim() || isPreviewTextTargetHidden(layer.id)) {
@@ -5445,25 +5463,21 @@ export default function TextPreview({
 
       const layerFontSource = getPreviewLayerFontSource(layer.fontId);
       const layerFontSize = renderSettings.fontSize * layer.sizeScale;
-      const layerPlacement = getPreviewTextCanvasPlacement(layer.id, renderSettings);
-      const layerStartY = layerPlacement?.y ?? y;
-      const layerMaxLineWidth = layer.width
-        ? Math.max(1, layer.width * renderSettings.canvasWidth)
-        : maxLineWidth;
+      const layerBox = getPreviewTextLayerLineBox(layer, renderSettings, y);
 
       if (layerFontSource.kind === "preset") {
         const lines = renderSettings.autoFit
           ? buildPresetWordWrappedLines(
               ctx,
               layer.text,
-              layerMaxLineWidth,
+              layerBox.width,
               layerFontSource.preset,
               layerFontSize,
             )
           : buildPresetCharacterWrappedLines(
               ctx,
               layer.text,
-              layerMaxLineWidth,
+              layerBox.width,
               layerFontSource.preset,
               layerFontSize,
             );
@@ -5471,8 +5485,8 @@ export default function TextPreview({
         drawPresetTextToCanvas(ctx, lines, renderSettings, {
           fontSize: layerFontSize,
           preset: layerFontSource.preset,
-          startX: layerPlacement?.x,
-          startY: layerStartY,
+          startX: layerBox.x,
+          startY: layerBox.y,
         });
 
         y += lines.length * getPresetLineHeight(renderSettings, layerFontSize) + renderSettings.fontSize * 0.35;
@@ -5482,29 +5496,29 @@ export default function TextPreview({
       const layerFont = layerFontSource.font;
       ctx.font = getFallbackFont(layerFontSize);
       const lines = renderSettings.autoFit
-        ? buildWordWrappedLines(
-            ctx,
-            layer.text,
-            layerMaxLineWidth,
-            layerFontSize,
-            false,
-            layerFont,
-          )
-        : buildCharacterWrappedLines(
-            ctx,
-            layer.text,
-            layerMaxLineWidth,
-            layerFontSize,
-            false,
-            layerFont,
-          );
+          ? buildWordWrappedLines(
+              ctx,
+              layer.text,
+              layerBox.width,
+              layerFontSize,
+              false,
+              layerFont,
+            )
+          : buildCharacterWrappedLines(
+              ctx,
+              layer.text,
+              layerBox.width,
+              layerFontSize,
+              false,
+              layerFont,
+            );
 
       drawTextToCanvas(ctx, lines, renderSettings, {
         font: layerFont,
         fontSize: layerFontSize,
         sourceText: layer.text,
-        startX: layerPlacement?.x,
-        startY: layerStartY,
+        startX: layerBox.x,
+        startY: layerBox.y,
       });
 
       y += lines.length * layerFontSize * renderSettings.lineSpacing +
@@ -5792,7 +5806,6 @@ export default function TextPreview({
     startY: number,
   ): PreviewTextLayerHitTarget[] {
     let y = startY;
-    const maxLineWidth = Math.max(1, renderSettings.canvasWidth - renderSettings.pagePadding * 2);
     const targets: PreviewTextLayerHitTarget[] = [];
 
     previewTextLayers.forEach((layer) => {
@@ -5802,12 +5815,7 @@ export default function TextPreview({
 
       const layerFontSource = getPreviewLayerFontSource(layer.fontId);
       const layerFontSize = renderSettings.fontSize * layer.sizeScale;
-      const layerPlacement = getPreviewTextCanvasPlacement(layer.id, renderSettings);
-      const targetY = layerPlacement?.y ?? y;
-      const targetX = layerPlacement?.x ?? renderSettings.pagePadding;
-      const layerMaxLineWidth = layer.width
-        ? Math.max(1, layer.width * renderSettings.canvasWidth)
-        : maxLineWidth;
+      const layerBox = getPreviewTextLayerLineBox(layer, renderSettings, y);
 
       if (layerFontSource.kind === "preset") {
         const lineHeight = getPresetLineHeight(renderSettings, layerFontSize);
@@ -5815,14 +5823,14 @@ export default function TextPreview({
           ? buildPresetWordWrappedLines(
               ctx,
               layer.text,
-              layerMaxLineWidth,
+              layerBox.width,
               layerFontSource.preset,
               layerFontSize,
             )
           : buildPresetCharacterWrappedLines(
               ctx,
               layer.text,
-              layerMaxLineWidth,
+              layerBox.width,
               layerFontSource.preset,
               layerFontSize,
             );
@@ -5831,9 +5839,9 @@ export default function TextPreview({
         targets.push({
           height,
           id: layer.id,
-          width: layerMaxLineWidth,
-          x: targetX,
-          y: targetY,
+          width: layerBox.width,
+          x: layerBox.x,
+          y: layerBox.y,
         });
 
         y += height + renderSettings.fontSize * 0.35;
@@ -5847,7 +5855,7 @@ export default function TextPreview({
         ? buildWordWrappedLines(
             ctx,
             layer.text,
-            layerMaxLineWidth,
+            layerBox.width,
             layerFontSize,
             false,
             layerFont,
@@ -5855,7 +5863,7 @@ export default function TextPreview({
         : buildCharacterWrappedLines(
             ctx,
             layer.text,
-            layerMaxLineWidth,
+            layerBox.width,
             layerFontSize,
             false,
             layerFont,
@@ -5865,9 +5873,9 @@ export default function TextPreview({
       targets.push({
         height,
         id: layer.id,
-        width: layerMaxLineWidth,
-        x: targetX,
-        y: targetY,
+        width: layerBox.width,
+        x: layerBox.x,
+        y: layerBox.y,
       });
 
       y += height + renderSettings.fontSize * 0.35;
@@ -5934,7 +5942,7 @@ export default function TextPreview({
     target: PreviewTextLayerHitTarget,
     tone: PreviewTextSelectionTone,
   ) {
-    const padding = PREVIEW_TEXT_SELECTION_PADDING;
+    const padding = PREVIEW_TEXT_SELECTION_VISUAL_PADDING;
 
     if (tone === "active") {
       ctx.fillStyle = "rgba(58, 126, 114, 0.2)";
