@@ -432,8 +432,8 @@ type PalettePageDraft = Record<PalettePageColorKey, string> & {
 
 const PREVIEW_TEXT_SELECTION_HIT_PADDING = 8;
 const PREVIEW_TEXT_SELECTION_VISUAL_PADDING = 3;
-const PREVIEW_TEXT_LAYER_EDGE_BLEED = 36;
-const PREVIEW_TEXT_CUSTOM_WRAP_WIDTH_SCALE = 0.88;
+const PREVIEW_TEXT_LAYER_EDGE_BLEED = 24;
+const PREVIEW_TEXT_CUSTOM_WRAP_WIDTH_SCALE = 0.96;
 
 type PreviewDocument = {
   headerText?: string;
