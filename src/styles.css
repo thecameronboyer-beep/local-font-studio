@@ -5983,6 +5983,18 @@ h1 {
   -webkit-user-drag: none;
 }
 
+.style-color-swatch-preview {
+  display: block;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 8px;
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.2),
+    0 1px 5px rgba(0, 0, 0, 0.24);
+  pointer-events: none;
+}
+
 .style-sticker-button > span {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -6169,6 +6181,13 @@ h1 {
   font-size: 0.82rem;
 }
 
+.style-add-action-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 170px));
+  gap: 8px;
+  align-items: stretch;
+}
+
 .style-add-text-button {
   justify-self: start;
   min-height: 28px;
@@ -6176,7 +6195,15 @@ h1 {
   font-size: 0.62rem;
 }
 
-.style-add-text-button svg {
+.style-add-swatch-button {
+  min-width: 0;
+  min-height: 28px;
+  padding: 0 9px;
+  font-size: 0.62rem;
+}
+
+.style-add-text-button svg,
+.style-add-swatch-button svg {
   width: 13px;
   height: 13px;
 }
@@ -6567,7 +6594,8 @@ h1 {
   min-height: min(22dvh, 210px);
 }
 
-.add-panel-controls > .style-text-draft-drawer .style-add-text-button {
+.add-panel-controls > .style-text-draft-drawer .style-add-text-button,
+.add-panel-controls > .style-text-draft-drawer .style-add-swatch-button {
   width: min(170px, 100%);
 }
 

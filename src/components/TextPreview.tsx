@@ -211,7 +211,12 @@ type StyleMoveTarget = Exclude<StyleSelectTarget, "letter">;
 type SelectedTextMetricGroup = "size" | "spacing";
 type TextAlignment = "left" | "center" | "right";
 type EyeExpression = NonNullable<GlyphDecoration["expression"]>;
-type PreviewStickerKind = "eyes" | "strawberry-vine-divider" | "lace-ribbon-divider" | "botanical-branch-divider";
+type PreviewStickerKind =
+  | "eyes"
+  | "color-swatch"
+  | "strawberry-vine-divider"
+  | "lace-ribbon-divider"
+  | "botanical-branch-divider";
 
 const settingsPanelLabels: Record<SettingsPanel, string> = {
   decor: "Add",
@@ -327,6 +332,7 @@ type PreviewDoodleStroke = {
 };
 
 type PreviewSticker = {
+  color?: string;
   expression: EyeExpression;
   faceMood?: number;
   heightScale?: number;
@@ -815,6 +821,14 @@ const STRAWBERRY_MARKET_STICKER_PATH = "/assets/stickers/strawberry-market";
 const styleStickerAssets: StyleStickerAsset[] = [
   { id: "eyes", kind: "eyes", label: "Eyes" },
   {
+    defaultSize: 0.12,
+    id: "color-swatch",
+    kind: "color-swatch",
+    label: "Color swatch",
+    maxSize: 0.28,
+    minSize: 0.04,
+  },
+  {
     aspectRatio: 3,
     defaultSize: 0.46,
     id: "strawberry-vine-divider",
@@ -911,6 +925,10 @@ type BackgroundPreset = {
 
 function isEyePreviewSticker(sticker: PreviewSticker | null | undefined) {
   return !sticker?.kind || sticker.kind === "eyes";
+}
+
+function isColorSwatchPreviewSticker(sticker: PreviewSticker | null | undefined) {
+  return sticker?.kind === "color-swatch";
 }
 
 function getStyleStickerAsset(kind: PreviewStickerKind | undefined) {
@@ -2826,11 +2844,32 @@ export default function TextPreview({
     };
   }
 
+  function getPreviewColorSwatchCanvasBox(
+    sticker: PreviewSticker,
+    renderSettings: PreviewImageSettings,
+  ) {
+    if (!isColorSwatchPreviewSticker(sticker)) {
+      return null;
+    }
+
+    const baseSize = Math.max(1, sticker.size * renderSettings.canvasWidth);
+    const width = baseSize * getPreviewStickerWidthScale(sticker);
+    const height = baseSize * getPreviewStickerHeightScale(sticker);
+
+    return {
+      height,
+      width,
+      x: sticker.x * renderSettings.canvasWidth - width / 2,
+      y: sticker.y * renderSettings.canvasHeight - height / 2,
+    };
+  }
+
   function getPreviewImageStickerNormalizedBox(
     sticker: PreviewSticker,
     renderSettings: PreviewImageSettings,
   ) {
-    const box = getPreviewImageStickerCanvasBox(sticker, renderSettings);
+    const box = getPreviewImageStickerCanvasBox(sticker, renderSettings) ??
+      getPreviewColorSwatchCanvasBox(sticker, renderSettings);
 
     if (!box) {
       return null;
@@ -4023,6 +4062,11 @@ export default function TextPreview({
     stickers: PreviewSticker[] = previewStickers,
   ) {
     stickers.forEach((sticker) => {
+      if (isColorSwatchPreviewSticker(sticker)) {
+        drawPreviewColorSwatch(ctx, renderSettings, sticker);
+        return;
+      }
+
       if (!isEyePreviewSticker(sticker)) {
         drawPreviewImageSticker(ctx, renderSettings, sticker);
         return;
@@ -4063,6 +4107,39 @@ export default function TextPreview({
       );
       ctx.restore();
     });
+  }
+
+  function getPreviewColorSwatchColor(sticker: PreviewSticker) {
+    return normalizePreviewPaletteHex(sticker.color ?? imageSettings.inkColor, imageSettings.inkColor);
+  }
+
+  function drawPreviewColorSwatch(
+    ctx: CanvasRenderingContext2D,
+    renderSettings: PreviewImageSettings,
+    sticker: PreviewSticker,
+  ) {
+    const box = getPreviewColorSwatchCanvasBox(sticker, renderSettings);
+
+    if (!box) {
+      return;
+    }
+
+    const strokeWidth = Math.max(1, Math.round(renderSettings.canvasWidth / 600));
+
+    ctx.save();
+    ctx.fillStyle = getPreviewColorSwatchColor(sticker);
+    ctx.fillRect(box.x, box.y, box.width, box.height);
+    ctx.lineWidth = strokeWidth;
+    ctx.strokeStyle = "rgba(23, 17, 11, 0.32)";
+    ctx.strokeRect(box.x + strokeWidth / 2, box.y + strokeWidth / 2, box.width - strokeWidth, box.height - strokeWidth);
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.22)";
+    ctx.strokeRect(
+      box.x + strokeWidth * 1.5,
+      box.y + strokeWidth * 1.5,
+      Math.max(1, box.width - strokeWidth * 3),
+      Math.max(1, box.height - strokeWidth * 3),
+    );
+    ctx.restore();
   }
 
   function drawPreviewImageSticker(
@@ -7949,6 +8026,16 @@ export default function TextPreview({
   }
 
   function renderStyleStickerPreview(asset: StyleStickerAsset) {
+    if (asset.kind === "color-swatch") {
+      return (
+        <span
+          className="style-color-swatch-preview"
+          style={{ backgroundColor: normalizePreviewPaletteHex(imageSettings.inkColor, "#19140f") }}
+          aria-hidden="true"
+        />
+      );
+    }
+
     if (asset.src) {
       return <img src={asset.src} alt="" draggable={false} aria-hidden="true" />;
     }
@@ -8262,15 +8349,25 @@ export default function TextPreview({
                 placeholder="Type text"
                 spellCheck={false}
               />
-              <button
-                className="draw-drawer-button accent style-add-text-button"
-                type="button"
-                disabled={!draftPreviewTextLayer.text.trim()}
-                onClick={addPreviewTextLayer}
-              >
-                <Plus aria-hidden="true" />
-                <span>Add text</span>
-              </button>
+              <div className="style-add-action-row">
+                <button
+                  className="draw-drawer-button accent style-add-text-button"
+                  type="button"
+                  disabled={!draftPreviewTextLayer.text.trim()}
+                  onClick={addPreviewTextLayer}
+                >
+                  <Plus aria-hidden="true" />
+                  <span>Add text</span>
+                </button>
+                <button
+                  className="draw-drawer-button style-add-swatch-button"
+                  type="button"
+                  onClick={addPreviewColorSwatch}
+                >
+                  <Pipette aria-hidden="true" />
+                  <span>Add color swatch</span>
+                </button>
+              </div>
             </div>
           ) : previewTextLayers.length === 0 ? (
             <p className="style-drawer-empty">Add a preview-only text box to mix another saved font into this image.</p>
@@ -8325,14 +8422,24 @@ export default function TextPreview({
             </div>
           )}
           {!draftPreviewTextLayer ? (
-            <button
-              className="draw-drawer-button accent style-add-text-button"
-              type="button"
-              onClick={openPreviewTextLayerDraft}
-            >
-              <Plus aria-hidden="true" />
-              <span>Add text</span>
-            </button>
+            <div className="style-add-action-row">
+              <button
+                className="draw-drawer-button accent style-add-text-button"
+                type="button"
+                onClick={openPreviewTextLayerDraft}
+              >
+                <Plus aria-hidden="true" />
+                <span>Add text</span>
+              </button>
+              <button
+                className="draw-drawer-button style-add-swatch-button"
+                type="button"
+                onClick={addPreviewColorSwatch}
+              >
+                <Pipette aria-hidden="true" />
+                <span>Add color swatch</span>
+              </button>
+            </div>
           ) : null}
         </div>
       );
@@ -8895,6 +9002,9 @@ export default function TextPreview({
         ...current,
         {
           expression: previewStickerExpression,
+          ...(asset.kind === "color-swatch"
+            ? { color: normalizePreviewPaletteHex(imageSettings.inkColor, "#19140f") }
+            : {}),
           id: stickerId,
           kind: asset.kind,
           size: getDefaultPreviewStickerSize(asset),
@@ -8912,6 +9022,51 @@ export default function TextPreview({
     setActiveDocumentId(null);
     scheduleStyleCanvasRender();
     setShareStatus(`Dropped ${asset.label}.`);
+  }
+
+  function addPreviewColorSwatch() {
+    const swatchAsset = getStyleStickerAsset("color-swatch");
+    const stickerId = createPreviewId();
+    const swatchCount = previewStickers.filter(isColorSwatchPreviewSticker).length;
+    const column = swatchCount % 4;
+    const row = Math.floor(swatchCount / 4) % 4;
+    const x = clampUnit(0.3 + column * 0.08, 0.5);
+    const y = clampUnit(0.32 + row * 0.08, 0.5);
+
+    setPreviewStickers((current) => {
+      const nextStickers = [
+        ...current,
+        {
+          color: normalizePreviewPaletteHex(imageSettings.inkColor, "#19140f"),
+          expression: previewStickerExpression,
+          id: stickerId,
+          kind: "color-swatch" as const,
+          size: getDefaultPreviewStickerSize(swatchAsset),
+          x,
+          y,
+        },
+      ];
+
+      previewStickersRef.current = nextStickers;
+      return nextStickers;
+    });
+    setSelectedPreviewStickerId(stickerId);
+    setSelectedPreviewDoodleId(null);
+    setSelectedPreviewTextLayerId(null);
+    setStyleSelectTarget("ornaments");
+    setStyleSelectModeActive(true);
+    setStyleSelectMenuOpen(false);
+    setStyleMoveModeActive(false);
+    setStyleStickerMoveMode(false);
+    setActiveStyleDrawer(null);
+    setDraftPreviewTextLayer(null);
+    setExpandedPreviewTextFontPickerId(null);
+    setFullscreenAddMenuOpen(false);
+    setFullscreenMoveMenuOpen(false);
+    setSelectedTextDeletePrimed(false);
+    setActiveDocumentId(null);
+    scheduleStyleCanvasRender();
+    setShareStatus("Added color swatch.");
   }
 
   function cancelStyleStickerDrag() {
@@ -10653,6 +10808,13 @@ export default function TextPreview({
               onClick={openPreviewTextLayerDraft}
             >
               <span>Text</span>
+            </button>
+            <button
+              className="secondary-button compact-button phone-image-add-option"
+              type="button"
+              onClick={addPreviewColorSwatch}
+            >
+              <span>Swatch</span>
             </button>
             <button
               className={`secondary-button compact-button phone-image-add-option ${
