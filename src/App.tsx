@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Settings2 } from "lucide-react";
+import { BackgroundDesigner } from "./components/BackgroundDesigner";
 import { CompileView } from "./components/CompileView";
 import FontLibrary from "./components/FontLibrary";
 import FontMetricsPanel from "./components/FontMetricsPanel";
@@ -32,6 +33,7 @@ import {
   saveFontStudioData,
 } from "./storage/fontStorage";
 import { loadSavedImages, saveSavedImages } from "./storage/savedImageStorage";
+import { loadCustomBackgrounds, type CustomBackground } from "./storage/customBackgroundStorage";
 import {
   buildAutoEntryPair,
   formatAutoEntryTimestamp,
@@ -84,7 +86,7 @@ import type {
   SavedImageDraft,
 } from "./types/fontTypes";
 
-type HomeMode = "design" | "compose" | "compile" | "library";
+type HomeMode = "design" | "compose" | "compile" | "library" | "backgrounds";
 
 const deletedCompiledPageIdsStorageKey = "quill.deleted-page-ids.v1";
 
@@ -143,6 +145,7 @@ export default function App() {
   const [gridFullScreen, setGridFullScreen] = useState(false);
   const [savedImagesOpen, setSavedImagesOpen] = useState(false);
   const [savedImages, setSavedImages] = useState<SavedImage[]>(() => loadSavedImages());
+  const [customBackgrounds, setCustomBackgrounds] = useState<CustomBackground[]>(() => loadCustomBackgrounds());
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarClosing, setSidebarClosing] = useState(false);
   const sidebarOpenRef = useRef(false);
@@ -1012,6 +1015,7 @@ export default function App() {
     { id: "compose", label: "Compose" },
     { id: "compile", label: "Compile" },
     { id: "library", label: "Library" },
+    { id: "backgrounds", label: "Backgrounds" },
   ];
 
   useEffect(() => () => {
@@ -1182,6 +1186,30 @@ export default function App() {
         <>
           <strong>Compile settings</strong>
           {renderBookSetting("Active book", true)}
+        </>
+      );
+    }
+
+    if (mode === "backgrounds") {
+      return (
+        <>
+          <strong>Background settings</strong>
+          <div className="sidebar-settings-field-row">
+            <label className="sidebar-settings-field">
+              <span>Saved</span>
+              <select value={customBackgrounds[0]?.id ?? ""} onChange={() => openSidebarPanelAction(() => setHomeMode("backgrounds"))}>
+                <option value="">{customBackgrounds.length ? `${customBackgrounds.length} backgrounds` : "No backgrounds"}</option>
+                {customBackgrounds.map((background) => (
+                  <option key={background.id} value={background.id}>
+                    {background.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button className="secondary-button compact-button sidebar-settings-inline-button" type="button" onClick={() => openSidebarPanelAction(() => setHomeMode("backgrounds"))}>
+              Open
+            </button>
+          </div>
         </>
       );
     }
@@ -1392,6 +1420,7 @@ export default function App() {
               onAutoEntryRenderComplete={handleAutoEntryRenderComplete}
               onCreatePresetFont={handleCreatePresetFont}
               onDesignPresetsChange={handlePreviewDesignPresetsChange}
+              customBackgrounds={customBackgrounds}
               onOpenCharacterEditor={handleSelectCharacter}
               onOpenAppMenu={toggleSidebar}
               onRecordExport={handleRecordPreviewExport}
@@ -1448,6 +1477,13 @@ export default function App() {
               onOpenAppMenu={toggleSidebar}
               onOpenBook={setActiveBookId}
               onOpenPage={setActiveCompiledPageId}
+            />
+          )}
+          {homeMode === "backgrounds" && (
+            <BackgroundDesigner
+              backgrounds={customBackgrounds}
+              onBackgroundsChange={setCustomBackgrounds}
+              onOpenAppMenu={toggleSidebar}
             />
           )}
         </div>

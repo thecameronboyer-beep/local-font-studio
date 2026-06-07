@@ -39,11 +39,13 @@ import { clampFontGuideSettings, fontGuideRows } from "../utils/fontGuides";
 import type { FontGuideKey } from "../utils/fontGuides";
 import { isNativeFilePlatform, saveNativeFileToDocuments, shareNativeFile } from "../utils/nativeFiles";
 
+type FontLibraryHomeMode = "design" | "compose" | "compile" | "library" | "backgrounds";
+
 type FontLibraryProps = {
-  homeMode: "design" | "compose" | "compile" | "library";
+  homeMode: FontLibraryHomeMode;
   fonts: FontSet[];
   activeFontId: string;
-  onHomeModeChange: (mode: "design" | "compose" | "compile" | "library") => void;
+  onHomeModeChange: (mode: FontLibraryHomeMode) => void;
   onSelectFont: (fontId: string) => void;
   onCreateFont: (
     name: string,
@@ -475,7 +477,7 @@ export default function FontLibrary({
   const [fontRenameValue, setFontRenameValue] = useState("");
   const [presetPickerOpen, setPresetPickerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const navigationOnly = homeMode === "library";
+  const navigationOnly = homeMode === "library" || homeMode === "backgrounds";
 
   useEffect(() => {
     setSettingsOpen(false);
@@ -929,6 +931,7 @@ export default function FontLibrary({
             { id: "compose", label: "Compose" },
             { id: "compile", label: "Compile" },
             { id: "library", label: "Library" },
+            { id: "backgrounds", label: "Backgrounds" },
           ] as const).map((option) => (
             <button
               key={option.id}

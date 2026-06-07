@@ -90,6 +90,7 @@ import {
 } from "../render/glyphRenderer";
 import { defaultGlyphMetrics, defaultSpacebarMetrics } from "../storage/fontStorage";
 import type { CompiledPage, SaveRenderedQuillPageInput } from "../storage/quillWorkspaceStorage";
+import { getCustomBackgroundFlatBlob, type CustomBackground } from "../storage/customBackgroundStorage";
 import { isNativeFilePlatform, saveNativeFileToDocuments, shareNativeFile } from "../utils/nativeFiles";
 
 type SavedPreviewImage = {
@@ -130,6 +131,7 @@ type AutoBookEntryRenderResult = {
 type TextPreviewProps = {
   autoEntryRequest?: AutoBookEntryRenderRequest | null;
   composeFullscreenOnly?: boolean;
+  customBackgrounds?: CustomBackground[];
   designPresetApplyRequestId?: number;
   designPresetIdToApply?: string;
   font: FontSet;
@@ -267,6 +269,7 @@ type PreviewImageSettings = PreviewSettings & {
   backgroundTexture: BackgroundTexture;
   canvasHeight: number;
   canvasWidth: number;
+  customBackgroundId: string;
   exportPreset: ExportPresetId;
   manuscriptAge: number;
   manuscriptEdges: number;
@@ -715,6 +718,7 @@ const defaultPhoneImageSettings: PreviewImageSettings = {
   backgroundTexture: defaultPreviewTheme.backgroundTexture,
   canvasHeight: 1920,
   canvasWidth: 1080,
+  customBackgroundId: "",
   exportPreset: "phone",
   fontSize: 118,
   inkColor: defaultPreviewTheme.inkColor,
@@ -1229,6 +1233,7 @@ function normalizePreviewSettings(settings?: Partial<PreviewImageSettings>): Pre
   };
   const safeSettings = {
     ...normalized,
+    customBackgroundId: typeof normalized.customBackgroundId === "string" ? normalized.customBackgroundId : "",
     manuscriptAge: clampUnit(normalized.manuscriptAge, defaultPhoneImageSettings.manuscriptAge),
     manuscriptEdges: clampUnit(normalized.manuscriptEdges, defaultPhoneImageSettings.manuscriptEdges),
     manuscriptFibers: clampUnit(normalized.manuscriptFibers, defaultPhoneImageSettings.manuscriptFibers),
@@ -1374,6 +1379,7 @@ export function loadPreviewDesignPresetSummaries(): PreviewDesignPresetSummary[]
 export default function TextPreview({
   autoEntryRequest = null,
   composeFullscreenOnly = false,
+  customBackgrounds = [],
   designPresetApplyRequestId = 0,
   designPresetIdToApply = "",
   font,
@@ -1415,6 +1421,7 @@ export default function TextPreview({
   const styleMovingDoodleRef = useRef<StyleMovingDoodle | null>(null);
   const designPresetApplyRequestRef = useRef(designPresetApplyRequestId);
   const hiddenPreviewTextTargetIdsRef = useRef<Set<string>>(new Set());
+  const customBackgroundImagesRef = useRef<Record<string, HTMLImageElement>>({});
   const styleStickerImagesRef = useRef<Partial<Record<PreviewStickerKind, HTMLImageElement>>>({});
   const manuscriptParchmentRef = useRef<HTMLImageElement | null>(null);
   const presetBuilderRequestRef = useRef(presetBuilderRequestId);
@@ -1442,6 +1449,7 @@ export default function TextPreview({
   const [saveTitlePromptOpen, setSaveTitlePromptOpen] = useState(false);
   const [fontPresetsReady, setFontPresetsReady] = useState(false);
   const [hiddenPreviewTextTargetIds, setHiddenPreviewTextTargetIds] = useState<string[]>([]);
+  const [customBackgroundImageRevision, setCustomBackgroundImageRevision] = useState(0);
   const [manuscriptParchmentReady, setManuscriptParchmentReady] = useState(false);
   const [previewDoodles, setPreviewDoodles] = useState<PreviewDoodleStroke[]>([]);
   const [previewStickers, setPreviewStickers] = useState<PreviewSticker[]>([]);
@@ -1665,6 +1673,50 @@ export default function TextPreview({
   }, [presetBuilderRequestId]);
 
   useEffect(() => {
+    const backgroundId = imageSettings.customBackgroundId;
+
+    if (!backgroundId || customBackgroundImagesRef.current[backgroundId]) {
+      return;
+    }
+
+    if (!customBackgrounds.some((background) => background.id === backgroundId)) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const blob = await getCustomBackgroundFlatBlob(backgroundId);
+
+        if (!blob || cancelled) {
+          return;
+        }
+
+        const url = URL.createObjectURL(blob);
+        const image = new Image();
+        image.onload = () => {
+          if (!cancelled) {
+            customBackgroundImagesRef.current[backgroundId] = image;
+            setCustomBackgroundImageRevision((revision) => revision + 1);
+          }
+          URL.revokeObjectURL(url);
+        };
+        image.onerror = () => {
+          URL.revokeObjectURL(url);
+        };
+        image.src = url;
+      } catch (error) {
+        console.warn("Could not load custom background.", error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [customBackgrounds, imageSettings.customBackgroundId]);
+
+  useEffect(() => {
     if (designPresetApplyRequestId === designPresetApplyRequestRef.current) {
       return;
     }
@@ -1766,6 +1818,7 @@ export default function TextPreview({
     renderPhoneImage();
   }, [
     activeSettingsPanel,
+    customBackgroundImageRevision,
     font,
     fontPresetsReady,
     fullscreenSelectMenuOpen,
@@ -4067,6 +4120,18 @@ export default function TextPreview({
       return;
     }
 
+    const customBackgroundImage = renderSettings.customBackgroundId
+      ? customBackgroundImagesRef.current[renderSettings.customBackgroundId]
+      : null;
+
+    if (customBackgroundImage) {
+      ctx.fillStyle = renderSettings.backgroundColor;
+      ctx.fillRect(0, 0, imageWidth, imageHeight);
+      drawCoverImage(ctx, customBackgroundImage, imageWidth, imageHeight);
+      drawSelectedImageTexture(ctx, renderSettings);
+      return;
+    }
+
     if (renderSettings.backgroundStyle === "manuscript") {
       drawManuscriptPage(ctx, renderSettings);
       return;
@@ -4191,6 +4256,27 @@ export default function TextPreview({
     }
 
     drawSelectedImageTexture(ctx, renderSettings);
+  }
+
+  function drawCoverImage(
+    ctx: CanvasRenderingContext2D,
+    image: HTMLImageElement,
+    targetWidth: number,
+    targetHeight: number,
+  ) {
+    const sourceWidth = image.naturalWidth || image.width;
+    const sourceHeight = image.naturalHeight || image.height;
+
+    if (!sourceWidth || !sourceHeight) {
+      return;
+    }
+
+    const scale = Math.max(targetWidth / sourceWidth, targetHeight / sourceHeight);
+    const width = sourceWidth * scale;
+    const height = sourceHeight * scale;
+    const x = (targetWidth - width) / 2;
+    const y = (targetHeight - height) / 2;
+    ctx.drawImage(image, x, y, width, height);
   }
 
   function drawPreviewStickers(
@@ -8253,14 +8339,15 @@ export default function TextPreview({
     const themedBackgroundPresets = getFontPalette(font.theme?.paletteId).backgrounds;
     const themedBackgroundIds = new Set(themedBackgroundPresets.map((preset) => preset.id));
     const otherBackgroundPresets = backgroundPresets.filter((preset) => !themedBackgroundIds.has(preset.id));
-    const otherBackgroundSelected = !imageSettings.transparent && otherBackgroundPresets.some((preset) => (
+    const customBackgroundSelected = !imageSettings.transparent && Boolean(imageSettings.customBackgroundId);
+    const otherBackgroundSelected = !customBackgroundSelected && !imageSettings.transparent && otherBackgroundPresets.some((preset) => (
       preset.id === imageSettings.backgroundStyle
     ));
     const renderBackgroundPresetButton = (preset: BackgroundPreset) => (
       <button
         key={preset.id}
         className={`draw-background-preset ${
-          imageSettings.backgroundStyle === preset.id && !imageSettings.transparent ? "selected" : ""
+          imageSettings.backgroundStyle === preset.id && !customBackgroundSelected && !imageSettings.transparent ? "selected" : ""
         }`}
         type="button"
         disabled={imageSettings.transparent}
@@ -8271,6 +8358,7 @@ export default function TextPreview({
             backgroundColor: preset.backgroundColor,
             backgroundStyle: preset.id,
             backgroundTexture: preset.id === "manuscript" ? "clean" : current.backgroundTexture,
+            customBackgroundId: "",
             inkColor: preset.inkColor,
             ...(preset.id === "manuscript"
               ? {
@@ -8289,6 +8377,27 @@ export default function TextPreview({
         title={preset.label}
       >
         <span style={{ background: preset.preview }} />
+      </button>
+    );
+    const renderCustomBackgroundButton = (background: CustomBackground) => (
+      <button
+        key={background.id}
+        className={`draw-background-preset custom-background-preset ${
+          imageSettings.customBackgroundId === background.id && !imageSettings.transparent ? "selected" : ""
+        }`}
+        type="button"
+        disabled={imageSettings.transparent}
+        onClick={() => {
+          setImageSettings((current) => ({
+            ...current,
+            customBackgroundId: background.id,
+            transparent: false,
+          }));
+        }}
+        aria-label={`Use ${background.name} custom background`}
+        title={background.name}
+      >
+        {background.thumbnailDataUrl ? <img src={background.thumbnailDataUrl} alt="" /> : <span />}
       </button>
     );
 
@@ -8318,6 +8427,14 @@ export default function TextPreview({
         >
           Transparent background
         </button>
+        {customBackgrounds.length ? (
+          <>
+            <p className="style-label">Custom</p>
+            <div className="draw-background-presets style-background-presets custom-background-presets" aria-label="Custom backgrounds">
+              {customBackgrounds.map(renderCustomBackgroundButton)}
+            </div>
+          </>
+        ) : null}
         <p className="style-label">Backgrounds</p>
         <div className="draw-background-presets style-background-presets" aria-label="Backgrounds">
           {themedBackgroundPresets.map(renderBackgroundPresetButton)}
