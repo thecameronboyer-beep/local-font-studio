@@ -827,7 +827,7 @@ const inkSwatches = [
 ];
 
 const previewStickerExpression: EyeExpression = "googly";
-const STRAWBERRY_MARKET_STICKER_PATH = "/assets/stickers/strawberry-market";
+const STRAWBERRY_MARKET_STICKER_PATH = `${import.meta.env.BASE_URL}assets/stickers/strawberry-market`;
 const styleStickerAssets: StyleStickerAsset[] = [
   { id: "eyes", kind: "eyes", label: "Eyes" },
   {
