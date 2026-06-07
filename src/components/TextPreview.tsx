@@ -6798,6 +6798,42 @@ export default function TextPreview({
     }));
   }
 
+  function insertColorSwatchIntoTextDraft() {
+    const swatchToken = `[swatch:${normalizePreviewPaletteHex(imageSettings.inkColor, "#19140f")}]`;
+
+    setDraftPreviewTextLayer((current) => {
+      const draft = current ?? getDefaultPreviewTextLayerDraft();
+      const trimmedText = draft.text.trimEnd();
+      const nextText = trimmedText ? `${trimmedText}\n${swatchToken}` : swatchToken;
+
+      return {
+        ...draft,
+        text: nextText,
+      };
+    });
+    setActiveStyleDrawer("text");
+    setFullscreenAddMenuOpen(false);
+    setFullscreenMoveMenuOpen(false);
+    setStyleDrawMode(false);
+    setStyleSelectMenuOpen(false);
+    setStyleSelectModeActive(false);
+    setStyleMoveModeActive(false);
+    setStyleStickerLookMode(false);
+    setStyleStickerMoveMode(false);
+    setStyleStickerFacePanelOpen(false);
+    setStyleStickerRednessPanelOpen(false);
+    setStyleStickerSleepPanelOpen(false);
+    setSelectedTextMetricsOpen(false);
+    setSelectedTextMetricGroup(null);
+    setSelectedTextDeletePrimed(false);
+    styleActiveDoodleRef.current = null;
+    styleActiveStrokeRef.current = null;
+    styleMovingStickerRef.current = null;
+    styleMovingTextRef.current = null;
+    styleMovingDoodleRef.current = null;
+    setShareStatus("Added color swatch to text box.");
+  }
+
   function addPreviewTextLayer() {
     const nextLayer = draftPreviewTextLayer ?? getDefaultPreviewTextLayerDraft();
 
@@ -8362,7 +8398,7 @@ export default function TextPreview({
                 <button
                   className="draw-drawer-button style-add-swatch-button"
                   type="button"
-                  onClick={addPreviewColorSwatch}
+                  onClick={insertColorSwatchIntoTextDraft}
                 >
                   <Pipette aria-hidden="true" />
                   <span>Add color swatch</span>
@@ -8434,7 +8470,7 @@ export default function TextPreview({
               <button
                 className="draw-drawer-button style-add-swatch-button"
                 type="button"
-                onClick={addPreviewColorSwatch}
+                onClick={insertColorSwatchIntoTextDraft}
               >
                 <Pipette aria-hidden="true" />
                 <span>Add color swatch</span>
@@ -9022,51 +9058,6 @@ export default function TextPreview({
     setActiveDocumentId(null);
     scheduleStyleCanvasRender();
     setShareStatus(`Dropped ${asset.label}.`);
-  }
-
-  function addPreviewColorSwatch() {
-    const swatchAsset = getStyleStickerAsset("color-swatch");
-    const stickerId = createPreviewId();
-    const swatchCount = previewStickers.filter(isColorSwatchPreviewSticker).length;
-    const column = swatchCount % 4;
-    const row = Math.floor(swatchCount / 4) % 4;
-    const x = clampUnit(0.3 + column * 0.08, 0.5);
-    const y = clampUnit(0.32 + row * 0.08, 0.5);
-
-    setPreviewStickers((current) => {
-      const nextStickers = [
-        ...current,
-        {
-          color: normalizePreviewPaletteHex(imageSettings.inkColor, "#19140f"),
-          expression: previewStickerExpression,
-          id: stickerId,
-          kind: "color-swatch" as const,
-          size: getDefaultPreviewStickerSize(swatchAsset),
-          x,
-          y,
-        },
-      ];
-
-      previewStickersRef.current = nextStickers;
-      return nextStickers;
-    });
-    setSelectedPreviewStickerId(stickerId);
-    setSelectedPreviewDoodleId(null);
-    setSelectedPreviewTextLayerId(null);
-    setStyleSelectTarget("ornaments");
-    setStyleSelectModeActive(true);
-    setStyleSelectMenuOpen(false);
-    setStyleMoveModeActive(false);
-    setStyleStickerMoveMode(false);
-    setActiveStyleDrawer(null);
-    setDraftPreviewTextLayer(null);
-    setExpandedPreviewTextFontPickerId(null);
-    setFullscreenAddMenuOpen(false);
-    setFullscreenMoveMenuOpen(false);
-    setSelectedTextDeletePrimed(false);
-    setActiveDocumentId(null);
-    scheduleStyleCanvasRender();
-    setShareStatus("Added color swatch.");
   }
 
   function cancelStyleStickerDrag() {
@@ -10842,7 +10833,7 @@ export default function TextPreview({
             <button
               className="secondary-button compact-button phone-image-add-option"
               type="button"
-              onClick={addPreviewColorSwatch}
+              onClick={insertColorSwatchIntoTextDraft}
             >
               <span>Swatch</span>
             </button>
