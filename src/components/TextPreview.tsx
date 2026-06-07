@@ -302,6 +302,9 @@ type PreviewGlyphHitTarget = {
   y: number;
 };
 
+type GlyphWidthMetrics = Pick<Glyph, "leftBearing" | "rightBearing" | "width" | "xAdvance">;
+type TextRunMeasureMode = "render" | "wrap";
+
 type PresetCharacterMetrics = {
   advance: number;
   heightScale: number;
@@ -1931,6 +1934,46 @@ export default function TextPreview({
     return ctx.measureText(character).width * getFontWidthScale(fontForText);
   }
 
+  function getGlyphWrapWidth(glyph: GlyphWidthMetrics, fontSize: number, fontForText: FontSet) {
+    const fontWidthScale = getFontWidthScale(fontForText);
+    const bearingAdvance = glyph.leftBearing + glyph.width + glyph.rightBearing;
+    const renderedAdvance = Math.max(
+      fontSize * 0.18,
+      fontSize * Math.max(glyph.xAdvance, bearingAdvance) * fontWidthScale,
+    );
+    const bearingCushion = Math.max(0, glyph.leftBearing) * 0.35 + Math.max(0, glyph.rightBearing) * 0.35;
+    const visibleWidth = fontSize * Math.max(0.18, glyph.width + bearingCushion) * fontWidthScale;
+
+    return Math.min(renderedAdvance, visibleWidth);
+  }
+
+  function measureCharacterForWrap(
+    ctx: CanvasRenderingContext2D,
+    character: string,
+    fontSize: number,
+    useHeaderLetters = false,
+    fontForText: FontSet = previewFont,
+  ) {
+    if (character === spacebar) {
+      return getSpacebarAdvance(fontForText.glyphs[spacebar], fontSize);
+    }
+
+    const glyphKey = getPreviewGlyphKey(character, useHeaderLetters);
+    const glyph = findPreviewGlyph(fontForText.glyphs, glyphKey);
+
+    if (glyph) {
+      return getGlyphWrapWidth(glyph, fontSize, fontForText);
+    }
+
+    const metricGlyph = getMetricGlyphForCharacter(fontForText, character, useHeaderLetters);
+
+    if (metricGlyph) {
+      return getGlyphWrapWidth(metricGlyph, fontSize, fontForText);
+    }
+
+    return measureCharacter(ctx, character, fontSize, useHeaderLetters, fontForText);
+  }
+
   function getFontLetterSpacing(fontForText: FontSet, fontSize: number) {
     return fontSize * (fontForText.shapeSettings?.letterSpacing ?? 0);
   }
@@ -1945,12 +1988,15 @@ export default function TextPreview({
     fontSize: number,
     useHeaderLetters = false,
     fontForText: FontSet = previewFont,
+    mode: TextRunMeasureMode = "render",
   ) {
     const characters = [...text];
     const letterSpacing = getFontLetterSpacing(fontForText, fontSize);
 
     return characters.reduce((width, character, index) => {
-      const characterWidth = measureCharacter(ctx, character, fontSize, useHeaderLetters, fontForText);
+      const characterWidth = mode === "wrap"
+        ? measureCharacterForWrap(ctx, character, fontSize, useHeaderLetters, fontForText)
+        : measureCharacter(ctx, character, fontSize, useHeaderLetters, fontForText);
       const advance = index < characters.length - 1
         ? getTrackedCharacterAdvance(characterWidth, letterSpacing)
         : characterWidth;
@@ -1986,18 +2032,18 @@ export default function TextPreview({
           continue;
         }
 
-        const tokenWidth = measureTextRun(ctx, token, fontSize, useHeaderLetters, fontForText);
+        const tokenWidth = measureTextRun(ctx, token, fontSize, useHeaderLetters, fontForText, "wrap");
 
         if (line.length > 0 && lineWidth + tokenWidth > maxLineWidth) {
           lines.push(line.trimEnd());
           line = token.replace(/^\s+/, "");
-          lineWidth = measureTextRun(ctx, line, fontSize, useHeaderLetters, fontForText);
+          lineWidth = measureTextRun(ctx, line, fontSize, useHeaderLetters, fontForText, "wrap");
         } else {
           line += token;
           lineWidth += tokenWidth;
         }
 
-        lineWidth = Math.max(lineWidth, measureTextRun(ctx, line, fontSize, useHeaderLetters, fontForText));
+        lineWidth = Math.max(lineWidth, measureTextRun(ctx, line, fontSize, useHeaderLetters, fontForText, "wrap"));
       }
 
       lines.push(line.trimEnd());
@@ -2028,7 +2074,7 @@ export default function TextPreview({
       }
 
       for (const character of paragraph) {
-        const characterWidth = measureCharacter(ctx, character, fontSize, useHeaderLetters, fontForText);
+        const characterWidth = measureCharacterForWrap(ctx, character, fontSize, useHeaderLetters, fontForText);
         const trackedWidth = line.length > 0
           ? getTrackedCharacterAdvance(characterWidth, letterSpacing)
           : characterWidth;
@@ -2036,7 +2082,7 @@ export default function TextPreview({
         if (line.length > 0 && lineWidth + trackedWidth > maxLineWidth) {
           lines.push(line);
           line = character.trimStart();
-          lineWidth = measureTextRun(ctx, line, fontSize, useHeaderLetters, fontForText);
+          lineWidth = measureTextRun(ctx, line, fontSize, useHeaderLetters, fontForText, "wrap");
           continue;
         }
 
