@@ -6700,7 +6700,9 @@ h1 {
 }
 
 .preset-picker-popover.has-palette-form {
-  width: min(360px, calc(100vw - 24px));
+  left: 10px;
+  right: 10px;
+  width: auto;
   max-height: min(48dvh, 440px);
 }
 
