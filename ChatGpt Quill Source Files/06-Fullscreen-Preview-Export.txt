@@ -183,7 +183,7 @@ Saved preview documents store:
 - textTargetPlacements.
 - updatedAt.
 
-TextPreview stores up to 16 recent documents in localStorage under local-font-studio:preview-documents:v1.
+TextPreview stores up to 16 recent documents in localStorage under quill:preview-documents:v1.
 
 Export and share
 ----------------
@@ -192,7 +192,7 @@ Browser:
 - save image can create a SavedImage data URL.
 
 Native Capacitor:
-- saveNativeFileToDocuments writes PNGs to Documents / Local Font Studio.
+- saveNativeFileToDocuments writes PNGs to Documents / Quill.
 - shareNativeFile writes a cache file and opens Android sharing.
 
 Saved images

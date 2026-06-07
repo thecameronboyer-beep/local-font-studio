@@ -922,24 +922,26 @@ export default function FontLibrary({
         </section>
       )}
 
-      <div className="font-home-mode-toggle" aria-label="Home mode">
-        {([
-          { id: "design", label: "Design" },
-          { id: "compose", label: "Compose" },
-          { id: "compile", label: "Compile" },
-          { id: "library", label: "Library" },
-        ] as const).map((option) => (
-          <button
-            key={option.id}
-            className={`secondary-button font-home-mode-button ${homeMode === option.id ? "active-tool" : ""}`}
-            type="button"
-            aria-pressed={homeMode === option.id}
-            onClick={() => onHomeModeChange(option.id)}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
+      {homeMode !== "design" && (
+        <div className="font-home-mode-toggle" aria-label="Home mode">
+          {([
+            { id: "design", label: "Design" },
+            { id: "compose", label: "Compose" },
+            { id: "compile", label: "Compile" },
+            { id: "library", label: "Library" },
+          ] as const).map((option) => (
+            <button
+              key={option.id}
+              className={`secondary-button font-home-mode-button ${homeMode === option.id ? "active-tool" : ""}`}
+              type="button"
+              aria-pressed={homeMode === option.id}
+              onClick={() => onHomeModeChange(option.id)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {homeMode === "design" && (
         <div className="library-actions design-home-actions" aria-label="Design options">

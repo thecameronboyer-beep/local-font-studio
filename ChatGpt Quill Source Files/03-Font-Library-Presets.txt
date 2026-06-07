@@ -93,7 +93,7 @@ Palette selector
 ----------------
 FontLibrary uses fontPalettes from src\data\palettes.ts. Current palette ids:
 - strawberryMarket
-- midnightCorrespondence
+- midnightLetters
 
 Changing a palette writes font.theme through onUpdateFontSettings. getDefaultFontPaletteTheme picks the palette's default background and default texture.
 

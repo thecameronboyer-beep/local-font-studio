@@ -373,10 +373,13 @@ type PreviewTextLayer = {
   id: string;
   sizeScale: number;
   text: string;
+  width?: number;
   x?: number;
   y?: number;
 };
 type PreviewTextLayerDraft = Omit<PreviewTextLayer, "id">;
+
+type PalettePageTextLayerKey = PalettePageColorKey | "title";
 
 type PreviewTextPlacement = {
   sizeScale?: number;
@@ -412,6 +415,11 @@ type PreviewTextLayerHitTarget = {
 };
 
 type PreviewTextSelectionTone = "active" | "available";
+type PalettePageColorKey = "primary" | "secondary" | "background" | "accent" | "gold" | "ink";
+
+type PalettePageDraft = Record<PalettePageColorKey, string> & {
+  title: string;
+};
 
 const PREVIEW_TEXT_SELECTION_PADDING = 8;
 
@@ -442,6 +450,27 @@ export type PreviewDesignPresetSummary = {
 
 const PREVIEW_DOCUMENTS_KEY = "quill:preview-documents:v1";
 const PREVIEW_DESIGN_PRESETS_KEY = "quill:preview-design-presets:v1";
+const PALETTE_PAGE_PRESET_ID = "builtin:palette-page";
+const PALETTE_PAGE_TEXT_LAYER_PREFIX = "builtin:palette-page:text:";
+
+const palettePageFields: Array<{ id: PalettePageColorKey; label: string }> = [
+  { id: "primary", label: "Primary" },
+  { id: "secondary", label: "Secondary" },
+  { id: "background", label: "Background" },
+  { id: "accent", label: "Accent" },
+  { id: "gold", label: "Gold" },
+  { id: "ink", label: "Ink" },
+];
+
+const defaultPalettePageDraft: PalettePageDraft = {
+  title: "Strawberry Market",
+  primary: "#E96A7A",
+  secondary: "#F48FB1",
+  background: "#FFF4EE",
+  accent: "#8BCF8A",
+  gold: "#F2C66D",
+  ink: "#5A4035",
+};
 
 function PreviewTextFontNamePreview({
   accentColor,
@@ -685,6 +714,33 @@ const defaultPhoneImageSettings: PreviewImageSettings = {
   transparent: false,
   textEffects: { ...defaultPreviewTextEffects },
 };
+
+const builtInPreviewDesignPresets: PreviewDesignPreset[] = [
+  {
+    fontOptionId: getFontPresetOptionId("oldStandardTT"),
+    id: PALETTE_PAGE_PRESET_ID,
+    name: "Palette",
+    settings: normalizePreviewSettings({
+      ...defaultPhoneImageSettings,
+      accentColor: "#E96A7A",
+      alignment: "left",
+      backgroundColor: "#FFF4EE",
+      backgroundStyle: "strawberryCream",
+      backgroundTexture: "clean",
+      canvasHeight: 1920,
+      canvasWidth: 1080,
+      exportPreset: "phone",
+      fontSize: 62,
+      inkColor: "#5A4035",
+      letterSpacing: 0,
+      lineSpacing: 1.28,
+      pagePadding: 78,
+      transparent: false,
+      textEffects: { ...defaultPreviewTextEffects },
+    }),
+    updatedAt: "2026-06-07T00:00:00.000Z",
+  },
+];
 
 function getImageMetricDefaults(settings: PreviewImageSettings): ImageMetricDefaults {
   return {
@@ -974,6 +1030,138 @@ function sanitizeFileName(name: string) {
   return safeName || "local-font";
 }
 
+function formatPaletteSourceText(draft: PalettePageDraft) {
+  return palettePageFields
+    .map((field) => `${field.id}: ${draft[field.id]}`)
+    .join("\n");
+}
+
+function isPreviewPaletteHex(value: string) {
+  return /^#[\da-f]{6}$/i.test(value.trim());
+}
+
+function normalizePreviewPaletteHex(value: string, fallback: string) {
+  const trimmed = value.trim();
+
+  return isPreviewPaletteHex(trimmed) ? trimmed : fallback;
+}
+
+function hexToPreviewPaletteRgb(value: string) {
+  const normalized = normalizePreviewPaletteHex(value, "#000000").slice(1);
+
+  return {
+    b: parseInt(normalized.slice(4, 6), 16),
+    g: parseInt(normalized.slice(2, 4), 16),
+    r: parseInt(normalized.slice(0, 2), 16),
+  };
+}
+
+function previewPaletteRgba(sourceHex: string, alpha: number) {
+  const source = hexToPreviewPaletteRgb(sourceHex);
+
+  return `rgba(${source.r}, ${source.g}, ${source.b}, ${Math.min(1, Math.max(0, alpha)).toFixed(3)})`;
+}
+
+function getPalettePageTextLayerId(key: PalettePageTextLayerKey) {
+  return `${PALETTE_PAGE_TEXT_LAYER_PREFIX}${key}`;
+}
+
+function isPalettePageTextLayerId(layerId: string) {
+  return layerId.startsWith(PALETTE_PAGE_TEXT_LAYER_PREFIX);
+}
+
+function getPalettePageCanvasMetrics(renderSettings: PreviewImageSettings) {
+  const pageX = renderSettings.pagePadding;
+  const pageWidth = Math.max(1, renderSettings.canvasWidth - pageX * 2);
+  const gap = Math.max(10, Math.round(renderSettings.fontSize * 0.16));
+  const columns = 1;
+  const cardWidth = pageWidth;
+  const cardHeight = Math.max(98, Math.round(renderSettings.fontSize * 1.55));
+  const swatchSize = Math.max(54, Math.round(renderSettings.fontSize * 0.9));
+  const cardRadius = 0;
+  const swatchRadius = Math.max(8, Math.round(renderSettings.fontSize * 0.14));
+  const cardPadding = 0;
+  const titleTop = renderSettings.pagePadding + Math.max(36, renderSettings.fontSize * 0.58);
+  const titleSizeScale = 1.35;
+  const titleHeight = renderSettings.fontSize * titleSizeScale * renderSettings.lineSpacing;
+  const gridY = titleTop + titleHeight + Math.max(26, renderSettings.fontSize * 0.34);
+
+  return {
+    cardHeight,
+    cardPadding,
+    cardRadius,
+    cardWidth,
+    columns,
+    gap,
+    gridY,
+    pageWidth,
+    pageX,
+    swatchRadius,
+    swatchSize,
+    titleSizeScale,
+    titleTop,
+  };
+}
+
+function getPalettePageCardMetrics(renderSettings: PreviewImageSettings, index: number) {
+  const metrics = getPalettePageCanvasMetrics(renderSettings);
+  const row = index;
+  const x = metrics.pageX;
+  const y = metrics.gridY + row * (metrics.cardHeight + metrics.gap);
+  const swatchX = x + metrics.cardWidth - metrics.swatchSize;
+  const swatchY = y + Math.max(0, (metrics.cardHeight - metrics.swatchSize) / 2);
+  const textX = x;
+  const textY = y + Math.max(10, renderSettings.fontSize * 0.12);
+
+  return {
+    ...metrics,
+    swatchX,
+    swatchY,
+    textX,
+    textY,
+    x,
+    y,
+  };
+}
+
+function createPalettePageTextLayers(
+  draft: PalettePageDraft,
+  renderSettings: PreviewImageSettings,
+  fontOptionId: string,
+): PreviewTextLayer[] {
+  const metrics = getPalettePageCanvasMetrics(renderSettings);
+  const title = draft.title.trim() || "Palette";
+
+  return [
+    {
+      fontId: fontOptionId,
+      id: getPalettePageTextLayerId("title"),
+      sizeScale: metrics.titleSizeScale,
+      text: title,
+      width: metrics.pageWidth / renderSettings.canvasWidth,
+      x: metrics.pageX / renderSettings.canvasWidth,
+      y: metrics.titleTop / renderSettings.canvasHeight,
+    },
+    ...palettePageFields.map((field, index) => {
+      const cardMetrics = getPalettePageCardMetrics(renderSettings, index);
+      const textWidth = Math.max(
+        1,
+        cardMetrics.swatchX - cardMetrics.textX - Math.max(18, renderSettings.fontSize * 0.28),
+      );
+
+      return {
+        fontId: fontOptionId,
+        id: getPalettePageTextLayerId(field.id),
+        sizeScale: 0.42,
+        text: `${field.id}\n${draft[field.id].trim() || field.label}`,
+        width: textWidth / renderSettings.canvasWidth,
+        x: cardMetrics.textX / renderSettings.canvasWidth,
+        y: cardMetrics.textY / renderSettings.canvasHeight,
+      };
+    }),
+  ];
+}
+
 function tokenizeParagraph(paragraph: string) {
   return paragraph.match(/\S+\s*|\s+/g) ?? [];
 }
@@ -1094,6 +1282,7 @@ function loadPreviewDocuments() {
             ).map((layer) => ({
               ...layer,
               sizeScale: typeof layer.sizeScale === "number" ? layer.sizeScale : 1,
+              width: typeof layer.width === "number" ? clampUnit(layer.width, 1) : undefined,
               x: typeof layer.x === "number" ? clampUnit(layer.x, 0) : undefined,
               y: typeof layer.y === "number" ? clampUnit(layer.y, 0) : undefined,
             }))
@@ -1138,8 +1327,12 @@ function savePreviewDesignPresets(presets: PreviewDesignPreset[]) {
   window.localStorage.setItem(PREVIEW_DESIGN_PRESETS_KEY, JSON.stringify(presets));
 }
 
+function getVisiblePreviewDesignPresets(presets: PreviewDesignPreset[]) {
+  return [...builtInPreviewDesignPresets, ...presets];
+}
+
 function getPreviewDesignPresetSummaries(presets: PreviewDesignPreset[]): PreviewDesignPresetSummary[] {
-  return presets.map((preset) => ({
+  return getVisiblePreviewDesignPresets(presets).map((preset) => ({
     id: preset.id,
     name: preset.name,
     updatedAt: preset.updatedAt,
@@ -1227,6 +1420,9 @@ export default function TextPreview({
   const [styleStickerImagesReady, setStyleStickerImagesReady] = useState(0);
   const [draftPreviewTextLayer, setDraftPreviewTextLayer] = useState<PreviewTextLayerDraft | null>(null);
   const [expandedPreviewTextFontPickerId, setExpandedPreviewTextFontPickerId] = useState<string | null>(null);
+  const [palettePageDraft, setPalettePageDraft] = useState<PalettePageDraft>(defaultPalettePageDraft);
+  const [palettePageActive, setPalettePageActive] = useState(false);
+  const [palettePageControlsOpen, setPalettePageControlsOpen] = useState(false);
   const [previewTextLayers, setPreviewTextLayers] = useState<PreviewTextLayer[]>([]);
   const [previewDesignPresets, setPreviewDesignPresets] = useState<PreviewDesignPreset[]>(() => loadPreviewDesignPresets());
   const [previewTextTargetPlacements, setPreviewTextTargetPlacements] = useState<Record<string, PreviewTextPlacement>>({});
@@ -1236,6 +1432,8 @@ export default function TextPreview({
   const [selectedPreviewTextLayerId, setSelectedPreviewTextLayerId] = useState<string | null>(null);
   const [selectedTextMetricsOpen, setSelectedTextMetricsOpen] = useState(false);
   const [selectedTextMetricGroup, setSelectedTextMetricGroup] = useState<SelectedTextMetricGroup | null>(null);
+  const [selectedLetterMetricsOpen, setSelectedLetterMetricsOpen] = useState(false);
+  const [selectedLetterMetricGroup, setSelectedLetterMetricGroup] = useState<SelectedTextMetricGroup | null>(null);
   const [shareStatus, setShareStatus] = useState("");
   const [previewFontMetricOverrides, setPreviewFontMetricOverrides] = useState<Partial<Pick<Glyph, FontGlyphMetricKey>>>({});
   const [previewGlyphMetricOverrides, setPreviewGlyphMetricOverrides] = useState<Record<string, LetterMetricOverrides>>({});
@@ -1453,6 +1651,38 @@ export default function TextPreview({
   useEffect(() => {
     onDesignPresetsChange?.(getPreviewDesignPresetSummaries(previewDesignPresets));
   }, [onDesignPresetsChange, previewDesignPresets]);
+
+  useEffect(() => {
+    if (!palettePageActive) {
+      return;
+    }
+
+    onHeaderPreviewTextChange(palettePageDraft.title);
+    onPreviewTextChange(formatPaletteSourceText(palettePageDraft));
+    setPreviewTextLayers((current) => {
+      const fontOptionId = getActivePreviewFontOptionId();
+      const nextPaletteLayers = createPalettePageTextLayers(palettePageDraft, imageSettings, fontOptionId);
+
+      return [
+        ...current.filter((layer) => !isPalettePageTextLayerId(layer.id)),
+        ...nextPaletteLayers.map((layer) => {
+          const existingLayer = current.find((item) => item.id === layer.id);
+
+          return existingLayer
+            ? {
+                ...existingLayer,
+                fontId: existingLayer.fontId || layer.fontId,
+                sizeScale: existingLayer.sizeScale || layer.sizeScale,
+                text: layer.text,
+                width: existingLayer.width ?? layer.width,
+                x: existingLayer.x ?? layer.x,
+                y: existingLayer.y ?? layer.y,
+              }
+            : layer;
+        }),
+      ];
+    });
+  }, [onHeaderPreviewTextChange, onPreviewTextChange, palettePageActive, palettePageDraft]);
 
   useEffect(() => {
     if (!autoEntryRequest || !onSaveRenderedPage || !onAutoEntryRenderComplete) {
@@ -2392,12 +2622,17 @@ export default function TextPreview({
     }
 
     event.preventDefault();
+    const selectingLetterFromSelect =
+      activeSettingsPanel === "font" &&
+      styleSelectModeActive &&
+      styleSelectTarget === "letter";
+
     setFontEffectsMenuOpen(false);
     onSelectCharacter(hitTarget.editableCharacter);
-    setActiveSettingsPanel("letter");
+    setActiveSettingsPanel(selectingLetterFromSelect ? "font" : "letter");
     setFullscreenSelectMenuOpen(false);
     setFullscreenMoveMenuOpen(false);
-    setStyleSelectModeActive(false);
+    setStyleSelectModeActive(selectingLetterFromSelect);
     setStyleMoveModeActive(false);
     styleMovingTextRef.current = null;
     styleMovingDoodleRef.current = null;
@@ -2746,6 +2981,10 @@ export default function TextPreview({
     return true;
   }
 
+  function isTextSelectionTarget(target = styleSelectTarget) {
+    return target === "text" || target === "letter";
+  }
+
   function handleStyleSelection(point: PreviewDoodlePoint, canvas: HTMLCanvasElement) {
     if (styleSelectTarget === "stickers" || styleSelectTarget === "ornaments") {
       const selectingOrnament = styleSelectTarget === "ornaments";
@@ -2771,7 +3010,7 @@ export default function TextPreview({
       return;
     }
 
-    if (styleSelectTarget === "text") {
+    if (isTextSelectionTarget()) {
       const textLayerId = findPreviewTextLayerAtPoint(canvas, point);
       setSelectedPreviewTextLayerId(textLayerId);
       setSelectedPreviewStickerId(null);
@@ -5085,20 +5324,23 @@ export default function TextPreview({
       const layerFontSize = renderSettings.fontSize * layer.sizeScale;
       const layerPlacement = getPreviewTextCanvasPlacement(layer.id, renderSettings);
       const layerStartY = layerPlacement?.y ?? y;
+      const layerMaxLineWidth = layer.width
+        ? Math.max(1, layer.width * renderSettings.canvasWidth)
+        : maxLineWidth;
 
       if (layerFontSource.kind === "preset") {
         const lines = renderSettings.autoFit
           ? buildPresetWordWrappedLines(
               ctx,
               layer.text,
-              maxLineWidth,
+              layerMaxLineWidth,
               layerFontSource.preset,
               layerFontSize,
             )
           : buildPresetCharacterWrappedLines(
               ctx,
               layer.text,
-              maxLineWidth,
+              layerMaxLineWidth,
               layerFontSource.preset,
               layerFontSize,
             );
@@ -5120,7 +5362,7 @@ export default function TextPreview({
         ? buildWordWrappedLines(
             ctx,
             layer.text,
-            maxLineWidth,
+            layerMaxLineWidth,
             layerFontSize,
             false,
             layerFont,
@@ -5128,7 +5370,7 @@ export default function TextPreview({
         : buildCharacterWrappedLines(
             ctx,
             layer.text,
-            maxLineWidth,
+            layerMaxLineWidth,
             layerFontSize,
             false,
             layerFont,
@@ -5228,7 +5470,74 @@ export default function TextPreview({
     return texturedCanvas;
   }
 
+  function drawPreviewPaletteRoundedRect(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    radius: number,
+  ) {
+    const safeRadius = Math.max(0, Math.min(radius, width / 2, height / 2));
+
+    ctx.beginPath();
+    ctx.moveTo(x + safeRadius, y);
+    ctx.lineTo(x + width - safeRadius, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + safeRadius);
+    ctx.lineTo(x + width, y + height - safeRadius);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - safeRadius, y + height);
+    ctx.lineTo(x + safeRadius, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - safeRadius);
+    ctx.lineTo(x, y + safeRadius);
+    ctx.quadraticCurveTo(x, y, x + safeRadius, y);
+    ctx.closePath();
+  }
+
+  function drawPalettePageToCanvas(ctx: CanvasRenderingContext2D, layout: PhoneImageLayout) {
+    const renderSettings = layout.settings;
+    const metrics = getPalettePageCanvasMetrics(renderSettings);
+    const inkColor = normalizePreviewPaletteHex(palettePageDraft.ink, renderSettings.inkColor);
+    const backgroundColor = normalizePreviewPaletteHex(palettePageDraft.background, renderSettings.backgroundColor);
+    const primaryColor = normalizePreviewPaletteHex(palettePageDraft.primary, renderSettings.accentColor);
+    const swatchStrokeWidth = Math.max(2, Math.round(renderSettings.canvasWidth / 520));
+
+    ctx.save();
+    palettePageFields.forEach((field, index) => {
+      const cardMetrics = getPalettePageCardMetrics(renderSettings, index);
+      const rawValue = palettePageDraft[field.id].trim();
+      const swatchColor = normalizePreviewPaletteHex(rawValue, field.id === "background" ? backgroundColor : primaryColor);
+
+      ctx.save();
+      drawPreviewPaletteRoundedRect(
+        ctx,
+        cardMetrics.swatchX,
+        cardMetrics.swatchY,
+        cardMetrics.swatchSize,
+        cardMetrics.swatchSize,
+        cardMetrics.swatchRadius,
+      );
+      ctx.fillStyle = swatchColor;
+      ctx.fill();
+      ctx.lineWidth = swatchStrokeWidth;
+      ctx.strokeStyle = previewPaletteRgba(inkColor, field.id === "background" ? 0.24 : 0.12);
+      ctx.stroke();
+      ctx.restore();
+    });
+
+    drawPreviewTextLayers(
+      ctx,
+      renderSettings,
+      metrics.gridY + Math.ceil(palettePageFields.length / metrics.columns) * (metrics.cardHeight + metrics.gap),
+    );
+    ctx.restore();
+  }
+
   function drawPreviewTextContentToCanvas(ctx: CanvasRenderingContext2D, layout: PhoneImageLayout) {
+    if (palettePageActive) {
+      drawPalettePageToCanvas(ctx, layout);
+      return;
+    }
+
     const headerPlacement = getPreviewTextCanvasPlacement("preview-header", layout.settings);
     const bodyPlacement = getPreviewTextCanvasPlacement("preview-body", layout.settings);
     const headerLines = isPreviewTextTargetHidden("preview-header") ? [] : layout.headerLines;
@@ -5272,6 +5581,11 @@ export default function TextPreview({
   }
 
   function drawPreviewTextLayerWithEffects(ctx: CanvasRenderingContext2D, layout: PhoneImageLayout) {
+    if (palettePageActive) {
+      drawPreviewTextContentToCanvas(ctx, layout);
+      return;
+    }
+
     if (!hasActivePreviewTextEffects(layout.settings)) {
       drawPreviewTextContentToCanvas(ctx, layout);
       return;
@@ -5368,6 +5682,9 @@ export default function TextPreview({
       const layerPlacement = getPreviewTextCanvasPlacement(layer.id, renderSettings);
       const targetY = layerPlacement?.y ?? y;
       const targetX = layerPlacement?.x ?? renderSettings.pagePadding;
+      const layerMaxLineWidth = layer.width
+        ? Math.max(1, layer.width * renderSettings.canvasWidth)
+        : maxLineWidth;
 
       if (layerFontSource.kind === "preset") {
         const lineHeight = getPresetLineHeight(renderSettings, layerFontSize);
@@ -5375,14 +5692,14 @@ export default function TextPreview({
           ? buildPresetWordWrappedLines(
               ctx,
               layer.text,
-              maxLineWidth,
+              layerMaxLineWidth,
               layerFontSource.preset,
               layerFontSize,
             )
           : buildPresetCharacterWrappedLines(
               ctx,
               layer.text,
-              maxLineWidth,
+              layerMaxLineWidth,
               layerFontSource.preset,
               layerFontSize,
             );
@@ -5391,7 +5708,7 @@ export default function TextPreview({
         targets.push({
           height,
           id: layer.id,
-          width: maxLineWidth,
+          width: layerMaxLineWidth,
           x: targetX,
           y: targetY,
         });
@@ -5407,7 +5724,7 @@ export default function TextPreview({
         ? buildWordWrappedLines(
             ctx,
             layer.text,
-            maxLineWidth,
+            layerMaxLineWidth,
             layerFontSize,
             false,
             layerFont,
@@ -5415,7 +5732,7 @@ export default function TextPreview({
         : buildCharacterWrappedLines(
             ctx,
             layer.text,
-            maxLineWidth,
+            layerMaxLineWidth,
             layerFontSize,
             false,
             layerFont,
@@ -5425,7 +5742,7 @@ export default function TextPreview({
       targets.push({
         height,
         id: layer.id,
-        width: maxLineWidth,
+        width: layerMaxLineWidth,
         x: targetX,
         y: targetY,
       });
@@ -5441,6 +5758,10 @@ export default function TextPreview({
     const targets: PreviewTextLayerHitTarget[] = [];
     const headerPlacement = getPreviewTextCanvasPlacement("preview-header", layout.settings);
     const bodyPlacement = getPreviewTextCanvasPlacement("preview-body", layout.settings);
+
+    if (palettePageActive) {
+      return targets;
+    }
 
     if (layout.headerLines.length > 0 && !isPreviewTextTargetHidden("preview-header")) {
       const headerLineHeight = activeFontPreset
@@ -6001,12 +6322,13 @@ export default function TextPreview({
   }
 
   function applyDesignPreset(presetId: string) {
-    const preset = previewDesignPresets.find((item) => item.id === presetId);
+    const preset = getVisiblePreviewDesignPresets(previewDesignPresets).find((item) => item.id === presetId);
 
     if (!preset) {
       return;
     }
 
+    const isPalettePreset = preset.id === PALETTE_PAGE_PRESET_ID;
     const nextSettings = normalizePreviewSettings(preset.settings);
 
     if (nextSettings.exportPreset === "custom") {
@@ -6018,7 +6340,24 @@ export default function TextPreview({
     setCanvasFormatDrawerOpen(false);
     setImageStyleDrawerOpen(false);
     setActiveFontSettingsSliderId(null);
-    setFullscreenActionPanelOpen(false);
+    setPalettePageActive(isPalettePreset);
+    setPalettePageControlsOpen(isPalettePreset);
+    setPreviewTextLayers((current) => {
+      if (!isPalettePreset) {
+        return current.filter((layer) => !isPalettePageTextLayerId(layer.id));
+      }
+
+      const nextPaletteLayers = createPalettePageTextLayers(palettePageDraft, nextSettings, preset.fontOptionId);
+
+      return [
+        ...current.filter((layer) => !isPalettePageTextLayerId(layer.id)),
+        ...nextPaletteLayers,
+      ];
+    });
+    if (isPalettePreset) {
+      clearHiddenPreviewTextTargets();
+    }
+    setFullscreenActionPanelOpen(isPalettePreset);
     setShareStatus(`Applied "${preset.name}" preset.`);
   }
 
@@ -6588,8 +6927,11 @@ export default function TextPreview({
     setStyleStickerSleepPanelOpen(false);
     setSelectedTextMetricsOpen(false);
     setSelectedTextMetricGroup(null);
+    setSelectedLetterMetricsOpen(false);
+    setSelectedLetterMetricGroup(null);
     setSelectedTextDeletePrimed(false);
     setActiveFontSettingsSliderId(null);
+    setActiveLetterSettingsSliderId(null);
     setSelectedStickerMetricsOpen(false);
     setActiveStickerMetricId(null);
     setFontEffectsMenuOpen(false);
@@ -6962,6 +7304,207 @@ export default function TextPreview({
     );
   }
 
+  function toggleSelectedLetterMetrics() {
+    const nextOpen = !selectedLetterMetricsOpen;
+
+    setActiveLetterSettingsSliderId(null);
+    setActiveFontSettingsSliderId(null);
+    setActiveStickerMetricId(null);
+    setSelectedStickerMetricsOpen(false);
+    setFontEffectsMenuOpen(false);
+    setSelectedLetterMetricsOpen(nextOpen);
+    setShareStatus(nextOpen ? "Choose size or spacing metrics." : "Letter metrics closed.");
+  }
+
+  function toggleSelectedLetterEffects() {
+    const nextOpen = !fontEffectsMenuOpen;
+
+    setActiveLetterSettingsSliderId(null);
+    setActiveFontSettingsSliderId(null);
+    setActiveStickerMetricId(null);
+    setSelectedStickerMetricsOpen(false);
+    setSelectedLetterMetricsOpen(false);
+    setSelectedLetterMetricGroup(null);
+    setFontEffectsMenuOpen(nextOpen);
+    setShareStatus(nextOpen ? "Letter effects shown." : "Letter effects closed.");
+  }
+
+  function selectLetterMetricGroup(group: SelectedTextMetricGroup) {
+    setSelectedLetterMetricGroup(group);
+    setSelectedLetterMetricsOpen(false);
+    setActiveLetterSettingsSliderId(null);
+    setActiveFontSettingsSliderId(null);
+    setActiveStickerMetricId(null);
+    setSelectedStickerMetricsOpen(false);
+    setFontEffectsMenuOpen(false);
+    setShareStatus(group === "size" ? "Size metrics shown." : "Spacing metrics shown.");
+  }
+
+  function getSelectedLetterMetricConfigs() {
+    const metricIds: LetterSettingsSliderId[] = selectedLetterMetricGroup === "spacing"
+      ? ["xAdvance", "leftBearing", "rightBearing"]
+      : selectedLetterMetricGroup === "size"
+        ? ["size", "height", "width"]
+        : [];
+
+    return metricIds.map((id) => getLetterSettingsSliderConfig(id));
+  }
+
+  function renderSelectedLetterMetricsPopover() {
+    return (
+      <div className="selected-text-metrics-popover" aria-label="Letter metric groups">
+        <button
+          className={`draw-glass-button selected-text-metric-option ${
+            selectedLetterMetricGroup === "size" ? "active-tool" : ""
+          }`}
+          type="button"
+          aria-pressed={selectedLetterMetricGroup === "size"}
+          onClick={() => selectLetterMetricGroup("size")}
+        >
+          <Scaling aria-hidden="true" />
+          <span>Size</span>
+        </button>
+        <button
+          className={`draw-glass-button selected-text-metric-option ${
+            selectedLetterMetricGroup === "spacing" ? "active-tool" : ""
+          }`}
+          type="button"
+          aria-pressed={selectedLetterMetricGroup === "spacing"}
+          onClick={() => selectLetterMetricGroup("spacing")}
+        >
+          <Space aria-hidden="true" />
+          <span>Spacing</span>
+        </button>
+      </div>
+    );
+  }
+
+  function renderSelectedLetterOptionsRow() {
+    const metricConfigs = getSelectedLetterMetricConfigs();
+    const activeSliderConfig = activeLetterSettingsSliderId
+      ? metricConfigs.find((config) => config.id === activeLetterSettingsSliderId) ?? null
+      : null;
+    const selectedLetterMetricsActive = selectedLetterMetricsOpen || Boolean(selectedLetterMetricGroup);
+    const selectedLetterEffectsVisible = fontEffectsMenuOpen;
+    const activeEffectCount = previewTextEffectOptions.filter((option) => imageSettings.textEffects[option.id]).length;
+
+    return (
+      <div
+        className={`phone-image-action-row selected-text-option-row selected-letter-option-row ${
+          selectedLetterMetricsOpen || selectedLetterMetricGroup ? "metrics-open" : ""
+        } ${selectedLetterEffectsVisible ? "effects-open" : ""}`}
+        aria-label="Selected letter options"
+      >
+        {activeSliderConfig ? renderLetterSettingsSliderDrawer(activeSliderConfig) : null}
+        {!selectedLetterEffectsVisible ? (
+          <>
+            <button
+              className={`draw-icon-button draw-glass-button selected-text-option-button ${
+                selectedLetterMetricsOpen ? "active-tool" : ""
+              }`}
+              type="button"
+              aria-pressed={selectedLetterMetricsOpen}
+              onClick={toggleSelectedLetterMetrics}
+            >
+              <Ruler aria-hidden="true" />
+              <span>Metrics</span>
+            </button>
+
+            {!selectedLetterMetricsActive ? (
+              <button
+                className={`draw-icon-button draw-glass-button selected-text-option-button ${
+                  activeEffectCount > 0 ? "active-tool" : ""
+                }`}
+                type="button"
+                aria-expanded={selectedLetterEffectsVisible}
+                aria-label={`Letter effects${activeEffectCount > 0 ? `: ${activeEffectCount} active` : ""}`}
+                onClick={toggleSelectedLetterEffects}
+              >
+                <Sparkles aria-hidden="true" />
+                <span>Effects</span>
+              </button>
+            ) : null}
+
+            {!selectedLetterMetricsActive ? (
+              <button
+                className="draw-icon-button draw-glass-button selected-text-option-button selected-letter-design-button"
+                type="button"
+                onClick={openSelectedLetterEditor}
+              >
+                <PenLine aria-hidden="true" />
+                <span>Design</span>
+              </button>
+            ) : null}
+
+            {selectedLetterMetricsOpen ? renderSelectedLetterMetricsPopover() : null}
+            {metricConfigs.map((config) => {
+              const selected = activeLetterSettingsSliderId === config.id;
+
+              return (
+                <button
+                  key={config.id}
+                  className={`draw-icon-button draw-glass-button selected-text-inline-metric-button ${
+                    selected ? "active-tool" : ""
+                  }`}
+                  type="button"
+                  aria-expanded={selected}
+                  aria-label={`${config.label} for ${settingsGlyphLabel}: ${formatMetricValue(config.value, config.precision)}`}
+                  onClick={() => {
+                    setSelectedLetterMetricsOpen(false);
+                    setFontEffectsMenuOpen(false);
+                    setActiveLetterSettingsSliderId((current) => (current === config.id ? null : config.id));
+                  }}
+                >
+                  {getLetterSettingsSliderIcon(config.id)}
+                  <span>{config.label}</span>
+                  <strong>{formatMetricValue(config.value, config.precision)}</strong>
+                </button>
+              );
+            })}
+            {metricConfigs.length > 0 ? (
+              <button
+                className="draw-glass-button selected-text-apply-button"
+                type="button"
+                disabled={!hasPendingFontSpacingChanges}
+                onClick={applyFontSpacingToFont}
+                aria-label="Apply letter metric changes to Font"
+                title="Apply to Font"
+              >
+                Apply
+              </button>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <button
+              className="draw-icon-button draw-glass-button selected-text-option-button active-tool"
+              type="button"
+              aria-expanded={selectedLetterEffectsVisible}
+              aria-label={`Letter effects${activeEffectCount > 0 ? `: ${activeEffectCount} active` : ""}`}
+              onClick={toggleSelectedLetterEffects}
+            >
+              <Sparkles aria-hidden="true" />
+              <span>Effects</span>
+            </button>
+            {previewTextEffectOptions.map((option) => (
+              <button
+                key={option.id}
+                className={`draw-glass-button selected-text-effect-button ${
+                  imageSettings.textEffects[option.id] ? "active-tool" : ""
+                }`}
+                type="button"
+                aria-pressed={imageSettings.textEffects[option.id]}
+                onClick={() => togglePreviewTextEffect(option.id)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </>
+        )}
+      </div>
+    );
+  }
+
   function getStyleSelectStickerFilter(target = styleSelectTarget) {
     return (sticker: PreviewSticker) => (
       target === "ornaments" ? !isEyePreviewSticker(sticker) : isEyePreviewSticker(sticker)
@@ -7303,7 +7846,11 @@ export default function TextPreview({
       return renderSelectedStickerOptionsRow();
     }
 
-    if (styleSelectTarget === "text") {
+    if (styleSelectTarget === "letter") {
+      return renderSelectedLetterOptionsRow();
+    }
+
+    if (isTextSelectionTarget()) {
       return renderSelectedTextOptionsRow();
     }
 
@@ -7346,8 +7893,11 @@ export default function TextPreview({
             setSelectedPreviewTextLayerId(null);
             setSelectedTextMetricsOpen(false);
             setSelectedTextMetricGroup(null);
+            setSelectedLetterMetricsOpen(false);
+            setSelectedLetterMetricGroup(null);
             setSelectedTextDeletePrimed(false);
             setActiveFontSettingsSliderId(null);
+            setActiveLetterSettingsSliderId(null);
             setFontEffectsMenuOpen(false);
             setActiveStyleDrawer(null);
             styleMovingTextRef.current = null;
@@ -7586,6 +8136,33 @@ export default function TextPreview({
             </button>
           </div>
 
+          <div className="draw-ink-highlight-row palette-doodle-swatch-group">
+            <span>Color swatches</span>
+            <div className="draw-ink-swatches style-ink-swatches palette-doodle-swatches" aria-label="Color swatches">
+              {palettePageFields.map((field) => {
+                const swatchColor = normalizePreviewPaletteHex(
+                  palettePageDraft[field.id],
+                  defaultPalettePageDraft[field.id],
+                );
+                const selected = imageSettings.inkColor.trim().toLowerCase() === swatchColor.trim().toLowerCase();
+
+                return (
+                  <button
+                    key={field.id}
+                    className={`draw-ink-swatch ${selected ? "selected" : ""}`}
+                    type="button"
+                    onClick={() => setImageSettings((current) => ({ ...current, inkColor: swatchColor }))}
+                    aria-label={`Use ${field.label} color swatch`}
+                    aria-pressed={selected}
+                    title={`${field.label} ${swatchColor}`}
+                  >
+                    <span style={{ backgroundColor: swatchColor }} />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="draw-ink-swatches style-ink-swatches" aria-label="Ink colors">
             {inkSwatches.map((swatch) => {
               const selected = isSelectedInkSwatch(imageSettings.inkColor, swatch);
@@ -7655,12 +8232,7 @@ export default function TextPreview({
           {renderPositionSettingsControls("alignment-row text-position-row style-text-position-row")}
           {draftPreviewTextLayer ? (
             <div className="style-text-layer-card">
-              <div className="style-text-layer-heading">
-                <strong>Add text</strong>
-              </div>
-
               <div className="style-text-layer-field">
-                <span>Font</span>
                 {renderPreviewTextFontPicker({
                   ariaLabel: "New text font",
                   pickerId: "draft",
@@ -7718,7 +8290,6 @@ export default function TextPreview({
                   </div>
 
                   <div className="style-text-layer-field">
-                    <span>Font</span>
                     {renderPreviewTextFontPicker({
                       ariaLabel: `Text ${index + 1} font`,
                       pickerId: `layer:${layer.id}`,
@@ -7870,7 +8441,6 @@ export default function TextPreview({
                     </button>
                   </div>
                   <div className="style-text-layer-field">
-                    <span>Font</span>
                     {renderPreviewTextFontPicker({
                       ariaLabel: "Selected text font",
                       pickerId: `selected:${selectedPreviewTextLayer.id}`,
@@ -9183,6 +9753,8 @@ export default function TextPreview({
     setStyleStickerSleepPanelOpen(false);
     setSelectedTextMetricsOpen(false);
     setSelectedTextMetricGroup(null);
+    setSelectedLetterMetricsOpen(false);
+    setSelectedLetterMetricGroup(null);
     setSelectedTextDeletePrimed(false);
     setSelectedStickerMetricsOpen(false);
     setActiveStickerMetricId(null);
@@ -9312,6 +9884,8 @@ export default function TextPreview({
     setStyleStickerSleepPanelOpen(false);
     setSelectedTextMetricsOpen(false);
     setSelectedTextMetricGroup(null);
+    setSelectedLetterMetricsOpen(false);
+    setSelectedLetterMetricGroup(null);
     setSelectedStickerMetricsOpen(false);
     setActiveStickerMetricId(null);
 
@@ -9427,6 +10001,12 @@ export default function TextPreview({
     setFullscreenActionPanelOpen(true);
     setActiveSettingsPanel(panel);
 
+    if (panel === "preset") {
+      setPalettePageControlsOpen(palettePageActive);
+    } else {
+      setPalettePageControlsOpen(false);
+    }
+
     if (panel !== "font") {
       setFullscreenSelectMenuOpen(false);
       setActiveFontSettingsSliderId(null);
@@ -9518,6 +10098,7 @@ export default function TextPreview({
     setFullscreenSelectMenuOpen(false);
     setImageStyleDrawerOpen(false);
     setImageViewerMode("page");
+    setPalettePageControlsOpen(false);
     setSaveTitlePromptOpen(false);
     closeStyleEditor();
     if (composeFullscreenOnly) {
@@ -9542,6 +10123,8 @@ export default function TextPreview({
     setFullscreenMoveMenuOpen(false);
     setFullscreenSelectMenuOpen(false);
     setImageStyleDrawerOpen(false);
+    setPalettePageActive(false);
+    setPalettePageControlsOpen(false);
     setSaveTitlePromptOpen(false);
     closeStyleEditor();
     setImageViewerOpen(true);
@@ -9594,31 +10177,24 @@ export default function TextPreview({
     return (
       <div className={className} aria-label="Position settings">
         {alignmentOptions.map((option) => (
-          <label key={option.id} className={`check-control ${imageSettings.alignment === option.id ? "active-tool" : ""}`}>
-            <input
-              type="checkbox"
-              aria-label={option.label}
-              checked={imageSettings.alignment === option.id}
-              onChange={(event) => {
-                if (event.target.checked) {
-                  setImageSettings((current) => ({ ...current, alignment: option.id }));
-                }
-              }}
-            />
+          <button
+            key={option.id}
+            className={`secondary-button compact-button check-control ${imageSettings.alignment === option.id ? "active-tool" : ""}`}
+            type="button"
+            aria-pressed={imageSettings.alignment === option.id}
+            onClick={() => setImageSettings((current) => ({ ...current, alignment: option.id }))}
+          >
             {option.label}
-          </label>
+          </button>
         ))}
-        <label className={`check-control ${imageSettings.autoFit ? "active-tool" : ""}`}>
-          <input
-            type="checkbox"
-            aria-label="Fit"
-            checked={imageSettings.autoFit}
-            onChange={(event) =>
-              setImageSettings((current) => ({ ...current, autoFit: event.target.checked }))
-            }
-          />
+        <button
+          className={`secondary-button compact-button check-control ${imageSettings.autoFit ? "active-tool" : ""}`}
+          type="button"
+          aria-pressed={imageSettings.autoFit}
+          onClick={() => setImageSettings((current) => ({ ...current, autoFit: !current.autoFit }))}
+        >
           Fit
-        </label>
+        </button>
       </div>
     );
   }
@@ -9801,7 +10377,7 @@ export default function TextPreview({
     const selectTargetControlsVisible =
       styleSelectModeActive &&
       (
-        styleSelectTarget === "text" ||
+        isTextSelectionTarget() ||
         styleSelectTarget === "stickers" ||
         styleSelectTarget === "ornaments" ||
         styleSelectTarget === "doodles"
@@ -9811,7 +10387,7 @@ export default function TextPreview({
     const fontMetricControlsVisible = !selectTargetControlsVisible && !fullscreenSelectMenuOpen;
 
     return (
-      <div className="phone-image-panel-stack font-panel-controls" aria-label="Text controls">
+      <div className="phone-image-panel-stack font-panel-controls" aria-label={styleSelectTarget === "letter" ? "Letter controls" : "Text controls"}>
         {fullscreenSelectMenuOpen ? renderFullscreenSelectPopover() : null}
         {fontMetricControlsVisible ? (
           <div className="phone-image-action-row">
@@ -9835,14 +10411,66 @@ export default function TextPreview({
     );
   }
 
+  function renderPalettePageForm() {
+    return (
+      <div className="palette-preset-form" aria-label="Palette source fields">
+        <label className="palette-preset-field palette-preset-title-field">
+          <span>Title</span>
+          <input
+            type="text"
+            value={palettePageDraft.title}
+            onChange={(event) =>
+              setPalettePageDraft((current) => ({
+                ...current,
+                title: event.target.value,
+              }))
+            }
+          />
+        </label>
+        <div className="palette-preset-color-grid">
+          {palettePageFields.map((field) => {
+            const value = palettePageDraft[field.id];
+
+            return (
+              <label className="palette-preset-field" key={field.id}>
+                <span>{field.label}</span>
+                <div className="palette-preset-color-row">
+                  <span
+                    className="palette-preset-swatch"
+                    style={/^#[\da-f]{6}$/i.test(value) ? { backgroundColor: value } : undefined}
+                    aria-hidden="true"
+                  />
+                  <input
+                    type="text"
+                    value={value}
+                    onChange={(event) =>
+                      setPalettePageDraft((current) => ({
+                        ...current,
+                        [field.id]: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </label>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
   function renderPresetCategoryControls() {
     const fontSizeConfig = getFontSettingsSliderConfig("size");
     const activeFontOptionId = getActivePreviewFontOptionId();
+    const visiblePresets = getVisiblePreviewDesignPresets(previewDesignPresets);
 
     if (imageViewerMode !== "preset") {
       return (
         <div className="phone-image-panel-stack preset-panel-controls preset-picker-controls" aria-label="Preset controls">
-          <div className="preset-picker-popover" aria-label="Saved presets">
+          <div
+            className={`preset-picker-popover ${palettePageControlsOpen ? "has-palette-form" : ""}`}
+            aria-label="Saved presets"
+          >
             <button
               className="primary-button compact-button preset-picker-new-button"
               type="button"
@@ -9850,8 +10478,8 @@ export default function TextPreview({
             >
               New Preset
             </button>
-            {previewDesignPresets.length > 0 ? (
-              previewDesignPresets.map((preset) => (
+            {visiblePresets.length > 0 ? (
+              visiblePresets.map((preset) => (
                 <button
                   key={preset.id}
                   className="secondary-button compact-button preset-picker-option"
@@ -9859,12 +10487,13 @@ export default function TextPreview({
                   onClick={() => applyDesignPreset(preset.id)}
                 >
                   <strong>{preset.name}</strong>
-                  <span>{preset.settings.exportPreset}</span>
+                  {preset.id.startsWith("builtin:") ? null : <span>{preset.settings.exportPreset}</span>}
                 </button>
               ))
             ) : (
               <p className="preset-picker-empty">No presets saved.</p>
             )}
+            {palettePageControlsOpen ? renderPalettePageForm() : null}
           </div>
         </div>
       );
@@ -9923,23 +10552,29 @@ export default function TextPreview({
   function renderLetterCategoryControls() {
     return (
       <div className="phone-image-panel-stack letter-panel-controls" aria-label="Letter controls">
-        <div className="phone-image-action-row">
-          {renderLetterSettingsControls("phone-image-fullscreen-tools preview-layout-tools letter-settings-tools")}
-          <button className="secondary-button compact-button phone-image-tool-button" type="button" onClick={openSelectedLetterEditor}>
-            <PenLine aria-hidden="true" />
-            <span>Design letter</span>
-          </button>
-          <button
-            className="draw-icon-button draw-gold-button font-slider-apply-button"
-            type="button"
-            disabled={!hasPendingFontSpacingChanges}
-            onClick={applyFontSpacingToFont}
-            aria-label={`Apply ${settingsGlyphPanelLabel} changes to Font`}
-            title="Apply to Font"
-          >
-            Apply
-          </button>
-        </div>
+        {renderLetterTuningRow()}
+      </div>
+    );
+  }
+
+  function renderLetterTuningRow(className = "phone-image-action-row") {
+    return (
+      <div className={className}>
+        {renderLetterSettingsControls("phone-image-fullscreen-tools preview-layout-tools letter-settings-tools")}
+        <button className="secondary-button compact-button phone-image-tool-button" type="button" onClick={openSelectedLetterEditor}>
+          <PenLine aria-hidden="true" />
+          <span>Design letter</span>
+        </button>
+        <button
+          className="draw-icon-button draw-gold-button font-slider-apply-button"
+          type="button"
+          disabled={!hasPendingFontSpacingChanges}
+          onClick={applyFontSpacingToFont}
+          aria-label={`Apply ${settingsGlyphPanelLabel} changes to Font`}
+          title="Apply to Font"
+        >
+          Apply
+        </button>
       </div>
     );
   }
@@ -10052,7 +10687,7 @@ export default function TextPreview({
           </div>
         ) : null}
         {activeStyleDrawer ? renderStyleDrawer() : null}
-        {styleSelectTarget !== "text" ? renderStyleSelectionActions() : null}
+        {!isTextSelectionTarget() ? renderStyleSelectionActions() : null}
       </div>
     );
   }

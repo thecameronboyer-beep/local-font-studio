@@ -47,13 +47,13 @@ package.json scripts:
 
 Workspace guard
 ---------------
-Most scripts run check:workspace first. The intended workspace is D:\Local Font Studio. Do not assume an older C-drive copy is correct.
+Most scripts run check:workspace first. The intended workspace is D:\quill. Do not assume an older C-drive copy is correct.
 
 Capacitor config
 ----------------
 capacitor.config.ts:
-- appId: com.thecameronboyer.localfontstudio.
-- appName: Local Font Studio.
+- appId: com.thecameronboyer.quill.
+- appName: Quill.
 - webDir: dist.
 
 Native file helpers
@@ -64,7 +64,7 @@ src\utils\nativeFiles.ts exports:
 - shareNativeFile.
 
 On native platforms:
-- saveNativeFileToDocuments writes into Documents / Local Font Studio.
+- saveNativeFileToDocuments writes into Documents / Quill.
 - shareNativeFile writes a cache file under share/ and opens Capacitor Share.
 - Text data uses UTF8 encoding.
 - PNG base64 data is written without text encoding.
@@ -87,7 +87,7 @@ public\manifest.webmanifest:
 - icons: icon-192.png, icon-512.png, icon.svg.
 
 public\sw.js:
-- CACHE_NAME local-font-studio-v42.
+- CACHE_NAME quill-v42.
 - caches app base, manifest, and icons at install.
 - removes old caches at activate.
 - fetch handler uses network-first with cache fallback for same-origin GET requests.
@@ -95,7 +95,7 @@ public\sw.js:
 GitHub Pages
 ------------
 MOBILE_DEPLOY.md says the public browser version is:
-https://thecameronboyer-beep.github.io/local-font-studio/
+https://thecameronboyer-beep.github.io/quill/
 
 npm run publish:browser builds dist and copies app files into docs for GitHub Pages.
 

@@ -1,10 +1,10 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace = "com.thecameronboyer.localfontstudio"
+    namespace = "com.thecameronboyer.quill"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.thecameronboyer.localfontstudio"
+        applicationId "com.thecameronboyer.quill"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 9
@@ -18,9 +18,9 @@ android {
     }
     signingConfigs {
         debug {
-            storeFile file('local-font-studio-debug.keystore')
+            storeFile file('quill-debug.keystore')
             storePassword 'android'
-            keyAlias 'localfontstudio'
+            keyAlias 'quill'
             keyPassword 'android'
         }
     }

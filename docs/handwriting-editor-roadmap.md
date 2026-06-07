@@ -1,10 +1,10 @@
 # Handwriting Editor Roadmap
 
-This roadmap is for turning Local Font Studio into a serious handwriting editor: a tool that can capture a person's writing style, tune it into a usable font system, preview real text, and export durable assets.
+This roadmap is for turning Quill into a serious handwriting editor: a tool that can capture a person's writing style, tune it into a usable font system, preview real text, and export durable assets.
 
 ## Product North Star
 
-Local Font Studio should feel like a focused handwriting workbench:
+Quill should feel like a focused handwriting workbench:
 
 - Draw letters quickly on phone, tablet, or desktop.
 - See immediately whether those letters work together as actual writing.
@@ -65,7 +65,7 @@ Definition of done:
 
 Goal: preview should answer, "Does this handwriting work in real writing?"
 
-- Add preview presets: pangrams, journal text, labels, addresses, notes, dialogue, alphabet sheets.
+- Add preview presets: pangrams, entry text, labels, addresses, notes, dialogue, alphabet sheets.
 - Add multiline layout controls: width, line height, alignment, padding, background, ink color.
 - Add pair/word diagnostics for cramped, loose, or missing glyphs.
 - Add missing-character fallback highlighting.

@@ -21,12 +21,12 @@ App themes
 ----------
 src\data\appThemes.ts defines AppThemeId:
 - classic.
-- midnightCorrespondence.
+- midnightLetters.
 - strawberryMarket.
 
 App themes are UI-level themes. App.tsx stores them in localStorage:
-- local-font-studio:app-theme:v3.
-- local-font-studio:app-theme-background:v1.
+- quill:app-theme:v3.
+- quill:app-theme-background:v1.
 
 App.tsx writes the chosen theme's cssVariables onto document.documentElement and sets:
 - data-app-theme.
@@ -36,7 +36,7 @@ classic
 -------
 The original dark studio look. It has no background variants.
 
-midnightCorrespondence
+midnightLetters
 ----------------------
 Light literary stationery theme with three background variants:
 - parchmentIvory.
@@ -51,7 +51,7 @@ Font palettes
 -------------
 src\data\palettes.ts defines FontPaletteId:
 - strawberryMarket.
-- midnightCorrespondence.
+- midnightLetters.
 
 Font palettes are font/export-level palettes. They provide:
 - main swatches.

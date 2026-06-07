@@ -124,13 +124,13 @@ defaultFontShapeSettings:
 
 Storage keys
 ------------
-- local-font-studio:data:v1: main project data.
-- local-font-studio:backups:v1: project backups.
-- local-font-studio:data:corrupt:v1: corrupt payload preservation.
-- local-font-studio:saved-images:v1: saved PNG data URLs.
-- local-font-studio:app-theme:v3: UI theme id.
-- local-font-studio:app-theme-background:v1: UI theme background id.
-- local-font-studio:preview-documents:v1: preview documents saved by TextPreview.
+- quill:data:v1: main project data.
+- quill:backups:v1: project backups.
+- quill:data:corrupt:v1: corrupt payload preservation.
+- quill:saved-images:v1: saved PNG data URLs.
+- quill:app-theme:v3: UI theme id.
+- quill:app-theme-background:v1: UI theme background id.
+- quill:preview-documents:v1: preview documents saved by TextPreview.
 
 fontStorage.ts behavior
 -----------------------
@@ -151,7 +151,7 @@ Backups and activity
 - MAX_BACKUPS is 12.
 - AUTO_BACKUP_INTERVAL_MS is 5 minutes.
 - Activity types include backup, font_create, font_delete, font_duplicate, font_rename, glyph_edit, import, export, metrics_batch, migration, recovery, restore.
-- If current project storage is malformed, the corrupt data is copied to local-font-studio:data:corrupt:v1 and the newest backup is restored when possible.
+- If current project storage is malformed, the corrupt data is copied to quill:data:corrupt:v1 and the newest backup is restored when possible.
 
 Saved images
 ------------
@@ -159,7 +159,7 @@ src\storage\savedImageStorage.ts stores up to 24 images. A SavedImage includes c
 
 Preview documents
 -----------------
-Preview documents are defined inside TextPreview, not in fontTypes.ts. They are preview-only records with id, name, text, headerText, settings, textLayers, textTargetPlacements, and updatedAt. They are stored separately from the main project under local-font-studio:preview-documents:v1.
+Preview documents are defined inside TextPreview, not in fontTypes.ts. They are preview-only records with id, name, text, headerText, settings, textLayers, textTargetPlacements, and updatedAt. They are stored separately from the main project under quill:preview-documents:v1.
 
 Planning notes
 --------------

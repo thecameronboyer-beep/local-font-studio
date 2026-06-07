@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type DragEvent } from "react";
-import { Menu, Plus } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from "react";
+import { ChevronDown, ChevronRight, Menu, Plus } from "lucide-react";
 import type {
   BookCompilation,
   BookStructureKind,
@@ -9,7 +9,7 @@ import type {
 } from "../storage/quillWorkspaceStorage";
 import { QuillPageImage } from "./QuillPageImage";
 
-type CompileViewMode = "pages" | "preview" | "structure";
+type CompileViewMode = "pages" | "structure";
 
 type CompileViewProps = {
   activeBook: BookCompilation;
@@ -18,15 +18,18 @@ type CompileViewProps = {
   pages: CompiledPage[];
   onAddStructureItem: (kind: BookStructureKind, title: string) => void;
   onCreateBook: () => void;
+  onDeletePage: (pageId: string) => void;
   onMovePlacedPage: (placedPageId: string, offset: number) => void;
   onMovePlacedPageToLocation: (placedPageId: string, structureItemId: string, targetIndex: number) => void;
   onOpenAppMenu: () => void;
   onPlacePage: (pageId: string, structureItemId?: string) => void;
   onRemovePlacedPage: (placedPageId: string) => void;
   onRemoveStructureItem: (structureItemId: string) => void;
+  onRenameBook: (title: string) => void;
   onRenameStructureItem: (structureItemId: string, title: string) => void;
   onSelectBook: (bookId: string) => void;
   onSelectPage: (pageId: string) => void;
+  onUploadPages: (files: File[]) => void;
 };
 
 type PlacedPageEntry = {
@@ -37,15 +40,15 @@ type PlacedPageEntry = {
   structureItem: BookStructureItem;
 };
 
-const structurePageSize = 3;
-const savedPageScreenSize = 2;
-const previewPageSize = 2;
+const savedPageScreenSize = 10;
 const savedPageDragType = "application/x-quill-saved-page";
 const placedPageDragType = "application/x-quill-placed-page";
+const bookTitleCardId = "book-title";
 
 const structureQuickAdds: Array<{ kind: BookStructureKind; label: string; title: string }> = [
   { kind: "cover", label: "Cover", title: "Book Cover" },
   { kind: "introduction", label: "Intro", title: "Introduction" },
+  { kind: "section", label: "Section", title: "Section" },
   { kind: "chapter", label: "Chapter", title: "Chapter" },
 ];
 
@@ -87,52 +90,35 @@ export function CompileView({
   pages,
   onAddStructureItem,
   onCreateBook,
+  onDeletePage,
   onMovePlacedPage,
   onMovePlacedPageToLocation,
   onOpenAppMenu,
   onPlacePage,
   onRemovePlacedPage,
   onRemoveStructureItem,
+  onRenameBook,
   onRenameStructureItem,
   onSelectBook,
   onSelectPage,
+  onUploadPages,
 }: CompileViewProps) {
   const [activeView, setActiveView] = useState<CompileViewMode>("structure");
   const [structureAddOpen, setStructureAddOpen] = useState(false);
-  const [structurePageIndex, setStructurePageIndex] = useState(0);
   const [savedPagesPageIndex, setSavedPagesPageIndex] = useState(0);
-  const [previewPageIndex, setPreviewPageIndex] = useState(0);
   const [selectedTrayPageId, setSelectedTrayPageId] = useState("");
+  const [selectedStructureCardId, setSelectedStructureCardId] = useState(bookTitleCardId);
   const [dragTargetId, setDragTargetId] = useState("");
+  const [minimizedStructureItemIds, setMinimizedStructureItemIds] = useState<string[]>([]);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const pageById = useMemo(() => new Map(pages.map((page) => [page.id, page])), [pages]);
   const structureItems = activeBook.structureItems ?? [];
-  const placedEntries = useMemo(
-    () =>
-      structureItems.flatMap((structureItem, structureIndex) =>
-        structureItem.placedPages.map((placedPage, placedIndex) => ({
-          page: pageById.get(placedPage.pageId) ?? null,
-          placedPage,
-          placedIndex,
-          structureIndex,
-          structureItem,
-        })),
-      ),
-    [pageById, structureItems],
-  );
-  const structurePageCount = getPageCount(structureItems.length, structurePageSize);
+  const selectedPageActionId = selectedTrayPageId || activePageId;
+  const canDeleteSelectedPage = activeView === "pages" && pages.some((page) => page.id === selectedPageActionId);
   const savedPagesPageCount = getPageCount(pages.length, savedPageScreenSize);
-  const previewPageCount = getPageCount(placedEntries.length, previewPageSize);
-  const visibleStructureItems = structureItems.slice(
-    structurePageIndex * structurePageSize,
-    structurePageIndex * structurePageSize + structurePageSize,
-  );
   const visibleSavedPages = pages.slice(
     savedPagesPageIndex * savedPageScreenSize,
     savedPagesPageIndex * savedPageScreenSize + savedPageScreenSize,
-  );
-  const visiblePreviewEntries = placedEntries.slice(
-    previewPageIndex * previewPageSize,
-    previewPageIndex * previewPageSize + previewPageSize,
   );
 
   useEffect(() => {
@@ -144,16 +130,28 @@ export function CompileView({
   }, []);
 
   useEffect(() => {
-    setStructurePageIndex((current) => Math.min(current, structurePageCount - 1));
-  }, [structurePageCount]);
-
-  useEffect(() => {
     setSavedPagesPageIndex((current) => Math.min(current, savedPagesPageCount - 1));
   }, [savedPagesPageCount]);
 
   useEffect(() => {
-    setPreviewPageIndex((current) => Math.min(current, previewPageCount - 1));
-  }, [previewPageCount]);
+    setSelectedStructureCardId(bookTitleCardId);
+  }, [activeBook.id]);
+
+  useEffect(() => {
+    setSelectedStructureCardId((current) =>
+      current === bookTitleCardId || structureItems.some((item) => item.id === current)
+        ? current
+        : bookTitleCardId,
+    );
+  }, [structureItems]);
+
+  useEffect(() => {
+    setMinimizedStructureItemIds((current) => {
+      const nextIds = current.filter((id) => structureItems.some((item) => item.id === id));
+
+      return nextIds.length === current.length ? current : nextIds;
+    });
+  }, [structureItems]);
 
   function getNextStructureTitle(kind: BookStructureKind, baseTitle: string) {
     if (kind !== "chapter" && kind !== "section") {
@@ -174,11 +172,6 @@ export function CompileView({
     setActiveView("structure");
   }
 
-  function showPreviewView() {
-    closePopovers();
-    setActiveView("preview");
-  }
-
   function showPagesView() {
     closePopovers();
     setActiveView("pages");
@@ -195,9 +188,39 @@ export function CompileView({
     setStructureAddOpen((current) => !current);
   }
 
+  function toggleStructureItemMinimized(structureItemId: string) {
+    setMinimizedStructureItemIds((current) =>
+      current.includes(structureItemId)
+        ? current.filter((id) => id !== structureItemId)
+        : [...current, structureItemId],
+    );
+  }
+
   function handleSavedPageClick(pageId: string) {
     setSelectedTrayPageId((current) => (current === pageId ? "" : pageId));
     onSelectPage(pageId);
+  }
+
+  function openUploadPicker() {
+    uploadInputRef.current?.click();
+  }
+
+  function handleUploadInputChange(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.currentTarget.files ?? []);
+    event.currentTarget.value = "";
+    if (files.length > 0) {
+      onUploadPages(files);
+      setActiveView("pages");
+    }
+  }
+
+  function deleteSelectedPage() {
+    if (!canDeleteSelectedPage) {
+      return;
+    }
+
+    onDeletePage(selectedPageActionId);
+    setSelectedTrayPageId("");
   }
 
   function placeSelectedPage(structureItemId: string) {
@@ -291,7 +314,6 @@ export function CompileView({
               </span>
               <span className="compile-page-viewer-copy">
                 <strong>{page.title}</strong>
-                <span>{page.excerpt}</span>
               </span>
             </button>
           );
@@ -351,62 +373,77 @@ export function CompileView({
   }
 
   function renderStructureSlot(item: BookStructureItem, visibleIndex: number) {
-    const structureIndex = structurePageIndex * structurePageSize + visibleIndex;
+    const structureIndex = visibleIndex;
     const selectedPage = selectedTrayPageId ? pageById.get(selectedTrayPageId) : null;
     const isDragTarget = dragTargetId === item.id;
-    const isSystemSection = Boolean(item.systemSectionKey);
+    const minimized = minimizedStructureItemIds.includes(item.id);
+    const selected = selectedStructureCardId === item.id;
 
     return (
       <article
-        className={["compile-map-slot", isDragTarget ? "drop-target" : ""].filter(Boolean).join(" ")}
+        className={["compile-map-slot", selected ? "selected" : "", minimized ? "minimized" : "", isDragTarget ? "drop-target" : ""]
+          .filter(Boolean)
+          .join(" ")}
         key={item.id}
+        onClick={() => setSelectedStructureCardId(item.id)}
         onDragOver={(event) => handleDropZoneDragOver(event, item.id)}
         onDragLeave={() => setDragTargetId((current) => (current === item.id ? "" : current))}
         onDrop={(event) => handleDropToStructure(event, item.id, item.placedPages.length)}
       >
         <div className="compile-map-slot-heading">
-          <span className="compile-map-slot-index">{structureIndex + 1}</span>
+          <button
+            className="secondary-button compact-button compile-map-slot-minimize"
+            type="button"
+            aria-expanded={!minimized}
+            aria-label={`${minimized ? "Expand" : "Minimize"} ${item.title}`}
+            onClick={() => toggleStructureItemMinimized(item.id)}
+          >
+            {minimized ? <ChevronRight aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+          </button>
           <div className="compile-map-slot-title">
             <input
               aria-label={`${getStructureKindLabel(item.kind)} title`}
-              disabled={isSystemSection}
               value={item.title}
+              onFocus={() => setSelectedStructureCardId(item.id)}
               onChange={(event) => onRenameStructureItem(item.id, event.target.value)}
             />
-            <span>{getStructureKindLabel(item.kind)} - {item.placedPages.length} pages</span>
           </div>
           <button
             className="danger-button compact-button"
             type="button"
-            disabled={isSystemSection}
             onClick={() => onRemoveStructureItem(item.id)}
           >
             Remove
           </button>
         </div>
 
-        <div className="compile-map-pages">
-          {item.placedPages.slice(0, 3).map((placedPage, placedIndex) =>
-            renderPlacedPageCard({
-              page: pageById.get(placedPage.pageId) ?? null,
-              placedPage,
-              placedIndex,
-              structureIndex,
-              structureItem: item,
-            }),
-          )}
-          {item.placedPages.length > 3 && <p className="compile-map-overflow">+ {item.placedPages.length - 3} more in this location</p>}
-          {item.placedPages.length === 0 && <p className="compile-empty">No pages placed here.</p>}
-        </div>
+        {!minimized ? (
+          <>
+            <div className="compile-map-pages">
+              {item.placedPages.slice(0, 3).map((placedPage, placedIndex) =>
+                renderPlacedPageCard({
+                  page: pageById.get(placedPage.pageId) ?? null,
+                  placedPage,
+                  placedIndex,
+                  structureIndex,
+                  structureItem: item,
+                }),
+              )}
+              {item.placedPages.length > 3 && <p className="compile-map-overflow">+ {item.placedPages.length - 3} more in this location</p>}
+              {item.placedPages.length === 0 && <p className="compile-empty">No pages placed here.</p>}
+            </div>
 
-        <button
-          className="compile-drop-zone"
-          type="button"
-          disabled={!selectedTrayPageId}
-          onClick={() => placeSelectedPage(item.id)}
-        >
-          {selectedPage ? `Place ${selectedPage.title}` : "Drop page here"}
-        </button>
+            {selectedTrayPageId ? (
+              <button
+                className="compile-drop-zone"
+                type="button"
+                onClick={() => placeSelectedPage(item.id)}
+              >
+                {selectedPage ? `Place ${selectedPage.title}` : "Place selected page"}
+              </button>
+            ) : null}
+          </>
+        ) : null}
       </article>
     );
   }
@@ -415,7 +452,22 @@ export function CompileView({
     return (
       <div className="compile-map-stage" aria-label="Book map">
         <div className="compile-map">
-          {visibleStructureItems.map((item, index) => renderStructureSlot(item, index))}
+          <label
+            className={["compile-book-name-row", selectedStructureCardId === bookTitleCardId ? "selected" : ""]
+              .filter(Boolean)
+              .join(" ")}
+            onClick={() => setSelectedStructureCardId(bookTitleCardId)}
+          >
+            <span>Book Title</span>
+            <input
+              aria-label="Book name"
+              placeholder="Book name"
+              value={activeBook.title}
+              onFocus={() => setSelectedStructureCardId(bookTitleCardId)}
+              onChange={(event) => onRenameBook(event.target.value)}
+            />
+          </label>
+          {structureItems.map((item, index) => renderStructureSlot(item, index))}
           {structureItems.length === 0 && (
             <article className="compile-map-empty">
               <strong>No structure yet</strong>
@@ -423,31 +475,6 @@ export function CompileView({
             </article>
           )}
         </div>
-      </div>
-    );
-  }
-
-  function renderPreviewStage() {
-    return (
-      <div className="compile-preview-stage" aria-label="Book preview">
-        {visiblePreviewEntries.map((entry, index) => (
-          <article className="compile-preview-card" key={entry.placedPage.id}>
-            <div className="compile-preview-card-image">
-              <QuillPageImage page={entry.page} />
-            </div>
-            <div className="compile-preview-card-copy">
-              <span>{previewPageIndex * previewPageSize + index + 1}. {entry.structureItem.title}</span>
-              <strong>{entry.placedPage.title}</strong>
-              <p>{entry.page?.excerpt ?? "Saved page"}</p>
-            </div>
-          </article>
-        ))}
-        {placedEntries.length === 0 && (
-          <article className="compile-map-empty">
-            <strong>No pages in this book yet</strong>
-            <span>Open Pages and drag a saved page into a structure slot.</span>
-          </article>
-        )}
       </div>
     );
   }
@@ -464,9 +491,9 @@ export function CompileView({
           >
             Previous
           </button>
-          <button className="secondary-button compact-button compile-action-button" type="button" disabled>
+          <span className="compile-action-chip">
             {getPageRangeLabel(pages.length, savedPagesPageIndex, savedPageScreenSize, "No pages")}
-          </button>
+          </span>
           <button
             className="secondary-button compact-button compile-action-button"
             type="button"
@@ -479,58 +506,65 @@ export function CompileView({
       );
     }
 
-    if (activeView === "preview") {
+    return null;
+  }
+
+  function renderBottomControls() {
+    if (activeView === "pages") {
       return (
-        <div className="compile-action-row" aria-label="Preview paging">
+        <div className="phone-image-category-row compile-fullscreen-category-row compile-map-controls pages" aria-label="Compile page tools">
+          <input
+            ref={uploadInputRef}
+            className="compile-upload-input"
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            multiple
+            onChange={handleUploadInputChange}
+          />
+          <div className="compile-add-wrap">
+            {renderStructureAddMenu()}
+            <button
+              className={["secondary-button compact-button compile-fullscreen-tab", structureAddOpen ? "active-tool" : ""]
+                .filter(Boolean)
+                .join(" ")}
+              type="button"
+              aria-expanded={structureAddOpen}
+              onClick={toggleStructureAdd}
+            >
+              Add
+            </button>
+          </div>
           <button
-            className="secondary-button compact-button compile-action-button"
+            className="secondary-button compact-button compile-fullscreen-tab"
             type="button"
-            disabled={previewPageIndex <= 0}
-            onClick={() => setPreviewPageIndex((current) => Math.max(0, current - 1))}
+            aria-pressed={false}
+            onClick={showStructureView}
           >
-            Previous
-          </button>
-          <button className="secondary-button compact-button compile-action-button" type="button" disabled>
-            {getPageRangeLabel(placedEntries.length, previewPageIndex, previewPageSize, "No pages")}
+            Structure
           </button>
           <button
-            className="secondary-button compact-button compile-action-button"
+            className="secondary-button compact-button compile-fullscreen-tab active-tool"
             type="button"
-            disabled={previewPageIndex >= previewPageCount - 1}
-            onClick={() => setPreviewPageIndex((current) => Math.min(previewPageCount - 1, current + 1))}
+            aria-pressed
+            onClick={showPagesView}
           >
-            Next
+            Pages
+          </button>
+          <button className="secondary-button compact-button compile-fullscreen-tab" type="button" onClick={openUploadPicker}>
+            Upload
+          </button>
+          <button
+            className="danger-button compact-button compile-fullscreen-tab"
+            type="button"
+            disabled={!canDeleteSelectedPage}
+            onClick={deleteSelectedPage}
+          >
+            Delete
           </button>
         </div>
       );
     }
 
-    return (
-      <div className="compile-action-row" aria-label="Structure paging">
-        <button
-          className="secondary-button compact-button compile-action-button"
-          type="button"
-          disabled={structurePageIndex <= 0}
-          onClick={() => setStructurePageIndex((current) => Math.max(0, current - 1))}
-        >
-          Previous
-        </button>
-        <button className="secondary-button compact-button compile-action-button" type="button" disabled>
-          {getPageRangeLabel(structureItems.length, structurePageIndex, structurePageSize, "No locations")}
-        </button>
-        <button
-          className="secondary-button compact-button compile-action-button"
-          type="button"
-          disabled={structurePageIndex >= structurePageCount - 1}
-          onClick={() => setStructurePageIndex((current) => Math.min(structurePageCount - 1, current + 1))}
-        >
-          Next
-        </button>
-      </div>
-    );
-  }
-
-  function renderBottomControls() {
     return (
       <div className="phone-image-category-row compile-fullscreen-category-row compile-map-controls" aria-label="Compile tools">
         <div className="compile-add-wrap">
@@ -547,39 +581,29 @@ export function CompileView({
           </button>
         </div>
         <button
-          className={["secondary-button compact-button compile-fullscreen-tab", activeView === "structure" ? "active-tool" : ""]
-            .filter(Boolean)
-            .join(" ")}
+          className="secondary-button compact-button compile-fullscreen-tab active-tool"
           type="button"
-          aria-pressed={activeView === "structure"}
+          aria-pressed={true}
           onClick={showStructureView}
         >
           Structure
         </button>
         <button
-          className={["secondary-button compact-button compile-fullscreen-tab", activeView === "pages" ? "active-tool" : ""]
-            .filter(Boolean)
-            .join(" ")}
+          className="secondary-button compact-button compile-fullscreen-tab"
           type="button"
-          aria-pressed={activeView === "pages"}
+          aria-pressed={false}
           onClick={showPagesView}
         >
           Pages
-        </button>
-        <button
-          className={["secondary-button compact-button compile-fullscreen-tab", activeView === "preview" ? "active-tool" : ""].filter(Boolean).join(" ")}
-          type="button"
-          aria-pressed={activeView === "preview"}
-          onClick={showPreviewView}
-        >
-          Preview
         </button>
       </div>
     );
   }
 
+  const actionRow = renderActionRow();
+
   return (
-    <section className="studio-panel phone-image-fullscreen compile-fullscreen" aria-label="Book builder">
+    <section className={["studio-panel phone-image-fullscreen compile-fullscreen", actionRow ? "" : "compact-bottom"].filter(Boolean).join(" ")} aria-label="Book builder">
       <div className="panel-heading phone-image-fullscreen-heading compile-map-heading">
         <button
           className="secondary-button compact-button phone-image-home-button"
@@ -609,13 +633,15 @@ export function CompileView({
       </div>
 
       <div className="phone-image-fullscreen-surface compile-fullscreen-surface">
-        {activeView === "preview" ? renderPreviewStage() : activeView === "pages" ? renderPagesStage() : renderStructureMap()}
+        {activeView === "pages" ? renderPagesStage() : renderStructureMap()}
       </div>
 
-      <div className="phone-image-fullscreen-bottom-bar phone-image-edit-panel compile-fullscreen-bottom-bar">
-        <div className="phone-image-action-panel compile-fullscreen-action-panel">
-          {renderActionRow()}
-        </div>
+      <div className={["phone-image-fullscreen-bottom-bar phone-image-edit-panel compile-fullscreen-bottom-bar", actionRow ? "" : "compact"].filter(Boolean).join(" ")}>
+        {actionRow ? (
+          <div className="phone-image-action-panel compile-fullscreen-action-panel">
+            {actionRow}
+          </div>
+        ) : null}
         {renderBottomControls()}
       </div>
     </section>

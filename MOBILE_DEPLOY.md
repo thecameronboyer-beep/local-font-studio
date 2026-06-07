@@ -1,4 +1,4 @@
-# Local Font Studio Mobile Sharing
+# Quill Mobile Sharing
 
 This app is built as a mobile-friendly static PWA. There is no backend, login, or server database.
 Each person who opens it saves their own fonts locally in that phone browser.
@@ -16,7 +16,7 @@ npm run build
 The public browser version is served from:
 
 ```text
-https://thecameronboyer-beep.github.io/local-font-studio/
+https://thecameronboyer-beep.github.io/quill/
 ```
 
 To publish the current browser build to that link:
@@ -30,7 +30,7 @@ That command builds `dist`, then copies the generated app files into `docs` for 
 Upload the contents of:
 
 ```text
-D:\Local Font Studio\dist
+D:\quill\dist
 ```
 
 to any static host that gives you an HTTPS URL.

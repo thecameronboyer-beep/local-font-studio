@@ -178,12 +178,10 @@ export async function saveRenderedQuillPage(input: SaveRenderedQuillPageInput): 
 }
 
 export function ensureBookHasAutoSections(book: BookCompilation): BookCompilation {
-  const structureItems = ensureBookCoverFirst(
-    withRequiredAutoSections(
-      Array.isArray(book.structureItems)
-        ? book.structureItems.filter(isBookStructureItem).map(normalizeBookStructureItem)
-        : [],
-    ),
+  const structureItems = sortBookCoverFirst(
+    Array.isArray(book.structureItems)
+      ? book.structureItems.filter(isBookStructureItem).map(normalizeBookStructureItem)
+      : [],
   );
 
   return {
@@ -467,6 +465,19 @@ export async function getCompiledPageImageBlob(pageId: string): Promise<Blob | n
   });
 }
 
+export async function deleteCompiledPageImage(pageId: string): Promise<void> {
+  const db = await openImageDb();
+
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(imageDbStoreName, "readwrite");
+    const store = transaction.objectStore(imageDbStoreName);
+    const request = store.delete(pageId);
+
+    request.onerror = () => reject(request.error ?? new Error("Could not delete page image."));
+    request.onsuccess = () => resolve();
+  });
+}
+
 async function putCompiledPageImage(pageId: string, blob: Blob): Promise<void> {
   const db = await openImageDb();
 
@@ -530,12 +541,9 @@ function flattenStructurePages(structureItems: BookStructureItem[]): PlacedPage[
 }
 
 function getNormalizedStructureItems(book: BookCompilation): BookStructureItem[] {
-  const existingItems = Array.isArray(book.structureItems)
-    ? book.structureItems.filter(isBookStructureItem).map(normalizeBookStructureItem)
-    : [];
-
-  if (existingItems.length > 0) {
-    return ensureBookCoverFirst(withRequiredAutoSections(existingItems));
+  if (Array.isArray(book.structureItems)) {
+    const existingItems = book.structureItems.filter(isBookStructureItem).map(normalizeBookStructureItem);
+    return sortBookCoverFirst(existingItems);
   }
 
   const placedPages = Array.isArray(book.placedPages)
@@ -546,15 +554,15 @@ function getNormalizedStructureItems(book: BookCompilation): BookStructureItem[]
     return getDefaultBookStructureItems();
   }
 
-  return ensureBookCoverFirst(withRequiredAutoSections([
+  return sortBookCoverFirst([
     {
       ...createBookStructureItem("Chapter 1", "chapter"),
       placedPages,
     },
-  ]));
+  ]);
 }
 
-function ensureBookCoverFirst(structureItems: BookStructureItem[]): BookStructureItem[] {
+function sortBookCoverFirst(structureItems: BookStructureItem[]): BookStructureItem[] {
   const coverIndex = structureItems.findIndex((item) => item.kind === "cover");
 
   if (coverIndex === 0) {
@@ -566,7 +574,7 @@ function ensureBookCoverFirst(structureItems: BookStructureItem[]): BookStructur
     return [cover, ...structureItems.filter((_, index) => index !== coverIndex)];
   }
 
-  return [createBookStructureItem("Book Cover", "cover"), ...structureItems];
+  return structureItems;
 }
 
 function normalizeBookStructureItem(item: BookStructureItem): BookStructureItem {
@@ -722,36 +730,4 @@ function getDefaultBookStructureItems(): BookStructureItem[] {
     createBookStructureItem("Story", "section", "story"),
     createBookStructureItem("Changelog", "section", "changelog"),
   ];
-}
-
-function withRequiredAutoSections(structureItems: BookStructureItem[]): BookStructureItem[] {
-  const nextItems = [...structureItems];
-
-  if (!nextItems.some((item) => item.systemSectionKey === "story")) {
-    nextItems.push(createBookStructureItem("Story", "section", "story"));
-  }
-
-  if (!nextItems.some((item) => item.systemSectionKey === "changelog")) {
-    nextItems.push(createBookStructureItem("Changelog", "section", "changelog"));
-  }
-
-  return nextItems.map((item) => {
-    if (item.systemSectionKey === "story") {
-      return {
-        ...item,
-        kind: "section",
-        title: "Story",
-      };
-    }
-
-    if (item.systemSectionKey === "changelog") {
-      return {
-        ...item,
-        kind: "section",
-        title: "Changelog",
-      };
-    }
-
-    return item;
-  });
 }

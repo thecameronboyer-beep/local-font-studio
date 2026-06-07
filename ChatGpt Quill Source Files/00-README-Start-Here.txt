@@ -3,7 +3,7 @@ Quill Source Planning Pack
 
 Refreshed
 ---------
-2026-06-05 from the working tree at D:\Local Font Studio.
+2026-06-05 from the working tree at D:\quill.
 
 Working-tree note
 -----------------
@@ -11,7 +11,7 @@ At refresh time, src\components\TextPreview.tsx and src\styles.css already had u
 
 Purpose
 -------
-This folder is a plain-text source map for Quill / Local Font Studio. It is meant for ChatGPT Projects or planning chats that need enough current app context without pasting the full repository.
+This folder is a plain-text source map for Quill / Quill. It is meant for ChatGPT Projects or planning chats that need enough current app context without pasting the full repository.
 
 How to use this pack
 --------------------
@@ -47,13 +47,13 @@ Project shape
 The app is a React 19 + TypeScript + Vite project with Capacitor 8 Android support.
 
 Main workspace:
-D:\Local Font Studio
+D:\quill
 
 Main source folder:
-D:\Local Font Studio\src
+D:\quill\src
 
 Default output folder for this pack:
-D:\Local Font Studio\ChatGpt Quill Source Files
+D:\quill\ChatGpt Quill Source Files
 
 Core source files
 -----------------

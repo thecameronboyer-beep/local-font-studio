@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { BookOpen, Files, Menu } from "lucide-react";
+import { BookOpen, ChevronLeft, ChevronRight, Menu } from "lucide-react";
 import type { BookCompilation, CompiledPage } from "../storage/quillWorkspaceStorage";
 import { QuillPageImage } from "./QuillPageImage";
 
-type LibraryViewMode = "pages" | "books" | "preview";
+type LibraryViewMode = "books" | "preview";
 
 type QuillLibraryViewProps = {
   activeBook: BookCompilation;
@@ -24,11 +24,15 @@ export function QuillLibraryView({
   onOpenBook,
   onOpenPage,
 }: QuillLibraryViewProps) {
-  const [activeView, setActiveView] = useState<LibraryViewMode>("pages");
-  const selectedPage = useMemo(
-    () => pages.find((page) => page.id === activePageId) ?? pages[0] ?? null,
-    [activePageId, pages],
+  const [activeView, setActiveView] = useState<LibraryViewMode>("books");
+  const pageById = useMemo(() => new Map(pages.map((page) => [page.id, page])), [pages]);
+  const activeBookPages = useMemo(
+    () => activeBook.placedPages.map((placedPage) => pageById.get(placedPage.pageId)).filter(isCompiledPage),
+    [activeBook.placedPages, pageById],
   );
+  const selectedBookPageIndex = activeBookPages.findIndex((page) => page.id === activePageId);
+  const selectedPage = activeBookPages[selectedBookPageIndex] ?? activeBookPages[0] ?? pageById.get(activePageId) ?? null;
+  const hasBookPages = activeBookPages.length > 0;
 
   useEffect(() => {
     document.body.classList.add("library-fullscreen-open");
@@ -38,57 +42,26 @@ export function QuillLibraryView({
     };
   }, []);
 
-  function renderPagesView() {
-    return (
-      <div className="quill-library-screen-list">
-        <div className="compile-drawer-heading">
-          <strong>Pages</strong>
-          <span>{pages.length}</span>
-        </div>
-        <div className="compile-page-list quill-library-scroll-list">
-          {pages.map((page) => (
-            <button
-              className={page.id === activePageId ? "library-item-row selected" : "library-item-row"}
-              key={page.id}
-              type="button"
-              onClick={() => onOpenPage(page.id)}
-            >
-              <Files aria-hidden="true" size={18} />
-              <span>
-                <strong>{page.title}</strong>
-                <small>{page.excerpt}</small>
-              </span>
-            </button>
-          ))}
-          {pages.length === 0 && <p className="compile-empty">No saved pages yet.</p>}
-        </div>
-      </div>
-    );
-  }
-
   function renderBooksView() {
     return (
-      <div className="quill-library-screen-list">
-        <div className="compile-drawer-heading">
-          <strong>Books</strong>
-          <span>{books.length}</span>
-        </div>
-        <div className="compile-page-list quill-library-scroll-list">
-          {books.map((book) => (
-            <button
-              className={book.id === activeBook.id ? "library-item-row selected" : "library-item-row"}
-              key={book.id}
-              type="button"
-              onClick={() => onOpenBook(book.id)}
-            >
-              <BookOpen aria-hidden="true" size={18} />
-              <span>
-                <strong>{book.title}</strong>
-                <small>{book.placedPages.length} placed pages</small>
-              </span>
-            </button>
-          ))}
-        </div>
+      <div className="compile-page-list quill-library-scroll-list quill-library-books-list">
+        {books.map((book) => (
+          <button
+            className={book.id === activeBook.id ? "library-item-row selected" : "library-item-row"}
+            key={book.id}
+            type="button"
+            onClick={() => onOpenBook(book.id)}
+          >
+            <BookOpen aria-hidden="true" size={18} />
+            <span>
+              <strong>{book.title}</strong>
+              <small>
+                {formatCount(book.placedPages.length, "page")} placed in {formatCount(book.structureItems.length, "section")}
+              </small>
+            </span>
+          </button>
+        ))}
+        {books.length === 0 && <p className="compile-empty">No books yet.</p>}
       </div>
     );
   }
@@ -105,19 +78,27 @@ export function QuillLibraryView({
     );
   }
 
+  function openBookPageAt(index: number) {
+    if (activeBookPages.length === 0) {
+      return;
+    }
+
+    const wrappedIndex = (index + activeBookPages.length) % activeBookPages.length;
+    onOpenPage(activeBookPages[wrappedIndex].id);
+    setActiveView("preview");
+  }
+
+  function openPreviousBookPage() {
+    openBookPageAt(selectedBookPageIndex >= 0 ? selectedBookPageIndex - 1 : activeBookPages.length - 1);
+  }
+
+  function openNextBookPage() {
+    openBookPageAt(selectedBookPageIndex >= 0 ? selectedBookPageIndex + 1 : 0);
+  }
+
   function renderBottomControls() {
     return (
       <div className="phone-image-fullscreen-options quill-library-tabs">
-        <button
-          className={["secondary-button compact-button compile-fullscreen-tab", activeView === "pages" ? "active-tool" : ""]
-            .filter(Boolean)
-            .join(" ")}
-          type="button"
-          aria-pressed={activeView === "pages"}
-          onClick={() => setActiveView("pages")}
-        >
-          Pages
-        </button>
         <button
           className={["secondary-button compact-button compile-fullscreen-tab", activeView === "books" ? "active-tool" : ""]
             .filter(Boolean)
@@ -129,14 +110,26 @@ export function QuillLibraryView({
           Books
         </button>
         <button
-          className={["secondary-button compact-button compile-fullscreen-tab", activeView === "preview" ? "active-tool" : ""]
-            .filter(Boolean)
-            .join(" ")}
+          className="secondary-button compact-button compile-fullscreen-tab quill-library-page-nav-button"
           type="button"
-          aria-pressed={activeView === "preview"}
-          onClick={() => setActiveView("preview")}
+          aria-label="Previous page"
+          title="Previous page"
+          disabled={!hasBookPages}
+          onClick={openPreviousBookPage}
         >
-          Preview
+          <ChevronLeft aria-hidden="true" size={16} />
+          <span>Previous Page</span>
+        </button>
+        <button
+          className="secondary-button compact-button compile-fullscreen-tab quill-library-page-nav-button"
+          type="button"
+          aria-label="Next page"
+          title="Next page"
+          disabled={!hasBookPages}
+          onClick={openNextBookPage}
+        >
+          <span>Next Page</span>
+          <ChevronRight aria-hidden="true" size={16} />
         </button>
       </div>
     );
@@ -154,25 +147,33 @@ export function QuillLibraryView({
         >
           <Menu aria-hidden="true" />
         </button>
-        <div className="phone-image-active-settings">Library</div>
+        <div className="phone-image-active-settings">Book Library</div>
         <div className="phone-image-header-actions quill-library-heading-count" aria-label="Library status">
-          <span className="preview-summary-pill">{pages.length} pages</span>
+          <span className="preview-summary-pill">{formatCount(books.length, "book")}</span>
         </div>
       </div>
 
-      <div className="phone-image-fullscreen-surface quill-library-fullscreen-surface">
-        {activeView === "books" ? renderBooksView() : activeView === "preview" ? renderPreviewView() : renderPagesView()}
+      <div className={`phone-image-fullscreen-surface quill-library-fullscreen-surface view-${activeView}`}>
+        {activeView === "books" ? renderBooksView() : renderPreviewView()}
       </div>
 
       <div className="phone-image-fullscreen-bottom-bar phone-image-edit-panel quill-library-bottom-bar">
         <div className="phone-image-action-panel quill-library-status-panel">
           <div className="quill-library-bottom-summary">
             <strong>{activeView === "books" ? activeBook.title : selectedPage?.title ?? "No page selected"}</strong>
-            <span>{pages.length} pages / {books.length} books</span>
+            <span>{formatCount(books.length, "book")} / {formatCount(pages.length, "page")}</span>
           </div>
         </div>
         {renderBottomControls()}
       </div>
     </section>
   );
+}
+
+function formatCount(count: number, label: string): string {
+  return `${count} ${label}${count === 1 ? "" : "s"}`;
+}
+
+function isCompiledPage(page: CompiledPage | undefined): page is CompiledPage {
+  return Boolean(page);
 }

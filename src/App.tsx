@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Plus, Settings2 } from "lucide-react";
 import { CompileView } from "./components/CompileView";
 import FontLibrary from "./components/FontLibrary";
 import FontMetricsPanel from "./components/FontMetricsPanel";
@@ -13,13 +13,9 @@ import TextPreview, {
 } from "./components/TextPreview";
 import {
   APP_THEME_STORAGE_KEY,
-  APP_THEME_BACKGROUND_STORAGE_KEY,
   appThemes,
   defaultAppThemeId,
   getAppTheme,
-  getAppThemeBackground,
-  getDefaultAppThemeBackgroundId,
-  normalizeAppThemeBackgroundId,
   normalizeAppThemeId,
   type AppThemeId,
 } from "./data/appThemes";
@@ -46,6 +42,7 @@ import {
 } from "./storage/quillAutoEntryLog";
 import {
   addStructureItemToCompilation,
+  deleteCompiledPageImage,
   ensureBookHasAutoSections,
   createBookCompilation,
   loadBookCompilations,
@@ -59,6 +56,7 @@ import {
   renameStructureItemInCompilation,
   renameBookCompilation,
   saveBookCompilations,
+  saveCompiledPages,
   saveUpdateEntries,
   type BookStructureKind,
   type BookCompilation,
@@ -87,6 +85,8 @@ import type {
 } from "./types/fontTypes";
 
 type HomeMode = "design" | "compose" | "compile" | "library";
+
+const deletedCompiledPageIdsStorageKey = "quill.deleted-page-ids.v1";
 
 type PendingAutoEntryRequest = {
   bookId: string;
@@ -144,24 +144,18 @@ export default function App() {
   const [savedImagesOpen, setSavedImagesOpen] = useState(false);
   const [savedImages, setSavedImages] = useState<SavedImage[]>(() => loadSavedImages());
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarClosing, setSidebarClosing] = useState(false);
+  const sidebarOpenRef = useRef(false);
+  const sidebarClosingRef = useRef(false);
+  const sidebarCloseTimerRef = useRef<number | undefined>(undefined);
   const [themesMenuOpen, setThemesMenuOpen] = useState(false);
+  const [modeSettingsOpen, setModeSettingsOpen] = useState<HomeMode | null>(null);
   const [activeAppThemeId, setActiveAppThemeId] = useState<AppThemeId>(() => {
     if (typeof window === "undefined") {
       return defaultAppThemeId;
     }
 
     return normalizeAppThemeId(window.localStorage.getItem(APP_THEME_STORAGE_KEY));
-  });
-  const [activeAppThemeBackgroundId, setActiveAppThemeBackgroundId] = useState(() => {
-    if (typeof window === "undefined") {
-      return "";
-    }
-
-    const storedTheme = getAppTheme(normalizeAppThemeId(window.localStorage.getItem(APP_THEME_STORAGE_KEY)));
-    return normalizeAppThemeBackgroundId(
-      storedTheme,
-      window.localStorage.getItem(APP_THEME_BACKGROUND_STORAGE_KEY),
-    );
   });
   const [headerPreviewText, setHeaderPreviewText] = useState("");
   const [previewText, setPreviewText] = useState("the ducks know about the blue canoe.");
@@ -173,6 +167,7 @@ export default function App() {
   const [designPresetApplyRequestId, setDesignPresetApplyRequestId] = useState(0);
   const [presetBuilderRequestId, setPresetBuilderRequestId] = useState(0);
   const [compiledPages, setCompiledPages] = useState<CompiledPage[]>(() => loadCompiledPages());
+  const [deletedCompiledPageIds, setDeletedCompiledPageIds] = useState<string[]>(() => loadDeletedCompiledPageIds());
   const [initialBookCompilations] = useState<BookCompilation[]>(() => loadBookCompilations().map(ensureBookHasAutoSections));
   const [bookCompilations, setBookCompilations] = useState<BookCompilation[]>(initialBookCompilations);
   const [updateEntries, setUpdateEntries] = useState<UpdateEntry[]>(() => loadUpdateEntries());
@@ -193,10 +188,6 @@ export default function App() {
   const spacebarGlyph = activeFont.glyphs[spacebar] ?? createEmptyGlyph(spacebar);
   const activeCharacters = useMemo(() => getVisibleCharacters(activeFont), [activeFont]);
   const activeAppTheme = useMemo(() => getAppTheme(activeAppThemeId), [activeAppThemeId]);
-  const activeAppThemeBackground = useMemo(
-    () => getAppThemeBackground(activeAppTheme, activeAppThemeBackgroundId),
-    [activeAppTheme, activeAppThemeBackgroundId],
-  );
   const selectedCharacterIndex = activeCharacters.indexOf(selectedCharacter);
   const activeBook = useMemo(
     () => bookCompilations.find((book) => book.id === activeBookId) ?? bookCompilations[0],
@@ -222,8 +213,11 @@ export default function App() {
     [activeBook, updateEntries],
   );
   const compilationPages = useMemo(
-    () => buildCompilationPages(compiledPages, updateEntries, studioData.activityLog),
-    [compiledPages, studioData.activityLog, updateEntries],
+    () => {
+      const deletedPageIds = new Set(deletedCompiledPageIds);
+      return buildCompilationPages(compiledPages, updateEntries, studioData.activityLog).filter((page) => !deletedPageIds.has(page.id));
+    },
+    [compiledPages, deletedCompiledPageIds, studioData.activityLog, updateEntries],
   );
   const handlePreviewDesignPresetsChange = useCallback((presets: PreviewDesignPresetSummary[], activePresetId?: string) => {
     setPreviewDesignPresets(presets);
@@ -253,28 +247,19 @@ export default function App() {
 
   useEffect(() => {
     const root = document.documentElement;
-    const safeBackgroundId = normalizeAppThemeBackgroundId(activeAppTheme, activeAppThemeBackgroundId);
 
     root.dataset.appTheme = activeAppTheme.id;
-    root.dataset.appThemeBackground = safeBackgroundId;
+    delete root.dataset.appThemeBackground;
     Object.entries(activeAppTheme.cssVariables).forEach(([property, value]) => {
       root.style.setProperty(property, value);
     });
-    Object.entries(activeAppThemeBackground?.cssVariables ?? {}).forEach(([property, value]) => {
-      root.style.setProperty(property, value);
-    });
-
-    if (safeBackgroundId !== activeAppThemeBackgroundId) {
-      setActiveAppThemeBackgroundId(safeBackgroundId);
-    }
 
     try {
       window.localStorage.setItem(APP_THEME_STORAGE_KEY, activeAppTheme.id);
-      window.localStorage.setItem(APP_THEME_BACKGROUND_STORAGE_KEY, safeBackgroundId);
     } catch (error) {
       console.warn("Unable to persist app theme.", error);
     }
-  }, [activeAppTheme, activeAppThemeBackground, activeAppThemeBackgroundId]);
+  }, [activeAppTheme]);
 
   useEffect(() => {
     if (!activeCharacters.includes(selectedCharacter) && !isHeaderLetter(selectedCharacter)) {
@@ -903,6 +888,53 @@ export default function App() {
     setActiveCompiledPageId(page.id);
   }
 
+  async function handleUploadCompiledPages(files: File[]) {
+    const imageFiles = files.filter((file) => file.type.startsWith("image/"));
+    const uploadedPages: CompiledPage[] = [];
+
+    for (const file of imageFiles) {
+      const dimensions = await getImageFileDimensions(file);
+      const page = await saveRenderedQuillPage({
+        blob: file,
+        height: dimensions.height,
+        textContent: "",
+        title: getUploadedPageTitle(file.name),
+        width: dimensions.width,
+      });
+
+      uploadedPages.push(page);
+    }
+
+    setCompiledPages(loadCompiledPages());
+    if (uploadedPages.length > 0) {
+      setActiveCompiledPageId(uploadedPages[uploadedPages.length - 1].id);
+    }
+  }
+
+  async function handleDeleteCompiledPage(pageId: string) {
+    if (!pageId) {
+      return;
+    }
+
+    const nextDeletedPageIds = Array.from(new Set([...loadDeletedCompiledPageIds(), pageId]));
+    saveDeletedCompiledPageIds(nextDeletedPageIds);
+    setDeletedCompiledPageIds(nextDeletedPageIds);
+
+    const nextPages = loadCompiledPages().filter((page) => page.id !== pageId);
+    saveCompiledPages(nextPages);
+    try {
+      await deleteCompiledPageImage(pageId);
+    } catch (error) {
+      console.warn("Could not delete compiled page image.", error);
+    }
+
+    persistBookCompilations(removeCompiledPageReferencesFromBooks(bookCompilations, pageId));
+    setCompiledPages(nextPages);
+    const hiddenPageIds = new Set(nextDeletedPageIds);
+    const nextVisiblePages = buildCompilationPages(nextPages, updateEntries, studioData.activityLog).filter((page) => !hiddenPageIds.has(page.id));
+    setActiveCompiledPageId((current) => (current === pageId ? nextVisiblePages[0]?.id ?? "" : current));
+  }
+
   function handleRemovePlacedPage(placedPageId: string) {
     if (!activeBook) {
       return;
@@ -941,7 +973,6 @@ export default function App() {
     const nextTheme = getAppTheme(themeId);
 
     setActiveAppThemeId(nextTheme.id);
-    setActiveAppThemeBackgroundId(getDefaultAppThemeBackgroundId(nextTheme));
   }
 
   function resolveAutoSectionId(book: BookCompilation, kind: AutoEntryKind) {
@@ -983,23 +1014,194 @@ export default function App() {
     { id: "library", label: "Library" },
   ];
 
-  function openHomeMode(mode: HomeMode) {
-    setEditorFullScreen(false);
-    setGridFullScreen(false);
-    setSavedImagesOpen(false);
-    setThemesMenuOpen(false);
-    setHomeMode(mode);
+  useEffect(() => () => {
+    if (sidebarCloseTimerRef.current !== undefined) {
+      window.clearTimeout(sidebarCloseTimerRef.current);
+    }
+  }, []);
+
+  function openSidebar() {
+    if (sidebarCloseTimerRef.current !== undefined) {
+      window.clearTimeout(sidebarCloseTimerRef.current);
+      sidebarCloseTimerRef.current = undefined;
+    }
+    sidebarOpenRef.current = true;
+    sidebarClosingRef.current = false;
+    setSidebarClosing(false);
+    setSidebarOpen(true);
+  }
+
+  function isSidebarVisiblyOpen() {
+    if (typeof document === "undefined") {
+      return false;
+    }
+
+    return document.querySelector(".sidebar-menu.open") !== null;
+  }
+
+  function closeSidebar(action?: () => void) {
+    const shouldAnimateClose = sidebarOpenRef.current || sidebarClosingRef.current || isSidebarVisiblyOpen();
+    if (!shouldAnimateClose) {
+      action?.();
+      return;
+    }
+
+    if (sidebarCloseTimerRef.current !== undefined) {
+      window.clearTimeout(sidebarCloseTimerRef.current);
+    }
+
+    sidebarOpenRef.current = false;
+    sidebarClosingRef.current = true;
     setSidebarOpen(false);
+    setSidebarClosing(true);
+    setThemesMenuOpen(false);
+    setModeSettingsOpen(null);
+    sidebarCloseTimerRef.current = window.setTimeout(() => {
+      sidebarClosingRef.current = false;
+      setSidebarClosing(false);
+      sidebarCloseTimerRef.current = undefined;
+      action?.();
+    }, 360);
+  }
+
+  function toggleSidebar() {
+    if (sidebarOpenRef.current || isSidebarVisiblyOpen()) {
+      closeSidebar();
+      return;
+    }
+
+    openSidebar();
+  }
+
+  function openHomeMode(mode: HomeMode) {
+    closeSidebar(() => {
+      setEditorFullScreen(false);
+      setGridFullScreen(false);
+      setSavedImagesOpen(false);
+      setHomeMode(mode);
+    });
+  }
+
+  function toggleModeSettings(mode: HomeMode) {
+    setThemesMenuOpen(false);
+    setModeSettingsOpen((current) => (current === mode ? null : mode));
+  }
+
+  function openSidebarPanelAction(action: () => void) {
+    closeSidebar(action);
+  }
+
+  function renderBookSetting(label: string, includeCreate = false) {
+    if (!activeBook) {
+      return (
+        <div className="sidebar-settings-empty" role="status">
+          No books yet
+        </div>
+      );
+    }
+
+    return (
+      <div className="sidebar-settings-field-row">
+        <label className="sidebar-settings-field">
+          <span>{label}</span>
+          <select value={activeBook.id} onChange={(event) => setActiveBookId(event.target.value)}>
+            {bookCompilations.map((book) => (
+              <option key={book.id} value={book.id}>
+                {book.title}
+              </option>
+            ))}
+          </select>
+        </label>
+        {includeCreate ? (
+          <button className="secondary-button compact-button sidebar-settings-inline-button" type="button" onClick={handleCreateBookCompilation}>
+            New
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+
+  function renderModeSettings(mode: HomeMode) {
+    if (mode === "design") {
+      return (
+        <>
+          <strong>Design settings</strong>
+          <div className="sidebar-settings-button-grid">
+            <button className="secondary-button compact-button" type="button" onClick={() => openSidebarPanelAction(() => setGridFullScreen(true))}>
+              Alphabet
+            </button>
+            <button className="secondary-button compact-button" type="button" onClick={() => openSidebarPanelAction(() => setEditorFullScreen(true))}>
+              Design Letters
+            </button>
+          </div>
+        </>
+      );
+    }
+
+    if (mode === "compose") {
+      return (
+        <>
+          <strong>Compose settings</strong>
+          <div className="sidebar-settings-field-row">
+            <label className="sidebar-settings-field">
+              <span>Preset</span>
+              <select
+                value={activePreviewDesignPresetId}
+                onChange={(event) => {
+                  const presetId = event.target.value;
+                  setActivePreviewDesignPresetId(presetId);
+                  if (presetId) {
+                    setDesignPresetApplyRequestId((requestId) => requestId + 1);
+                  }
+                }}
+              >
+                <option value="">Presets</option>
+                {previewDesignPresets.map((preset) => (
+                  <option key={preset.id} value={preset.id}>
+                    {preset.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="secondary-button compact-button sidebar-settings-icon-button"
+              type="button"
+              aria-label="Create preset"
+              onClick={() => setPresetBuilderRequestId((requestId) => requestId + 1)}
+            >
+              <Plus aria-hidden="true" size={18} />
+            </button>
+          </div>
+          {renderBookSetting("Auto-entry book")}
+        </>
+      );
+    }
+
+    if (mode === "compile") {
+      return (
+        <>
+          <strong>Compile settings</strong>
+          {renderBookSetting("Active book", true)}
+        </>
+      );
+    }
+
+    return (
+      <>
+        <strong>Library settings</strong>
+        {renderBookSetting("Library book")}
+      </>
+    );
   }
 
   return (
     <main className="app-shell">
       <button
-        className={`menu-toggle ${sidebarOpen ? "open" : ""}`}
+        className={`menu-toggle ${sidebarOpen ? "open" : ""} ${sidebarClosing ? "closing" : ""}`}
         type="button"
         aria-label={sidebarOpen ? "Close menu" : "Open menu"}
         aria-expanded={sidebarOpen}
-        onClick={() => setSidebarOpen((current) => !current)}
+        onClick={toggleSidebar}
       >
         <span />
         <span />
@@ -1007,56 +1209,62 @@ export default function App() {
       </button>
 
       <div
-        className={`sidebar-backdrop ${sidebarOpen ? "open" : ""}`}
+        className={`sidebar-backdrop ${sidebarOpen ? "open" : ""} ${sidebarClosing ? "closing" : ""}`}
         aria-hidden="true"
-        onClick={() => setSidebarOpen(false)}
+        onClick={() => closeSidebar()}
       />
 
-      <aside className={`sidebar-menu ${sidebarOpen ? "open" : ""}`} aria-label="App menu">
+      <aside className={`sidebar-menu ${sidebarOpen ? "open" : ""} ${sidebarClosing ? "closing" : ""}`} aria-label="App menu">
         <div className="sidebar-heading">
           <h2>Menu</h2>
         </div>
 
         <nav className="sidebar-nav">
           <div className="sidebar-mode-buttons" aria-label="App modes">
-            {sidebarModeOptions.map((option) => (
-              <button
-                key={option.id}
-                className={homeMode === option.id ? "active-tool" : ""}
-                type="button"
-                aria-pressed={homeMode === option.id}
-                onClick={() => openHomeMode(option.id)}
-              >
-                {option.label}
-              </button>
-            ))}
+            {sidebarModeOptions.map((option) => {
+              const settingsOpenForMode = modeSettingsOpen === option.id;
+              const settingsPanelId = `sidebar-${option.id}-settings`;
+
+              return (
+                <div key={option.id} className="sidebar-mode-control">
+                  <button
+                    className={`sidebar-mode-main-button ${homeMode === option.id ? "active-tool" : ""}`}
+                    type="button"
+                    aria-pressed={homeMode === option.id}
+                    onClick={() => openHomeMode(option.id)}
+                  >
+                    {option.label}
+                  </button>
+                  <button
+                    className={`sidebar-mode-settings-button ${settingsOpenForMode ? "active-tool" : ""}`}
+                    type="button"
+                    aria-label={`${option.label} settings`}
+                    aria-expanded={settingsOpenForMode}
+                    aria-controls={settingsPanelId}
+                    onClick={() => toggleModeSettings(option.id)}
+                  >
+                    <Settings2 aria-hidden="true" size={17} />
+                  </button>
+                </div>
+              );
+            })}
           </div>
+          {modeSettingsOpen ? (
+            <div
+              className="sidebar-mode-settings-panel"
+              id={`sidebar-${modeSettingsOpen}-settings`}
+              aria-label={`${sidebarModeOptions.find((option) => option.id === modeSettingsOpen)?.label ?? "Mode"} settings`}
+            >
+              {renderModeSettings(modeSettingsOpen)}
+            </div>
+          ) : null}
           <button
             type="button"
-            onClick={() => {
-              setSidebarOpen(false);
-              setGridFullScreen(true);
-            }}
-          >
-            Alphabet
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setSidebarOpen(false);
+            onClick={() => closeSidebar(() => {
               setSavedImagesOpen(true);
-            }}
+            })}
           >
             Saved Images
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setSidebarOpen(false);
-              setEditorFullScreen(true);
-            }}
-          >
-            Design Letters
           </button>
           <button
             type="button"
@@ -1090,26 +1298,6 @@ export default function App() {
                       <span>{theme.description}</span>
                     </span>
                   </button>
-                  {selected && theme.backgrounds?.length ? (
-                    <div className="sidebar-theme-backgrounds" aria-label={`${theme.label} backgrounds`}>
-                      {theme.backgrounds.map((background) => {
-                        const backgroundSelected = activeAppThemeBackgroundId === background.id;
-
-                        return (
-                          <button
-                            key={background.id}
-                            className={`sidebar-theme-background-button ${backgroundSelected ? "selected" : ""}`}
-                            type="button"
-                            aria-pressed={backgroundSelected}
-                            onClick={() => setActiveAppThemeBackgroundId(background.id)}
-                          >
-                            <span style={{ backgroundColor: background.swatch }} aria-hidden="true" />
-                            {background.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : null}
                 </div>
               );
             })}
@@ -1205,7 +1393,7 @@ export default function App() {
               onCreatePresetFont={handleCreatePresetFont}
               onDesignPresetsChange={handlePreviewDesignPresetsChange}
               onOpenCharacterEditor={handleSelectCharacter}
-              onOpenAppMenu={() => setSidebarOpen((current) => !current)}
+              onOpenAppMenu={toggleSidebar}
               onRecordExport={handleRecordPreviewExport}
               onSaveImage={handleSaveImage}
               onSaveRenderedPage={handleSaveRenderedPage}
@@ -1239,13 +1427,16 @@ export default function App() {
               onCreateBook={handleCreateBookCompilation}
               onMovePlacedPage={handleMovePlacedPage}
               onMovePlacedPageToLocation={handleMovePlacedPageToLocation}
-              onOpenAppMenu={() => setSidebarOpen((current) => !current)}
+              onDeletePage={handleDeleteCompiledPage}
+              onOpenAppMenu={toggleSidebar}
               onPlacePage={handlePlaceCompiledPage}
               onRemoveStructureItem={handleRemoveBookStructureItem}
               onRemovePlacedPage={handleRemovePlacedPage}
+              onRenameBook={handleRenameBookCompilation}
               onRenameStructureItem={handleRenameBookStructureItem}
               onSelectBook={setActiveBookId}
               onSelectPage={setActiveCompiledPageId}
+              onUploadPages={handleUploadCompiledPages}
             />
           )}
           {homeMode === "library" && activeBook && (
@@ -1254,7 +1445,7 @@ export default function App() {
               activePageId={activeCompiledPageId}
               books={bookCompilations}
               pages={compilationPages}
-              onOpenAppMenu={() => setSidebarOpen((current) => !current)}
+              onOpenAppMenu={toggleSidebar}
               onOpenBook={setActiveBookId}
               onOpenPage={setActiveCompiledPageId}
             />
@@ -1423,4 +1614,84 @@ function addEntryPage(
 
 function getEntryExcerpt(text: string): string {
   return text.replace(/\s+/g, " ").trim().slice(0, 150) || "Saved entry.";
+}
+
+function loadDeletedCompiledPageIds(): string[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  const raw = window.localStorage.getItem(deletedCompiledPageIdsStorageKey);
+  if (!raw) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveDeletedCompiledPageIds(pageIds: string[]) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(deletedCompiledPageIdsStorageKey, JSON.stringify(pageIds));
+}
+
+function getUploadedPageTitle(fileName: string): string {
+  return fileName
+    .replace(/\.[^.]+$/, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim() || "Uploaded Page";
+}
+
+function getImageFileDimensions(file: File): Promise<{ height: number; width: number }> {
+  return new Promise((resolve) => {
+    const imageUrl = URL.createObjectURL(file);
+    const image = new Image();
+
+    image.onload = () => {
+      URL.revokeObjectURL(imageUrl);
+      resolve({
+        height: image.naturalHeight || 1920,
+        width: image.naturalWidth || 1080,
+      });
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(imageUrl);
+      resolve({ height: 1920, width: 1080 });
+    };
+    image.src = imageUrl;
+  });
+}
+
+function removeCompiledPageReferencesFromBooks(books: BookCompilation[], pageId: string): BookCompilation[] {
+  const now = new Date().toISOString();
+
+  return books.map((book) => {
+    let changed = false;
+    const structureItems = book.structureItems.map((item) => {
+      const placedPages = item.placedPages.filter((page) => page.pageId !== pageId);
+      if (placedPages.length === item.placedPages.length) {
+        return item;
+      }
+
+      changed = true;
+      return { ...item, placedPages };
+    });
+
+    return changed
+      ? {
+          ...book,
+          placedPages: structureItems.flatMap((item) => item.placedPages),
+          structureItems,
+          updatedAt: now,
+        }
+      : book;
+  });
 }

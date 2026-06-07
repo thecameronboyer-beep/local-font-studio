@@ -1,14 +1,22 @@
 {
-  "name": "local-font-studio",
+  "name": "quill",
   "private": true,
   "version": "0.1.0",
+  "description": "Quill book and page design studio.",
+  "author": "The Cameron Boyer",
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "check:workspace": "node scripts/ensure-d-drive-workspace.mjs",
     "predev": "npm run check:workspace",
     "dev": "vite --host 127.0.0.1",
     "prebuild": "npm run check:workspace",
     "build": "tsc && vite build",
+    "desktop:dev": "node scripts/start-electron-dev.mjs",
+    "desktop:start": "npm run build && electron .",
+    "desktop:smoke": "npm run build && node scripts/smoke-electron.mjs",
+    "desktop:pack": "npm run build && electron-builder --dir",
+    "desktop:build": "npm run build && electron-builder",
     "preandroid:sync": "npm run check:workspace",
     "android:sync": "npm run build && npx cap sync android",
     "preandroid:build:debug": "npm run check:workspace",
@@ -36,7 +44,29 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
+    "electron": "^42.3.3",
+    "electron-builder": "^26.15.0",
     "typescript": "^5.9.3",
     "vite": "^7.2.4"
+  },
+  "build": {
+    "appId": "com.thecameronboyer.quill",
+    "productName": "Quill",
+    "electronDist": "node_modules/electron/dist",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    }
   }
 }

@@ -1,4 +1,4 @@
-These preset fonts were bundled from the official Google Fonts repository for Local Font Studio preview text presets.
+These preset fonts were bundled from the official Google Fonts repository for Quill preview text presets.
 
 Source repository:
 https://github.com/google/fonts
