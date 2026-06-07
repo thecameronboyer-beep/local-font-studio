@@ -289,6 +289,7 @@ type PhoneImageLayout = {
   bodyStartY: number;
   headerFontSize: number;
   headerLines: string[];
+  headerStartY: number;
   lines: string[];
   settings: PreviewImageSettings;
 };
@@ -2712,7 +2713,7 @@ export default function TextPreview({
             font: previewFont,
             fontSize: layout.headerFontSize,
             startX: headerPlacement?.x,
-            startY: headerPlacement?.y ?? layout.settings.pagePadding,
+            startY: headerPlacement?.y ?? layout.headerStartY,
             useHeaderLetters: true,
           }),
           ...getPresetPreviewGlyphHitTargets(ctx, layout.lines, layout.settings, activeFontPreset, {
@@ -2728,7 +2729,7 @@ export default function TextPreview({
             fontSize: layout.headerFontSize,
             sourceText: headerPreviewText,
             startX: headerPlacement?.x,
-            startY: headerPlacement?.y ?? layout.settings.pagePadding,
+            startY: headerPlacement?.y ?? layout.headerStartY,
             useHeaderLetters: true,
           }),
           ...getPreviewGlyphHitTargets(ctx, layout.lines, layout.settings, {
@@ -4974,6 +4975,12 @@ export default function TextPreview({
     };
   }
 
+  function getPreviewTextStartY(renderSettings: PreviewImageSettings, fontSize: number) {
+    const visualCompensation = Math.min(renderSettings.pagePadding * 0.45, fontSize * 0.22);
+
+    return renderSettings.pagePadding + visualCompensation;
+  }
+
   function shouldUseLongSkinnyFormat(renderSettings: PreviewImageSettings) {
     return renderSettings.exportPreset === "longSkinny" || (renderSettings.exportPreset as string) === "extreme";
   }
@@ -5075,7 +5082,11 @@ export default function TextPreview({
         : [];
       const headerLineHeight = getPresetLineHeight(renderSettings, presetHeaderFontSize);
       const headerGap = headerLines.length > 0 ? presetBodyFontSize * 0.85 : 0;
-      const bodyStartY = renderSettings.pagePadding + headerLines.length * headerLineHeight + headerGap;
+      const headerStartY = getPreviewTextStartY(renderSettings, presetHeaderFontSize);
+      const bodyBaseStartY = getPreviewTextStartY(renderSettings, presetBodyFontSize);
+      const bodyStartY = headerLines.length > 0
+        ? headerStartY + headerLines.length * headerLineHeight + headerGap
+        : bodyBaseStartY;
       const wrappedLines = useLongSkinnyFormat
         ? getLongSkinnySingleLineBodyText(previewText)
         : renderSettings.autoFit
@@ -5120,6 +5131,7 @@ export default function TextPreview({
         bodyStartY: longSkinnyLayout?.bodyStartY ?? bodyStartY,
         headerFontSize: presetHeaderFontSize,
         headerLines,
+        headerStartY,
         lines: wrappedLines,
       };
     }
@@ -5146,7 +5158,11 @@ export default function TextPreview({
       : [];
     const headerLineHeight = headerFontSize * renderSettings.lineSpacing;
     const headerGap = headerLines.length > 0 ? bodyFontSize * 0.85 : 0;
-    const bodyStartY = renderSettings.pagePadding + headerLines.length * headerLineHeight + headerGap;
+    const headerStartY = getPreviewTextStartY(renderSettings, headerFontSize);
+    const bodyBaseStartY = getPreviewTextStartY(renderSettings, bodyFontSize);
+    const bodyStartY = headerLines.length > 0
+      ? headerStartY + headerLines.length * headerLineHeight + headerGap
+      : bodyBaseStartY;
     ctx.font = getFallbackFont(bodyFontSize);
     const wrappedLines = useLongSkinnyFormat
       ? getLongSkinnySingleLineBodyText(previewText)
@@ -5175,6 +5191,7 @@ export default function TextPreview({
       bodyStartY: longSkinnyLayout?.bodyStartY ?? bodyStartY,
       headerFontSize,
       headerLines,
+      headerStartY,
       lines: wrappedLines,
     };
   }
@@ -5265,7 +5282,11 @@ export default function TextPreview({
         : [];
       const headerLineHeight = getPresetLineHeight(renderSettings, presetHeaderFontSize);
       const headerGap = headerLines.length > 0 ? presetBodyFontSize * 0.85 : 0;
-      const bodyStartY = renderSettings.pagePadding + headerLines.length * headerLineHeight + headerGap;
+      const headerStartY = getPreviewTextStartY(renderSettings, presetHeaderFontSize);
+      const bodyBaseStartY = getPreviewTextStartY(renderSettings, presetBodyFontSize);
+      const bodyStartY = headerLines.length > 0
+        ? headerStartY + headerLines.length * headerLineHeight + headerGap
+        : bodyBaseStartY;
       const wrappedLines = useLongSkinnyFormat
         ? getLongSkinnySingleLineBodyText(bodyText)
         : renderSettings.autoFit
@@ -5296,6 +5317,7 @@ export default function TextPreview({
         bodyStartY: longSkinnyLayout?.bodyStartY ?? bodyStartY,
         headerFontSize: presetHeaderFontSize,
         headerLines,
+        headerStartY,
         lines: wrappedLines,
       };
     }
@@ -5308,7 +5330,11 @@ export default function TextPreview({
       : [];
     const headerLineHeight = headerFontSize * renderSettings.lineSpacing;
     const headerGap = headerLines.length > 0 ? bodyFontSize * 0.85 : 0;
-    const bodyStartY = renderSettings.pagePadding + headerLines.length * headerLineHeight + headerGap;
+    const headerStartY = getPreviewTextStartY(renderSettings, headerFontSize);
+    const bodyBaseStartY = getPreviewTextStartY(renderSettings, bodyFontSize);
+    const bodyStartY = headerLines.length > 0
+      ? headerStartY + headerLines.length * headerLineHeight + headerGap
+      : bodyBaseStartY;
     ctx.font = getFallbackFont(bodyFontSize);
     const wrappedLines = useLongSkinnyFormat
       ? getLongSkinnySingleLineBodyText(bodyText)
@@ -5337,6 +5363,7 @@ export default function TextPreview({
       bodyStartY: longSkinnyLayout?.bodyStartY ?? bodyStartY,
       headerFontSize,
       headerLines,
+      headerStartY,
       lines: wrappedLines,
     };
   }
@@ -5356,7 +5383,7 @@ export default function TextPreview({
         fontForText: options.fontForText,
         fontSize: layout.headerFontSize,
         preset: options.presetFont,
-        startY: layout.settings.pagePadding,
+        startY: layout.headerStartY,
         useHeaderLetters: true,
       });
       drawPresetTextToCanvas(ctx, layout.lines, layout.settings, {
@@ -5372,7 +5399,7 @@ export default function TextPreview({
       font: options.fontForText,
       fontSize: layout.headerFontSize,
       sourceText: options.headerText,
-      startY: layout.settings.pagePadding,
+      startY: layout.headerStartY,
       useHeaderLetters: true,
     });
     drawTextToCanvas(ctx, layout.lines, layout.settings, {
@@ -5775,7 +5802,7 @@ export default function TextPreview({
         fontForText: previewFont,
         preset: activeFontPreset,
         startX: headerPlacement?.x,
-        startY: headerPlacement?.y ?? layout.settings.pagePadding,
+        startY: headerPlacement?.y ?? layout.headerStartY,
         useHeaderLetters: true,
       });
       drawPresetTextToCanvas(ctx, bodyLines, layout.settings, {
@@ -5791,7 +5818,7 @@ export default function TextPreview({
         fontSize: layout.headerFontSize,
         sourceText: headerPreviewText,
         startX: headerPlacement?.x,
-        startY: headerPlacement?.y ?? layout.settings.pagePadding,
+        startY: headerPlacement?.y ?? layout.headerStartY,
         useHeaderLetters: true,
       });
       drawTextToCanvas(ctx, bodyLines, layout.settings, {
@@ -5993,7 +6020,7 @@ export default function TextPreview({
         id: "preview-header",
         width: maxLineWidth,
         x: headerPlacement?.x ?? layout.settings.pagePadding,
-        y: headerPlacement?.y ?? layout.settings.pagePadding,
+        y: headerPlacement?.y ?? layout.headerStartY,
       });
     }
 
