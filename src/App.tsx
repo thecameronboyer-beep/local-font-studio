@@ -1205,7 +1205,7 @@ export default function App() {
               onCreatePresetFont={handleCreatePresetFont}
               onDesignPresetsChange={handlePreviewDesignPresetsChange}
               onOpenCharacterEditor={handleSelectCharacter}
-              onOpenAppMenu={() => setSidebarOpen(true)}
+              onOpenAppMenu={() => setSidebarOpen((current) => !current)}
               onRecordExport={handleRecordPreviewExport}
               onSaveImage={handleSaveImage}
               onSaveRenderedPage={handleSaveRenderedPage}
@@ -1239,7 +1239,7 @@ export default function App() {
               onCreateBook={handleCreateBookCompilation}
               onMovePlacedPage={handleMovePlacedPage}
               onMovePlacedPageToLocation={handleMovePlacedPageToLocation}
-              onOpenAppMenu={() => setSidebarOpen(true)}
+              onOpenAppMenu={() => setSidebarOpen((current) => !current)}
               onPlacePage={handlePlaceCompiledPage}
               onRemoveStructureItem={handleRemoveBookStructureItem}
               onRemovePlacedPage={handleRemovePlacedPage}
@@ -1254,7 +1254,7 @@ export default function App() {
               activePageId={activeCompiledPageId}
               books={bookCompilations}
               pages={compilationPages}
-              onOpenAppMenu={() => setSidebarOpen(true)}
+              onOpenAppMenu={() => setSidebarOpen((current) => !current)}
               onOpenBook={setActiveBookId}
               onOpenPage={setActiveCompiledPageId}
             />
