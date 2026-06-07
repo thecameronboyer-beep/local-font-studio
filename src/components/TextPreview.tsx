@@ -9462,7 +9462,7 @@ export default function TextPreview({
           id,
           label: "Letter gap",
           max: 0.6,
-          min: -0.35,
+          min: -0.8,
           precision: 2,
           step: 0.01,
           value: previewFont.shapeSettings?.letterSpacing ?? 0,

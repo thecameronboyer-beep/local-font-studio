@@ -369,7 +369,7 @@ function normalizeShapeSettings(value: unknown, fallback: FontShapeSettings): Fo
 
   return {
     heightScale: safeNumber(value.heightScale, fallback.heightScale, 0.55, 1.6),
-    letterSpacing: safeNumber(value.letterSpacing, fallback.letterSpacing, -0.35, 0.6),
+    letterSpacing: safeNumber(value.letterSpacing, fallback.letterSpacing, -0.8, 0.6),
     widthScale: safeNumber(value.widthScale, fallback.widthScale, 0.55, 1.6),
   };
 }
