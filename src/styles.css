@@ -3902,7 +3902,13 @@ button[aria-pressed="true"]:not(:disabled):active {
 }
 
 .phone-image-fullscreen-bottom-bar .font-slider-drawer {
-  left: calc(-42px - 6px);
+  left: 0;
+  right: 0;
+}
+
+.phone-image-fullscreen-bottom-bar .font-slider-body {
+  box-sizing: border-box;
+  width: 100%;
 }
 
 .font-slider-body {
