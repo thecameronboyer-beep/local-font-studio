@@ -432,7 +432,8 @@ type PalettePageDraft = Record<PalettePageColorKey, string> & {
 
 const PREVIEW_TEXT_SELECTION_HIT_PADDING = 8;
 const PREVIEW_TEXT_SELECTION_VISUAL_PADDING = 3;
-const PREVIEW_TEXT_LAYER_EDGE_BLEED = 12;
+const PREVIEW_TEXT_LAYER_EDGE_BLEED = 36;
+const PREVIEW_TEXT_CUSTOM_WRAP_WIDTH_SCALE = 0.88;
 
 type PreviewDocument = {
   headerText?: string;
@@ -1943,7 +1944,9 @@ export default function TextPreview({
       fontSize * 0.18,
       fontSize * Math.max(glyph.xAdvance, bearingAdvance) * fontWidthScale,
     );
-    const visibleWidth = fontSize * Math.max(0.18, glyph.width) * fontWidthScale;
+    const visibleWidth = fontSize *
+      Math.max(0.18, glyph.width * PREVIEW_TEXT_CUSTOM_WRAP_WIDTH_SCALE) *
+      fontWidthScale;
 
     return Math.min(renderedAdvance, visibleWidth);
   }
