@@ -6250,8 +6250,8 @@ h1 {
   grid-template-columns: 64px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  border-bottom: 1px solid rgba(248, 230, 194, 0.12);
-  background: #151314;
+  border-bottom: 1px solid var(--card-border);
+  background: var(--card-bg);
   padding: max(10px, env(safe-area-inset-top)) 10px 10px;
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.42);
 }
@@ -8658,11 +8658,11 @@ h3,
 
 .sidebar-menu,
 .phone-image-fullscreen,
-.font-profile-fullscreen,
-.phone-image-fullscreen-heading {
+.font-profile-fullscreen {
   background: var(--ui-panel-bg);
 }
 
+.phone-image-fullscreen-heading,
 .phone-image-fullscreen-bottom-bar,
 .phone-image-fullscreen-tools,
 .phone-image-fullscreen-settings {
