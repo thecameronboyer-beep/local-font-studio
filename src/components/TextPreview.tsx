@@ -302,7 +302,11 @@ type PreviewGlyphHitTarget = {
   y: number;
 };
 
-type GlyphWidthMetrics = Pick<Glyph, "leftBearing" | "rightBearing" | "width" | "xAdvance">;
+type GlyphWidthMetrics = Pick<Glyph, "construction" | "decorations" | "leftBearing" | "rightBearing" | "strokes" | "width" | "xAdvance">;
+type GlyphHorizontalBounds = {
+  left: number;
+  right: number;
+};
 type TextRunMeasureMode = "render" | "wrap";
 
 type PresetCharacterMetrics = {
@@ -433,7 +437,6 @@ type PalettePageDraft = Record<PalettePageColorKey, string> & {
 const PREVIEW_TEXT_SELECTION_HIT_PADDING = 8;
 const PREVIEW_TEXT_SELECTION_VISUAL_PADDING = 3;
 const PREVIEW_TEXT_LAYER_EDGE_BLEED = 24;
-const PREVIEW_TEXT_CUSTOM_WRAP_WIDTH_SCALE = 0.96;
 
 type PreviewDocument = {
   headerText?: string;
@@ -1937,45 +1940,136 @@ export default function TextPreview({
     return ctx.measureText(character).width * getFontWidthScale(fontForText);
   }
 
-  function getGlyphWrapWidth(glyph: GlyphWidthMetrics, fontSize: number, fontForText: FontSet) {
+  function getGlyphAdvanceForMetrics(glyph: GlyphWidthMetrics, fontSize: number, fontForText: FontSet) {
     const fontWidthScale = getFontWidthScale(fontForText);
     const bearingAdvance = glyph.leftBearing + glyph.width + glyph.rightBearing;
-    const renderedAdvance = Math.max(
+    return Math.max(
       fontSize * 0.18,
       fontSize * Math.max(glyph.xAdvance, bearingAdvance) * fontWidthScale,
     );
-    const visibleWidth = fontSize *
-      Math.max(0.18, glyph.width * PREVIEW_TEXT_CUSTOM_WRAP_WIDTH_SCALE) *
-      fontWidthScale;
-
-    return Math.min(renderedAdvance, visibleWidth);
   }
 
-  function measureCharacterForWrap(
+  function getGlyphInkHorizontalBounds(glyph: GlyphWidthMetrics, fontSize: number, fontForText: FontSet): GlyphHorizontalBounds {
+    const fontWidthScale = getFontWidthScale(fontForText);
+    const sizeX = fontSize * glyph.width * fontWidthScale;
+    let left = Number.POSITIVE_INFINITY;
+    let right = Number.NEGATIVE_INFINITY;
+
+    const includePoint = (x: number, padding = 0) => {
+      left = Math.min(left, x - padding);
+      right = Math.max(right, x + padding);
+    };
+
+    glyph.strokes.forEach((stroke) => {
+      if (stroke.points.length === 0) {
+        return;
+      }
+
+      const strokePadding = Math.max(1.5, stroke.size * fontSize * 1.35);
+      stroke.points.forEach((point) => includePoint(point.x * sizeX, strokePadding));
+    });
+
+    glyph.construction?.paths.forEach((path) => {
+      const pathPadding = Math.max(1, path.strokeWidth * fontSize * 0.5);
+
+      path.points.forEach((point) => {
+        includePoint(point.x * sizeX, pathPadding);
+        if (point.inHandle) {
+          includePoint(point.inHandle.x * sizeX, pathPadding);
+        }
+        if (point.outHandle) {
+          includePoint(point.outHandle.x * sizeX, pathPadding);
+        }
+      });
+    });
+
+    glyph.decorations.forEach((decoration) => {
+      const decorationRadius = Math.max(1, decoration.size * fontSize * 0.5);
+      includePoint(decoration.x * sizeX, decorationRadius);
+    });
+
+    if (!Number.isFinite(left) || !Number.isFinite(right)) {
+      return {
+        left: 0,
+        right: Math.max(fontSize * 0.18, sizeX),
+      };
+    }
+
+    return { left, right };
+  }
+
+  function getFallbackWrapMetrics(
     ctx: CanvasRenderingContext2D,
     character: string,
     fontSize: number,
     useHeaderLetters = false,
     fontForText: FontSet = previewFont,
   ) {
-    if (character === spacebar) {
-      return getSpacebarAdvance(fontForText.glyphs[spacebar], fontSize);
-    }
-
-    const glyphKey = getPreviewGlyphKey(character, useHeaderLetters);
-    const glyph = findPreviewGlyph(fontForText.glyphs, glyphKey);
-
-    if (glyph) {
-      return getGlyphWrapWidth(glyph, fontSize, fontForText);
-    }
-
     const metricGlyph = getMetricGlyphForCharacter(fontForText, character, useHeaderLetters);
+    const fontWidthScale = getFontWidthScale(fontForText);
+    const fallbackWidthScale = (metricGlyph?.width ?? 1) * fontWidthScale;
+    const left = metricGlyph ? getGlyphLeftBearingOffset(fontForText, metricGlyph, fontSize) : 0;
+    const width = ctx.measureText(character).width * fallbackWidthScale;
 
-    if (metricGlyph) {
-      return getGlyphWrapWidth(metricGlyph, fontSize, fontForText);
-    }
+    return {
+      advance: measureCharacter(ctx, character, fontSize, useHeaderLetters, fontForText),
+      left,
+      right: left + width,
+    };
+  }
 
-    return measureCharacter(ctx, character, fontSize, useHeaderLetters, fontForText);
+  function measureTextRunForWrap(
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    fontSize: number,
+    useHeaderLetters = false,
+    fontForText: FontSet = previewFont,
+  ) {
+    const characters = [...text.trimEnd()];
+    const fontWidthScale = getFontWidthScale(fontForText);
+    const letterSpacing = getFontLetterSpacing(fontForText, fontSize);
+    let penX = 0;
+    let rightEdge = 0;
+
+    characters.forEach((character, index) => {
+      if (character === spacebar) {
+        const advance = getSpacebarAdvance(fontForText.glyphs[spacebar], fontSize);
+        rightEdge = Math.max(rightEdge, penX + advance);
+        penX += index < characters.length - 1 ? getTrackedCharacterAdvance(advance, letterSpacing) : advance;
+        return;
+      }
+
+      const glyphKey = getPreviewGlyphKey(character, useHeaderLetters);
+      const glyph = findPreviewGlyph(fontForText.glyphs, glyphKey);
+
+      if (glyph) {
+        const advance = getGlyphAdvance(glyph, fontSize, fontWidthScale);
+        const glyphX = penX + getGlyphLeftBearingOffset(fontForText, glyph, fontSize);
+        const bounds = getGlyphInkHorizontalBounds(glyph, fontSize, fontForText);
+
+        rightEdge = Math.max(rightEdge, glyphX + bounds.right);
+        penX += index < characters.length - 1 ? getTrackedCharacterAdvance(advance, letterSpacing) : advance;
+        return;
+      }
+
+      const metricGlyph = getMetricGlyphForCharacter(fontForText, character, useHeaderLetters);
+
+      if (metricGlyph) {
+        const advance = getGlyphAdvanceForMetrics(metricGlyph, fontSize, fontForText);
+        const glyphX = penX + getGlyphLeftBearingOffset(fontForText, metricGlyph, fontSize);
+        const bounds = getGlyphInkHorizontalBounds(metricGlyph, fontSize, fontForText);
+
+        rightEdge = Math.max(rightEdge, glyphX + bounds.right);
+        penX += index < characters.length - 1 ? getTrackedCharacterAdvance(advance, letterSpacing) : advance;
+        return;
+      }
+
+      const fallback = getFallbackWrapMetrics(ctx, character, fontSize, useHeaderLetters, fontForText);
+      rightEdge = Math.max(rightEdge, penX + fallback.right);
+      penX += index < characters.length - 1 ? getTrackedCharacterAdvance(fallback.advance, letterSpacing) : fallback.advance;
+    });
+
+    return Math.max(0, rightEdge);
   }
 
   function getFontLetterSpacing(fontForText: FontSet, fontSize: number) {
@@ -1994,13 +2088,15 @@ export default function TextPreview({
     fontForText: FontSet = previewFont,
     mode: TextRunMeasureMode = "render",
   ) {
+    if (mode === "wrap") {
+      return measureTextRunForWrap(ctx, text, fontSize, useHeaderLetters, fontForText);
+    }
+
     const characters = [...text];
     const letterSpacing = getFontLetterSpacing(fontForText, fontSize);
 
     return characters.reduce((width, character, index) => {
-      const characterWidth = mode === "wrap"
-        ? measureCharacterForWrap(ctx, character, fontSize, useHeaderLetters, fontForText)
-        : measureCharacter(ctx, character, fontSize, useHeaderLetters, fontForText);
+      const characterWidth = measureCharacter(ctx, character, fontSize, useHeaderLetters, fontForText);
       const advance = index < characters.length - 1
         ? getTrackedCharacterAdvance(characterWidth, letterSpacing)
         : characterWidth;
@@ -2022,7 +2118,6 @@ export default function TextPreview({
 
     for (const paragraph of paragraphs) {
       let line = "";
-      let lineWidth = 0;
 
       if (paragraph.length === 0) {
         lines.push("");
@@ -2036,18 +2131,15 @@ export default function TextPreview({
           continue;
         }
 
-        const tokenWidth = measureTextRun(ctx, token, fontSize, useHeaderLetters, fontForText, "wrap");
+        const candidateLine = line + token;
+        const candidateWidth = measureTextRun(ctx, candidateLine, fontSize, useHeaderLetters, fontForText, "wrap");
 
-        if (line.length > 0 && lineWidth + tokenWidth > maxLineWidth) {
+        if (line.length > 0 && candidateWidth > maxLineWidth) {
           lines.push(line.trimEnd());
           line = token.replace(/^\s+/, "");
-          lineWidth = measureTextRun(ctx, line, fontSize, useHeaderLetters, fontForText, "wrap");
         } else {
-          line += token;
-          lineWidth += tokenWidth;
+          line = candidateLine;
         }
-
-        lineWidth = Math.max(lineWidth, measureTextRun(ctx, line, fontSize, useHeaderLetters, fontForText, "wrap"));
       }
 
       lines.push(line.trimEnd());
@@ -2066,11 +2158,9 @@ export default function TextPreview({
   ) {
     const paragraphs = text.split("\n");
     const lines: string[] = [];
-    const letterSpacing = getFontLetterSpacing(fontForText, fontSize);
 
     for (const paragraph of paragraphs) {
       let line = "";
-      let lineWidth = 0;
 
       if (paragraph.length === 0) {
         lines.push("");
@@ -2078,20 +2168,16 @@ export default function TextPreview({
       }
 
       for (const character of paragraph) {
-        const characterWidth = measureCharacterForWrap(ctx, character, fontSize, useHeaderLetters, fontForText);
-        const trackedWidth = line.length > 0
-          ? getTrackedCharacterAdvance(characterWidth, letterSpacing)
-          : characterWidth;
+        const candidateLine = line + character;
+        const candidateWidth = measureTextRun(ctx, candidateLine, fontSize, useHeaderLetters, fontForText, "wrap");
 
-        if (line.length > 0 && lineWidth + trackedWidth > maxLineWidth) {
+        if (line.length > 0 && candidateWidth > maxLineWidth) {
           lines.push(line);
           line = character.trimStart();
-          lineWidth = measureTextRun(ctx, line, fontSize, useHeaderLetters, fontForText, "wrap");
           continue;
         }
 
-        line += character;
-        lineWidth += trackedWidth;
+        line = candidateLine;
       }
 
       lines.push(line.trimEnd());
