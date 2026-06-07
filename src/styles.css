@@ -6889,17 +6889,30 @@ h1 {
 .selected-text-option-row .selected-text-inline-metric-button,
 .selected-text-option-row .selected-text-apply-button,
 .selected-text-option-row .selected-text-effect-button {
-  border-color: var(--ui-border-medium);
-  background: var(--ui-card-bg);
-  color: var(--text-main);
+  border-color: var(--control-neutral-border);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--control-neutral-bg) 88%, #ffffff 12%) 0%,
+      var(--control-neutral-bg) 56%,
+      color-mix(in srgb, var(--control-neutral-bg) 90%, var(--ui-inset-bg) 10%) 100%
+    );
+  color: var(--control-neutral-text);
+  box-shadow: var(--depth-button-rest);
 }
 
 .selected-text-option-row .selected-text-option-button.active-tool,
 .selected-text-option-row .selected-text-inline-metric-button.active-tool,
 .selected-text-option-row .selected-text-effect-button.active-tool {
   border-color: var(--control-selected-border);
-  background: var(--control-selected-bg);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--control-selected-bg) 90%, #ffffff 10%) 0%,
+      var(--control-selected-bg) 100%
+    );
   color: var(--selected-text);
+  box-shadow: var(--depth-button-selected);
 }
 
 .selected-text-delete-button {
